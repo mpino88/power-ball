@@ -1,0 +1,24 @@
+{
+  "name": "power-ball-telegram-bot",
+  "version": "1.0.0",
+  "description": "Bot de Telegram con botones y procesamiento (TypeScript)",
+  "main": "dist/bot.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/bot.js",
+    "dev": "tsx src/bot.ts"
+  },
+  "keywords": ["telegram", "bot", "grammy"],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "grammy": "^1.28.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

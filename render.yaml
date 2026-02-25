@@ -1,0 +1,13 @@
+# Render Blueprint - despliegue gratis del bot
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: power-ball-bot
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: WEBHOOK_URL
+        sync: false
