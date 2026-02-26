@@ -11,6 +11,12 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const WEBHOOK_URL = process.env.WEBHOOK_URL ?? ""; // ej: https://tu-bot.onrender.com
 
+const HELP_TEXT =
+  "🎱 *Generar números*\nSimula una combinación tipo Power Ball: 5 números (1-69) + Power Ball (1-26).\n\n" +
+  "📊 *Calcular probabilidad*\nProbabilidad de acertar el jackpot (1 entre ~292 millones).\n\n" +
+  "🔄 *Otra combinación*\nGenera una nueva combinación.\n\n" +
+  "Usa los botones o escribe /start para ver el menú.";
+
 function buildMainKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
     .text("🎱 Generar números", "generate")
@@ -37,7 +43,7 @@ function processGenerateNumbers(): string {
     .sort((a, b) => a - b);
   const power = Math.floor(Math.random() * 26) + 1;
   return (
-    `*Tus números:*\n\`${white.join(" - ")}\`  |  *Power Ball:* \`${power}\``
+    `*Tus números:*\n\`${white.join(" - ")}\`  |  *Power Ball:* \`${power}\`\n\n_¡Buena suerte! 🍀_`
   );
 }
 
@@ -68,8 +74,17 @@ const bot = new Bot(BOT_TOKEN);
 
 bot.command("start", async (ctx) => {
   const welcome =
-    "👋 *Hola!* Soy tu bot de ejemplo.\n\n" + "Elige una opción con los botones:";
+    "👋 *Hola!* Soy tu bot de Power Ball.\n\n" +
+    "Puedo generar combinaciones aleatorias y mostrarte la probabilidad del jackpot.\n\n" +
+    "Elige una opción:";
   await ctx.reply(welcome, {
+    parse_mode: "Markdown",
+    reply_markup: buildMainKeyboard(),
+  });
+});
+
+bot.command("help", async (ctx) => {
+  await ctx.reply(HELP_TEXT, {
     parse_mode: "Markdown",
     reply_markup: buildMainKeyboard(),
   });
@@ -77,7 +92,6 @@ bot.command("start", async (ctx) => {
 
 bot.on("callback_query:data", async (ctx) => {
   const data = ctx.callbackQuery.data;
-  await ctx.answerCallbackQuery();
 
   let result: string;
   if (data === "generate") {
@@ -85,19 +99,24 @@ bot.on("callback_query:data", async (ctx) => {
   } else if (data === "probability") {
     result = processProbability();
   } else if (data === "help") {
-    result =
-      "*Opciones:*\n" +
-      "• *Generar números:* simula una combinación tipo Power Ball.\n" +
-      "• *Calcular probabilidad:* probabilidad de ganar el jackpot.\n" +
-      "• *Otra combinación:* vuelve a generar números.";
+    result = "*❓ Ayuda*\n\n" + HELP_TEXT;
   } else {
-    result = "Opción no reconocida.";
+    result = "Opción no reconocida. Usa /start para ver el menú.";
   }
 
-  await ctx.editMessageText(result, {
-    parse_mode: "Markdown",
-    reply_markup: buildMainKeyboard(),
-  });
+  try {
+    await ctx.answerCallbackQuery();
+    await ctx.editMessageText(result, {
+      parse_mode: "Markdown",
+      reply_markup: buildMainKeyboard(),
+    });
+  } catch (err) {
+    await ctx.answerCallbackQuery({ text: "Listo ✓" }).catch(() => {});
+    const msg = (err as Error).message ?? "";
+    if (!msg.includes("message is not modified")) {
+      console.error("Error en callback_query:", err);
+    }
+  }
 });
 
 async function main(): Promise<void> {
@@ -106,6 +125,21 @@ async function main(): Promise<void> {
     console.error("Ejemplo: export TELEGRAM_BOT_TOKEN='tu-token'");
     process.exit(1);
   }
+
+  // En Render la plataforma define PORT; sin WEBHOOK_URL no abrimos puerto y el deploy falla
+  if (process.env.PORT && !WEBHOOK_URL) {
+    console.error(
+      "En este entorno (ej. Render) debes definir WEBHOOK_URL con la URL pública del servicio."
+    );
+    console.error("Ejemplo: WEBHOOK_URL=https://tu-app.onrender.com");
+    process.exit(1);
+  }
+
+  // Menú de comandos que aparece al escribir "/" en Telegram
+  await bot.api.setMyCommands([
+    { command: "start", description: "Iniciar y ver opciones" },
+    { command: "help", description: "Ver ayuda del bot" },
+  ]);
 
   if (WEBHOOK_URL) {
     // Modo webhook: para Render u otro hosting que recibe HTTP
