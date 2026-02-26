@@ -14,7 +14,8 @@
     "node": ">=18"
   },
   "dependencies": {
-    "grammy": "^1.28.0"
+    "grammy": "^1.28.0",
+    "pdf-parse": "^1.1.1"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

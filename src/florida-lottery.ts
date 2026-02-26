@@ -1,22 +1,22 @@
 /**
  * Obtiene resultados de Pick 3 y Pick 4 de la Florida Lottery.
- * Fuente: floridalotteryresults.com (datos alineados con los sorteos oficiales).
- * Enlaces oficiales: floridalottery.com/games/draw-games/pick-3 y pick-4
+ * Fuente: PDF oficial (todas las páginas). Formato en PDF: MM/DD/YY E #-#-# o MM/DD/YY M #-#-#
+ * Enlaces oficiales: files.floridalottery.com/exptkt/p3.pdf y p4.pdf
  */
 
-const PICK3_URL = "https://floridalotteryresults.com/pick-3/";
-const PICK4_URL = "https://floridalotteryresults.com/pick-4/";
-const FETCH_TIMEOUT_MS = 12_000;
+const PICK3_PDF_URL = "https://files.floridalottery.com/exptkt/p3.pdf";
+const PICK4_PDF_URL = "https://files.floridalottery.com/exptkt/p4.pdf";
+const FETCH_TIMEOUT_MS = 25_000;
 
 export type DrawPeriod = "midday" | "evening";
 
 export interface DrawResult {
   date: string; // "Feb 16, 2026"
   period: DrawPeriod;
-  periodLabel: string; // "Mediodía" / "Noche"
-  numbers: string;   // "9-7-3" o "1-2-3-4"
-  fireball?: string; // "7" si hay Fireball
-  raw: string;       // línea cruda ej. "9737FB"
+  periodLabel: string;
+  numbers: string;
+  fireball?: string;
+  raw: string;
 }
 
 export interface GameResults {
@@ -26,7 +26,49 @@ export interface GameResults {
   officialLink: string;
 }
 
-function fetchWithTimeout(url: string): Promise<string> {
+const MONTHS = "Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec".split(",");
+
+/** Convierte MM/DD/YY a "Feb 16, 2026". */
+function pdfDateToLabel(mm: string, dd: string, yy: string): string {
+  const month = parseInt(mm, 10);
+  const day = parseInt(dd, 10);
+  let year = parseInt(yy, 10);
+  if (year >= 0 && year <= 99) year = year >= 50 ? 1900 + year : 2000 + year;
+  return `${MONTHS[month - 1]} ${day}, ${year}`;
+}
+
+/**
+ * Parsea el texto extraído del PDF. Busca líneas con formato:
+ * MM/DD/YY E #-#-# (evening) o MM/DD/YY M #-#-# (midday)
+ * Para Pick 4: #-#-#-# (cuatro números).
+ */
+function parsePdfText(text: string, numDigits: 3 | 4): DrawResult[] {
+  const draws: DrawResult[] = [];
+  const pattern =
+    numDigits === 3
+      ? /(\d{2})\/(\d{2})\/(\d{2})\s+([EM])\s+(\d)\s*-\s*(\d)\s*-\s*(\d)/g
+      : /(\d{2})\/(\d{2})\/(\d{2})\s+([EM])\s+(\d)\s*-\s*(\d)\s*-\s*(\d)\s*-\s*(\d)/g;
+
+  let m: RegExpExecArray | null;
+  while ((m = pattern.exec(text)) !== null) {
+    const dateLabel = pdfDateToLabel(m[1], m[2], m[3]);
+    const period: DrawPeriod = m[4].toUpperCase() === "E" ? "evening" : "midday";
+    const periodLabel = period === "midday" ? "Mediodía" : "Noche";
+    const numbers = m.slice(5, 5 + numDigits).join("-");
+    const raw = m[0];
+
+    draws.push({
+      date: dateLabel,
+      period,
+      periodLabel,
+      numbers,
+      raw,
+    });
+  }
+  return draws;
+}
+
+function fetchPdfAsBuffer(url: string): Promise<Buffer> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   return fetch(url, {
@@ -36,70 +78,29 @@ function fetchWithTimeout(url: string): Promise<string> {
     .then((r) => {
       clearTimeout(timeout);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r.text();
+      return r.arrayBuffer();
     })
+    .then((ab) => Buffer.from(ab))
     .catch((e) => {
       clearTimeout(timeout);
       throw e;
     });
 }
 
-/**
- * Parsea el HTML de floridalotteryresults.com.
- * Estructura: flrpg-date, flrpg-badge--evening|midday, flrpg-ball (dígitos), flrpg-ball flrpg-bonus (Fireball).
- */
-function parseResultsPage(
-  html: string,
-  _game: "Pick 3" | "Pick 4",
-  numDigits: 3 | 4
-): DrawResult[] {
-  const draws: DrawResult[] = [];
-  const dateRe = /<time class="flrpg-date">([^<]+)<\/time>/g;
-  const badgeRe = /flrpg-badge--(evening|midday)">[^<]*/g;
-  const ballRe = /class="flrpg-ball(?:\s+flrpg-bonus)?"[^>]*>(\d)</g;
-
-  let dateMatch: RegExpExecArray | null;
-  while ((dateMatch = dateRe.exec(html)) !== null) {
-    const dateLabel = dateMatch[1].trim();
-    const afterDate = html.slice(dateMatch.index);
-    const badgeMatch = afterDate.match(/flrpg-badge--(evening|midday)/);
-    if (!badgeMatch) continue;
-    const period = badgeMatch[1] as DrawPeriod;
-    const periodLabel = period === "midday" ? "Mediodía" : "Noche";
-
-    const ballSection = afterDate.slice(0, 500);
-    const ballMatches = [...ballSection.matchAll(/class="flrpg-ball(\s+flrpg-bonus)?"[^>]*>(\d)</g)];
-    const mainBalls = ballMatches
-      .filter((m) => !m[1]) // sin flrpg-bonus
-      .slice(0, numDigits)
-      .map((m) => m[2]);
-    const bonusBall = ballMatches.find((m) => m[1])?.[2]; // el que tiene flrpg-bonus
-    if (mainBalls.length !== numDigits) continue;
-
-    const numbers = mainBalls.join("-");
-    const raw = mainBalls.join("") + (bonusBall ?? "") + (bonusBall ? "FB" : "");
-
-    draws.push({
-      date: dateLabel,
-      period,
-      periodLabel,
-      numbers,
-      fireball: bonusBall,
-      raw,
-    });
-  }
-  return draws;
+async function extractTextFromPdf(buffer: Buffer): Promise<string> {
+  const pdfParse = (await import("pdf-parse")).default as (
+    buffer: Buffer
+  ) => Promise<{ text: string }>;
+  const data = await pdfParse(buffer);
+  return data.text ?? "";
 }
 
 const FLORIDA_TZ = "America/New_York";
-
-const MONTHS = "Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec".split(",");
 
 export function formatDateForLabel(d: Date): string {
   return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 }
 
-/** Fecha de hoy en hora de Florida (para que "Hoy" coincida con el día en EE.UU.). */
 function getTodayInFlorida(): string {
   return new Date().toLocaleDateString("en-US", {
     timeZone: FLORIDA_TZ,
@@ -109,19 +110,14 @@ function getTodayInFlorida(): string {
   });
 }
 
-/** Fecha de ayer en hora de Florida (usa UTC para no depender del timezone del servidor). */
 function getYesterdayInFlorida(): string {
-  const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: FLORIDA_TZ }); // YYYY-MM-DD
+  const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: FLORIDA_TZ });
   const [y, m, d] = todayStr.split("-").map(Number);
   const yesterdayMs = Date.UTC(y, m - 1, d) - 86400000;
   const yesterday = new Date(yesterdayMs);
-  const month = yesterday.getUTCMonth();
-  const day = yesterday.getUTCDate();
-  const year = yesterday.getUTCFullYear();
-  return `${MONTHS[month]} ${day}, ${year}`;
+  return `${MONTHS[yesterday.getUTCMonth()]} ${yesterday.getUTCDate()}, ${yesterday.getUTCFullYear()}`;
 }
 
-/** Convierte "Feb 16, 2026" a "2026-02-16" para comparar. */
 function dateLabelToYMD(label: string): string {
   const d = new Date(label);
   if (Number.isNaN(d.getTime())) return "";
@@ -141,7 +137,6 @@ function getYMDForFilter(filter: DateFilter): string {
   return dateLabelToYMD(formatDateForLabel(d));
 }
 
-/** Filtra sorteos por fecha (hoy, ayer o fecha concreta). */
 function getDrawsForDate(draws: DrawResult[], filter: DateFilter): DrawResult[] {
   const targetYMD = getYMDForFilter(filter);
   if (!targetYMD) return [];
@@ -153,9 +148,8 @@ function getDrawsForDate(draws: DrawResult[], filter: DateFilter): DrawResult[] 
     list.push(d);
     byDate.set(d.date, list);
   }
-  const list = byDate.get(
-    draws.find((d) => dateLabelToYMD(d.date) === targetYMD)?.date ?? ""
-  );
+  const firstMatch = draws.find((d) => dateLabelToYMD(d.date) === targetYMD);
+  const list = firstMatch ? byDate.get(firstMatch.date) : undefined;
   if (!list || list.length === 0) return [];
   const evening = list.find((d) => d.period === "evening");
   const midday = list.find((d) => d.period === "midday");
@@ -163,39 +157,34 @@ function getDrawsForDate(draws: DrawResult[], filter: DateFilter): DrawResult[] 
 }
 
 /**
- * Obtiene resultados de Pick 3 para la fecha indicada (hoy, ayer o fecha custom).
+ * Descarga el PDF oficial, extrae el texto de todas las páginas y parsea los resultados.
  */
 export async function fetchPick3Results(dateFilter: DateFilter = "today"): Promise<GameResults> {
-  const html = await fetchWithTimeout(PICK3_URL);
-  const allDraws = parseResultsPage(html, "Pick 3", 3);
+  const buffer = await fetchPdfAsBuffer(PICK3_PDF_URL);
+  const text = await extractTextFromPdf(buffer);
+  const allDraws = parsePdfText(text, 3);
   const draws = getDrawsForDate(allDraws, dateFilter);
   return {
     game: "Pick 3",
     draws,
-    link: PICK3_URL,
+    link: PICK3_PDF_URL,
     officialLink: "https://floridalottery.com/games/draw-games/pick-3",
   };
 }
 
-/**
- * Obtiene resultados de Pick 4 para la fecha indicada (hoy, ayer o fecha custom).
- */
 export async function fetchPick4Results(dateFilter: DateFilter = "today"): Promise<GameResults> {
-  const html = await fetchWithTimeout(PICK4_URL);
-  const allDraws = parseResultsPage(html, "Pick 4", 4);
+  const buffer = await fetchPdfAsBuffer(PICK4_PDF_URL);
+  const text = await extractTextFromPdf(buffer);
+  const allDraws = parsePdfText(text, 4);
   const draws = getDrawsForDate(allDraws, dateFilter);
   return {
     game: "Pick 4",
     draws,
-    link: PICK4_URL,
+    link: PICK4_PDF_URL,
     officialLink: "https://floridalottery.com/games/draw-games/pick-4",
   };
 }
 
-/**
- * Formatea resultados para mostrar en el bot.
- * @param titleOverride Si se indica (ej. "Resultados de ayer"), se usa en lugar del título por defecto.
- */
 export function formatResultsForBot(
   data: GameResults,
   titleOverride?: string
