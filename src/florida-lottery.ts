@@ -1,323 +1,142 @@
 /**
- * Obtiene resultados de Pick 3 y Pick 4 de la Florida Lottery.
- * Fuente: PDF oficial (todas las páginas). Formato en PDF: MM/DD/YY E #-#-# o MM/DD/YY M #-#-#
- * Enlaces oficiales: files.floridalottery.com/exptkt/p3.pdf y p4.pdf
+ * Obtiene los resultados más recientes de Pick 3 y Pick 4 de Florida Lottery
+ * mediante scraping de las páginas oficiales.
+ * Fuentes:
+ *   https://floridalottery.com/games/draw-games/pick-3
+ *   https://floridalottery.com/games/draw-games/pick-4
  */
 
-const PICK3_PDF_URL = "https://files.floridalottery.com/exptkt/p3.pdf";
-const PICK4_PDF_URL = "https://files.floridalottery.com/exptkt/p4.pdf";
-const FETCH_TIMEOUT_MS = 25_000;
+const PICK3_URL = "https://floridalottery.com/games/draw-games/pick-3";
+const PICK4_URL = "https://floridalottery.com/games/draw-games/pick-4";
+const SCRAPE_TIMEOUT_MS = 30_000;
 
 export type DrawPeriod = "midday" | "evening";
 
 export interface DrawResult {
-  date: string; // "Feb 16, 2026"
+  date: string;
   period: DrawPeriod;
   periodLabel: string;
   numbers: string;
   fireball?: string;
-  raw: string;
+  raw?: string;
 }
 
 export interface GameResults {
   game: "Pick 3" | "Pick 4";
   draws: DrawResult[];
-  link: string;
   officialLink: string;
 }
 
-const MONTHS = "Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec".split(",");
-
-/** Convierte MM/DD/YY a "Feb 16, 2026". */
-function pdfDateToLabel(mm: string, dd: string, yy: string): string {
-  const month = parseInt(mm, 10);
-  const day = parseInt(dd, 10);
-  let year = parseInt(yy, 10);
-  if (year >= 0 && year <= 99) year = year >= 50 ? 1900 + year : 2000 + year;
-  return `${MONTHS[month - 1]} ${day}, ${year}`;
+async function getPageText(url: string): Promise<string> {
+  const playwright = await import("playwright");
+  const browser = await playwright.chromium.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+  });
+  try {
+    const page = await browser.newPage();
+    await page.goto(url, { waitUntil: "networkidle", timeout: SCRAPE_TIMEOUT_MS });
+    const text = await page.evaluate(() => document.body.innerText);
+    return text ?? "";
+  } finally {
+    await browser.close();
+  }
 }
 
 /**
- * Normaliza el texto del PDF: colapsa saltos de línea y espacios múltiples
- * para que patrones como "MM/DD/YY E 9-7-3" matcheen aunque vengan en varias "líneas".
+ * Parsea el texto de la página buscando bloques "fecha + periodo + números + fireball".
+ * La sección de resultados suele tener fechas tipo "WED, FEB 25, 2026" y Midday/Evening.
  */
-function normalizePdfText(text: string): string {
-  return text.replace(/\s+/g, " ").replace(/\f/g, " ").trim();
-}
-
-/**
- * Parsea el texto del PDF (todas las páginas ya concatenadas por pdf-parse).
- * Busca fechas MM/DD/YY seguidas de E (evening) o M (midday) y sus números.
- * Acepta números separados por guión o espacio: 9-7-3 o 9 7 3.
- */
-function parsePdfText(text: string, numDigits: 3 | 4): DrawResult[] {
-  let draws = parsePdfTextNormalized(normalizePdfText(text), numDigits);
-  if (draws.length === 0 && text.length > 0) {
-    draws = parsePdfTextByLines(text, numDigits);
-  }
-  return draws;
-}
-
-function parsePdfTextNormalized(normalized: string, numDigits: 3 | 4): DrawResult[] {
+function parsePageTextForDraws(text: string, numDigits: 3 | 4): DrawResult[] {
   const draws: DrawResult[] = [];
-  const patternPick3 =
-    /(\d{2})\/(\d{2})\/(\d{2})\s*([EM])\s*(\d)[\s\-]*(\d)[\s\-]*(\d)/gi;
-  const patternPick4 =
-    /(\d{2})\/(\d{2})\/(\d{2})\s*([EM])\s*(\d)[\s\-]*(\d)[\s\-]*(\d)[\s\-]*(\d)/gi;
-  const pattern = numDigits === 3 ? patternPick3 : patternPick4;
-
-  let m: RegExpExecArray | null;
-  while ((m = pattern.exec(normalized)) !== null) {
-    const mm = m[1];
-    const dd = m[2];
-    const yy = m[3];
-    const periodChar = m[4].toUpperCase();
-    const period: DrawPeriod = periodChar === "E" ? "evening" : "midday";
-    const periodLabel = period === "midday" ? "Mediodía" : "Noche";
-    const numbers = m.slice(5, 5 + numDigits).join("-");
-    const dateLabel = pdfDateToLabel(mm, dd, yy);
-
-    draws.push({
-      date: dateLabel,
-      period,
-      periodLabel,
-      numbers,
-      raw: m[0],
-    });
-  }
-  return draws;
-}
-
-/** Fallback: PDF con una línea por fecha y la siguiente "E 9-7-3" / "M 5-3-3". */
-function parsePdfTextByLines(text: string, numDigits: 3 | 4): DrawResult[] {
-  const draws: DrawResult[] = [];
-  const dateRe = /^\s*(\d{2})\/(\d{2})\/(\d{2})/;
-  const numbersRe =
+  const monthNames: Record<string, string> = {
+    JAN: "Jan", FEB: "Feb", MAR: "Mar", APR: "Apr", MAY: "May", JUN: "Jun",
+    JUL: "Jul", AUG: "Aug", SEP: "Sep", OCT: "Oct", NOV: "Nov", DEC: "Dec",
+  };
+  const dateRe = /([A-Z]{3}),\s*([A-Z]{3})\s+(\d{1,2}),\s*(\d{4})/g;
+  const numberRe =
     numDigits === 3
-      ? /([EM])\s*(\d)[\s\-]*(\d)[\s\-]*(\d)/
-      : /([EM])\s*(\d)[\s\-]*(\d)[\s\-]*(\d)[\s\-]*(\d)/;
-  const lines = text.split(/\r?\n/);
-  let lastDate: { mm: string; dd: string; yy: string } | null = null;
-  for (const line of lines) {
-    const dateMatch = line.match(dateRe);
-    if (dateMatch) lastDate = { mm: dateMatch[1], dd: dateMatch[2], yy: dateMatch[3] };
-    const numMatch = line.match(numbersRe);
-    if (numMatch && lastDate) {
-      const period: DrawPeriod = numMatch[1].toUpperCase() === "E" ? "evening" : "midday";
-      draws.push({
-        date: pdfDateToLabel(lastDate.mm, lastDate.dd, lastDate.yy),
-        period,
-        periodLabel: period === "midday" ? "Mediodía" : "Noche",
-        numbers: numMatch.slice(2, 2 + numDigits).join("-"),
-        raw: line.trim(),
+      ? /\b(\d)\s*[\s\-]*(\d)\s*[\s\-]*(\d)\b/g
+      : /\b(\d)\s*[\s\-]*(\d)\s*[\s\-]*(\d)\s*[\s\-]*(\d)\b/g;
+
+  let dateMatch: RegExpExecArray | null;
+  const dateBlocks: Array<{ index: number; dateLabel: string }> = [];
+  while ((dateMatch = dateRe.exec(text)) !== null) {
+    const monthKey = dateMatch[2].toUpperCase();
+    if (monthNames[monthKey]) {
+      dateBlocks.push({
+        index: dateMatch.index,
+        dateLabel: `${monthNames[monthKey]} ${dateMatch[3]}, ${dateMatch[4]}`,
       });
     }
   }
+
+  for (let i = 0; i < dateBlocks.length; i++) {
+    const start = dateBlocks[i].index;
+    const end = dateBlocks[i + 1]?.index ?? text.length;
+    const block = text.slice(start, end);
+    const isMidday = /midday|mid\s*day|1:30|1:20/i.test(block);
+    const isEvening = /evening|eve|9:45|9:35/i.test(block);
+    const period: DrawPeriod = isMidday ? "midday" : isEvening ? "evening" : "evening";
+    const periodLabel = period === "midday" ? "Mediodía" : "Noche";
+
+    numberRe.lastIndex = 0;
+    const numMatch = numberRe.exec(block);
+    if (!numMatch) continue;
+    const numbers = numMatch.slice(1, 1 + numDigits).join("-");
+    const fireballM = block.match(/fireball\s*[:\s]*(\d)|(\d)\s*[•·]?\s*fireball/i);
+    const fireball = fireballM ? (fireballM[1] ?? fireballM[2]) : undefined;
+
+    draws.push({
+      date: dateBlocks[i].dateLabel,
+      period,
+      periodLabel,
+      numbers,
+      fireball,
+    });
+  }
+
   return draws;
 }
 
-function fetchPdfAsBuffer(url: string): Promise<Buffer> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  return fetch(url, {
-    signal: controller.signal,
-    headers: { "User-Agent": "FloridaLotteryBot/1.0 (Telegram)" },
-  })
-    .then((r) => {
-      clearTimeout(timeout);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r.arrayBuffer();
-    })
-    .then((ab) => Buffer.from(ab))
-    .catch((e) => {
-      clearTimeout(timeout);
-      throw e;
-    });
-}
-
-type PdfParseResult = { text: string; numpages: number };
-
-async function parsePdf(buffer: Buffer): Promise<PdfParseResult> {
-  const pdfParse = (await import("pdf-parse")).default as (
-    buffer: Buffer
-  ) => Promise<PdfParseResult>;
-  const data = await pdfParse(buffer);
-  return { text: data.text ?? "", numpages: data.numpages ?? 0 };
-}
-
-async function extractTextFromPdf(buffer: Buffer): Promise<string> {
-  const data = await parsePdf(buffer);
-  return data.text;
-}
-
-/** Devuelve el número de páginas del PDF indicado (P3 o P4). */
-async function getPdfPageCount(url: string): Promise<number> {
-  const buffer = await fetchPdfAsBuffer(url);
-  const data = await parsePdf(buffer);
-  return data.numpages;
-}
-
-/** Devuelve el número de páginas de los PDFs oficiales Pick 3 y Pick 4 (en paralelo). */
-export async function getPdfPageCounts(): Promise<{ pick3: number; pick4: number }> {
-  const [pick3, pick4] = await Promise.all([
-    getPdfPageCount(PICK3_PDF_URL),
-    getPdfPageCount(PICK4_PDF_URL),
-  ]);
-  return { pick3, pick4 };
-}
-
-const FLORIDA_TZ = "America/New_York";
-
-export function formatDateForLabel(d: Date): string {
-  return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
-}
-
-function getTodayInFlorida(): string {
-  return new Date().toLocaleDateString("en-US", {
-    timeZone: FLORIDA_TZ,
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function getYesterdayInFlorida(): string {
-  const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: FLORIDA_TZ });
-  const [y, m, d] = todayStr.split("-").map(Number);
-  const yesterdayMs = Date.UTC(y, m - 1, d) - 86400000;
-  const yesterday = new Date(yesterdayMs);
-  return `${MONTHS[yesterday.getUTCMonth()]} ${yesterday.getUTCDate()}, ${yesterday.getUTCFullYear()}`;
-}
-
-function dateLabelToYMD(label: string): string {
-  const d = new Date(label);
-  if (Number.isNaN(d.getTime())) return "";
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-export type DateFilter = "today" | "yesterday" | Date;
-
-function getYMDForFilter(filter: DateFilter): string {
-  if (filter === "today") return dateLabelToYMD(getTodayInFlorida());
-  if (filter === "yesterday") return dateLabelToYMD(getYesterdayInFlorida());
-  const d = filter instanceof Date ? filter : new Date(filter);
-  if (Number.isNaN(d.getTime())) return "";
-  return dateLabelToYMD(formatDateForLabel(d));
-}
-
-function getDrawsForDate(draws: DrawResult[], filter: DateFilter): DrawResult[] {
-  const targetYMD = getYMDForFilter(filter);
-  if (!targetYMD) return [];
-  const byDate = new Map<string, DrawResult[]>();
-  for (const d of draws) {
-    const ymd = dateLabelToYMD(d.date);
-    if (ymd !== targetYMD) continue;
-    const list = byDate.get(d.date) ?? [];
-    list.push(d);
-    byDate.set(d.date, list);
-  }
-  const firstMatch = draws.find((d) => dateLabelToYMD(d.date) === targetYMD);
-  const list = firstMatch ? byDate.get(firstMatch.date) : undefined;
-  if (!list || list.length === 0) return [];
-  const evening = list.find((d) => d.period === "evening");
-  const midday = list.find((d) => d.period === "midday");
-  return [evening, midday].filter(Boolean) as DrawResult[];
-}
-
 /**
- * Descarga el PDF oficial, extrae el texto de todas las páginas y parsea los resultados.
+ * Scrapea la página de Pick 3 y devuelve los resultados más recientes mostrados.
  */
-export async function fetchPick3Results(dateFilter: DateFilter = "today"): Promise<GameResults> {
-  const buffer = await fetchPdfAsBuffer(PICK3_PDF_URL);
-  const text = await extractTextFromPdf(buffer);
-  const allDraws = parsePdfText(text, 3);
-  const draws = getDrawsForDate(allDraws, dateFilter);
+export async function fetchPick3RecentResults(): Promise<GameResults> {
+  const text = await getPageText(PICK3_URL);
+  const draws = parsePageTextForDraws(text, 3);
   return {
     game: "Pick 3",
     draws,
-    link: PICK3_PDF_URL,
-    officialLink: "https://floridalottery.com/games/draw-games/pick-3",
+    officialLink: PICK3_URL,
   };
 }
 
-export async function fetchPick4Results(dateFilter: DateFilter = "today"): Promise<GameResults> {
-  const buffer = await fetchPdfAsBuffer(PICK4_PDF_URL);
-  const text = await extractTextFromPdf(buffer);
-  const allDraws = parsePdfText(text, 4);
-  const draws = getDrawsForDate(allDraws, dateFilter);
+/**
+ * Scrapea la página de Pick 4 y devuelve los resultados más recientes (incl. Fireball).
+ */
+export async function fetchPick4RecentResults(): Promise<GameResults> {
+  const text = await getPageText(PICK4_URL);
+  const draws = parsePageTextForDraws(text, 4);
   return {
     game: "Pick 4",
     draws,
-    link: PICK4_PDF_URL,
-    officialLink: "https://floridalottery.com/games/draw-games/pick-4",
+    officialLink: PICK4_URL,
   };
 }
 
 /**
- * Lee todo el PDF y devuelve todos los sorteos parseados (sin filtrar por fecha).
+ * Formatea los resultados para el mensaje del bot.
  */
-export async function fetchAllDrawsFromPdf(
-  game: "Pick 3" | "Pick 4"
-): Promise<DrawResult[]> {
-  const url = game === "Pick 3" ? PICK3_PDF_URL : PICK4_PDF_URL;
-  const buffer = await fetchPdfAsBuffer(url);
-  const text = await extractTextFromPdf(buffer);
-  return parsePdfText(text, game === "Pick 3" ? 3 : 4);
-}
-
-const MAX_DRAWS_IN_MESSAGE = 28;
-
-/**
- * Formatea "todo lo leído del PDF" para el bot (resumen + últimos sorteos para no exceder límite de mensaje).
- */
-export function formatAllReadForBot(
-  game: "Pick 3" | "Pick 4",
-  draws: DrawResult[],
-  officialLink: string
-): string {
-  const total = draws.length;
-  if (total === 0) {
-    return `*${game} — Todo lo leído*\n\n_No se encontraron sorteos en el PDF._\n\n[Florida Lottery](${officialLink})`;
-  }
-  const sorted = [...draws].sort((a, b) => {
-    const da = new Date(a.date).getTime();
-    const db = new Date(b.date).getTime();
-    return db - da;
-  });
-  const first = sorted[sorted.length - 1]?.date ?? "";
-  const last = sorted[0]?.date ?? "";
-  const show = sorted.slice(0, MAX_DRAWS_IN_MESSAGE);
-  let body =
-    `📋 *Total leído:* ${total} sorteos\n` +
-    `📅 *Rango:* ${first} — ${last}\n\n` +
-    `*Últimos ${show.length}:*\n`;
-  for (const d of show) {
-    const icon = d.periodLabel === "Mediodía" ? "☀️" : "🌙";
-    body += `${icon} ${d.date} ${d.period === "evening" ? "E" : "M"}: \`${d.numbers}\`\n`;
-  }
-  body += `\n[Ver en Florida Lottery](${officialLink})`;
-  return `*${game} — Todo lo leído del PDF*\n\n${body}`;
-}
-
-export function formatResultsForBot(
-  data: GameResults,
-  titleOverride?: string
-): string {
-  const todayLabel = getTodayInFlorida();
-  let title = titleOverride;
-  if (!title) {
-    const isToday = data.draws.some((d) => d.date === todayLabel);
-    title = isToday ? `Resultados de hoy — ${data.game}` : `Resultados — ${data.game}`;
-  }
+export function formatResultsForBot(data: GameResults, titleOverride?: string): string {
+  const title = titleOverride ?? `Resultados recientes — ${data.game}`;
   let body = "";
   for (const d of data.draws) {
     const fb = d.fireball ? ` • Fireball: ${d.fireball}` : "";
     body += `\n${d.periodLabel === "Mediodía" ? "☀️" : "🌙"} *${d.periodLabel}* (${d.date})\n\`${d.numbers}\`${fb}\n`;
   }
-  if (data.draws.length === 0) body = "\n_No hay resultados para esa fecha._";
+  if (data.draws.length === 0)
+    body = "\n_No se pudieron obtener resultados. Prueba más tarde._";
   body += `\n[Ver en Florida Lottery](${data.officialLink})`;
   return `*${title}*\n${body.trim()}`;
 }

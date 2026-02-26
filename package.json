@@ -1,21 +1,19 @@
 {
   "name": "power-ball-telegram-bot",
   "version": "1.0.0",
-  "description": "Bot de Telegram con botones y procesamiento (TypeScript)",
+  "description": "Bot de Telegram con resultados Florida Lottery (Pick 3 / Pick 4)",
   "main": "dist/bot.js",
   "scripts": {
     "build": "tsc",
     "start": "node dist/bot.js",
     "dev": "tsx src/bot.ts"
   },
-  "keywords": ["telegram", "bot", "grammy"],
+  "keywords": ["telegram", "bot", "grammy", "florida", "lottery"],
   "license": "MIT",
-  "engines": {
-    "node": ">=18"
-  },
+  "engines": { "node": ">=18" },
   "dependencies": {
     "grammy": "^1.28.0",
-    "pdf-parse": "^1.1.1"
+    "playwright": "^1.49.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
