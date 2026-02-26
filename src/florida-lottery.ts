@@ -91,38 +91,6 @@ function parseResultsPage(
   return draws;
 }
 
-/**
- * Filtra los resultados del día indicado (formato "Feb 16, 2026") o los dos últimos sorteos.
- */
-function todayOrLatest(
-  draws: DrawResult[],
-  todayLabel: string
-): { midday?: DrawResult; evening?: DrawResult } {
-  const byDate = new Map<string, DrawResult[]>();
-  for (const d of draws) {
-    const list = byDate.get(d.date) ?? [];
-    list.push(d);
-    byDate.set(d.date, list);
-  }
-  const todayDraws = byDate.get(todayLabel);
-  if (todayDraws && todayDraws.length > 0) {
-    const midday = todayDraws.find((d) => d.period === "midday");
-    const evening = todayDraws.find((d) => d.period === "evening");
-    return { midday, evening };
-  }
-  const sortedDates = [...byDate.keys()].sort((a, b) => {
-    const dA = new Date(a);
-    const dB = new Date(b);
-    return dB.getTime() - dA.getTime();
-  });
-  const latestDate = sortedDates[0];
-  const latest = byDate.get(latestDate) ?? [];
-  return {
-    midday: latest.find((d) => d.period === "midday"),
-    evening: latest.find((d) => d.period === "evening"),
-  };
-}
-
 const FLORIDA_TZ = "America/New_York";
 
 const MONTHS = "Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec".split(",");
@@ -141,12 +109,16 @@ function getTodayInFlorida(): string {
   });
 }
 
-/** Fecha de ayer en hora de Florida. */
+/** Fecha de ayer en hora de Florida (usa UTC para no depender del timezone del servidor). */
 function getYesterdayInFlorida(): string {
   const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: FLORIDA_TZ }); // YYYY-MM-DD
   const [y, m, d] = todayStr.split("-").map(Number);
-  const yesterday = new Date(y, m - 1, d - 1);
-  return formatDateForLabel(yesterday);
+  const yesterdayMs = Date.UTC(y, m - 1, d) - 86400000;
+  const yesterday = new Date(yesterdayMs);
+  const month = yesterday.getUTCMonth();
+  const day = yesterday.getUTCDate();
+  const year = yesterday.getUTCFullYear();
+  return `${MONTHS[month]} ${day}, ${year}`;
 }
 
 /** Convierte "Feb 16, 2026" a "2026-02-16" para comparar. */
@@ -197,13 +169,9 @@ export async function fetchPick3Results(dateFilter: DateFilter = "today"): Promi
   const html = await fetchWithTimeout(PICK3_URL);
   const allDraws = parseResultsPage(html, "Pick 3", 3);
   const draws = getDrawsForDate(allDraws, dateFilter);
-  const fallback = draws.length === 0 ? todayOrLatest(allDraws, getTodayInFlorida()) : null;
-  const selected = draws.length > 0
-    ? draws
-    : [fallback!.evening, fallback!.midday].filter(Boolean) as DrawResult[];
   return {
     game: "Pick 3",
-    draws: selected,
+    draws,
     link: PICK3_URL,
     officialLink: "https://floridalottery.com/games/draw-games/pick-3",
   };
@@ -216,13 +184,9 @@ export async function fetchPick4Results(dateFilter: DateFilter = "today"): Promi
   const html = await fetchWithTimeout(PICK4_URL);
   const allDraws = parseResultsPage(html, "Pick 4", 4);
   const draws = getDrawsForDate(allDraws, dateFilter);
-  const fallback = draws.length === 0 ? todayOrLatest(allDraws, getTodayInFlorida()) : null;
-  const selected = draws.length > 0
-    ? draws
-    : [fallback!.evening, fallback!.midday].filter(Boolean) as DrawResult[];
   return {
     game: "Pick 4",
-    draws: selected,
+    draws,
     link: PICK4_URL,
     officialLink: "https://floridalottery.com/games/draw-games/pick-4",
   };

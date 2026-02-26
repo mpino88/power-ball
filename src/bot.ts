@@ -34,33 +34,65 @@ function fullYear(yy: number): number {
   return yy;
 }
 
-/** Parsea fecha escrita por el usuario. Formatos: MM/DD/YY, MM/DD/YYYY, DD/MM/YYYY, YYYY-MM-DD. */
+/** Valida que month 1–12 y day 1–31 y que el día exista en ese mes. */
+function isValidCalendarDate(year: number, month: number, day: number): boolean {
+  if (month < 1 || month > 12 || day < 1) return false;
+  const daysInMonth = new Date(year, month, 0).getDate();
+  return day <= daysInMonth;
+}
+
+/** Parsea fecha escrita por el usuario. Formatos: YYYY-MM-DD, MM/DD/YY, DD/MM/YY, MM/DD/YYYY, DD/MM/YYYY. */
 function parseUserDate(text: string): Date | null {
   const t = text.trim();
   const dash = /^(\d{4})-(\d{1,2})-(\d{1,2})$/;
-  const slash = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$|^(\d{4})\/(\d{1,2})\/(\d{1,2})$/;
-  const mmddyy = /^(\d{1,2})\/(\d{1,2})\/(\d{2})$/; // MM/DD/YY
+  const slash4 = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$|^(\d{4})\/(\d{1,2})\/(\d{1,2})$/;
+  const slash2 = /^(\d{1,2})\/(\d{1,2})\/(\d{2})$/; // MM/DD/YY o DD/MM/YY
   let m = t.match(dash);
   if (m) {
-    const d = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
-    return Number.isNaN(d.getTime()) ? null : d;
+    const y = parseInt(m[1], 10);
+    const mo = parseInt(m[2], 10);
+    const d = parseInt(m[3], 10);
+    if (!isValidCalendarDate(y, mo, d)) return null;
+    const date = new Date(y, mo - 1, d);
+    return Number.isNaN(date.getTime()) ? null : date;
   }
-  m = t.match(mmddyy);
+  m = t.match(slash2);
   if (m) {
-    const month = parseInt(m[1], 10);
-    const day = parseInt(m[2], 10);
+    const a = parseInt(m[1], 10);
+    const b = parseInt(m[2], 10);
     const year = fullYear(parseInt(m[3], 10));
-    const d = new Date(year, month - 1, day);
-    return Number.isNaN(d.getTime()) ? null : d;
+    let month: number;
+    let day: number;
+    if (a > 12) {
+      day = a;
+      month = b;
+    } else if (b > 12) {
+      month = a;
+      day = b;
+    } else {
+      month = a;
+      day = b;
+    }
+    if (!isValidCalendarDate(year, month, day)) return null;
+    const date = new Date(year, month - 1, day);
+    return Number.isNaN(date.getTime()) ? null : date;
   }
-  m = t.match(slash);
+  m = t.match(slash4);
   if (m) {
     if (m[4]) {
-      const d = new Date(parseInt(m[4], 10), parseInt(m[5], 10) - 1, parseInt(m[6], 10));
-      return Number.isNaN(d.getTime()) ? null : d;
+      const y = parseInt(m[4], 10);
+      const mo = parseInt(m[5], 10);
+      const d = parseInt(m[6], 10);
+      if (!isValidCalendarDate(y, mo, d)) return null;
+      const date = new Date(y, mo - 1, d);
+      return Number.isNaN(date.getTime()) ? null : date;
     }
-    const d = new Date(parseInt(m[3], 10), parseInt(m[2], 10) - 1, parseInt(m[1], 10));
-    return Number.isNaN(d.getTime()) ? null : d;
+    const y = parseInt(m[3], 10);
+    const mo = parseInt(m[2], 10);
+    const d = parseInt(m[1], 10);
+    if (!isValidCalendarDate(y, mo, d)) return null;
+    const date = new Date(y, mo - 1, d);
+    return Number.isNaN(date.getTime()) ? null : date;
   }
   return null;
 }
@@ -70,13 +102,13 @@ function buildMainKeyboard(): InlineKeyboard {
     .text("🎱 Generar números", "generate")
     .text("📊 Calcular probabilidad", "probability")
     .row()
-    .text("🏝 Fijo (P3) Hoy", "fl_p3_hoy")
-    .text("🏝 Fijo (P3) Ayer", "fl_p3_ayer")
-    .text("🏝 Fijo (P3) Fecha", "fl_p3_fecha")
+    .text("🏝 Fijo Hoy", "fl_p3_hoy")
+    .text("🏝 Fijo Ayer", "fl_p3_ayer")
+    .text("🏝 Fijo Fecha", "fl_p3_fecha")
     .row()
-    .text("🏝 Corrido (P4) Hoy", "fl_p4_hoy")
-    .text("🏝 Corrido (P4) Ayer", "fl_p4_ayer")
-    .text("🏝 Corrido (P4) Fecha", "fl_p4_fecha")
+    .text("🏝 Corrido Hoy", "fl_p4_hoy")
+    .text("🏝 Corrido Ayer", "fl_p4_ayer")
+    .text("🏝 Corrido Fecha", "fl_p4_fecha")
     .row()
     .text("🔄 Otra combinación", "generate")
     .text("❓ Ayuda", "help");
@@ -246,7 +278,7 @@ bot.on("message:text", async (ctx) => {
 
   if (!date) {
     await ctx.reply(
-      "❌ Fecha no válida. Usa formato MM/DD/AA (ej: 02/25/26). Escribe /start y elige de nuevo «Fijo (P3) Fecha» o «Corrido (P4) Fecha».",
+      "❌ Fecha no válida. Usa formato MM/DD/AA (ej: 02/25/26). Escribe /start y elige de nuevo «Fijo Fecha» o «Corrido Fecha».",
       { reply_markup: buildMainKeyboard() }
     );
     return;
