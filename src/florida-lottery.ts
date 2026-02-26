@@ -185,6 +185,52 @@ export async function fetchPick4Results(dateFilter: DateFilter = "today"): Promi
   };
 }
 
+/**
+ * Lee todo el PDF y devuelve todos los sorteos parseados (sin filtrar por fecha).
+ */
+export async function fetchAllDrawsFromPdf(
+  game: "Pick 3" | "Pick 4"
+): Promise<DrawResult[]> {
+  const url = game === "Pick 3" ? PICK3_PDF_URL : PICK4_PDF_URL;
+  const buffer = await fetchPdfAsBuffer(url);
+  const text = await extractTextFromPdf(buffer);
+  return parsePdfText(text, game === "Pick 3" ? 3 : 4);
+}
+
+const MAX_DRAWS_IN_MESSAGE = 28;
+
+/**
+ * Formatea "todo lo leído del PDF" para el bot (resumen + últimos sorteos para no exceder límite de mensaje).
+ */
+export function formatAllReadForBot(
+  game: "Pick 3" | "Pick 4",
+  draws: DrawResult[],
+  officialLink: string
+): string {
+  const total = draws.length;
+  if (total === 0) {
+    return `*${game} — Todo lo leído*\n\n_No se encontraron sorteos en el PDF._\n\n[Florida Lottery](${officialLink})`;
+  }
+  const sorted = [...draws].sort((a, b) => {
+    const da = new Date(a.date).getTime();
+    const db = new Date(b.date).getTime();
+    return db - da;
+  });
+  const first = sorted[sorted.length - 1]?.date ?? "";
+  const last = sorted[0]?.date ?? "";
+  const show = sorted.slice(0, MAX_DRAWS_IN_MESSAGE);
+  let body =
+    `📋 *Total leído:* ${total} sorteos\n` +
+    `📅 *Rango:* ${first} — ${last}\n\n` +
+    `*Últimos ${show.length}:*\n`;
+  for (const d of show) {
+    const icon = d.periodLabel === "Mediodía" ? "☀️" : "🌙";
+    body += `${icon} ${d.date} ${d.period === "evening" ? "E" : "M"}: \`${d.numbers}\`\n`;
+  }
+  body += `\n[Ver en Florida Lottery](${officialLink})`;
+  return `*${game} — Todo lo leído del PDF*\n\n${body}`;
+}
+
 export function formatResultsForBot(
   data: GameResults,
   titleOverride?: string

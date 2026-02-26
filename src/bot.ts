@@ -10,7 +10,9 @@ import type { DateFilter } from "./florida-lottery.js";
 import {
   fetchPick3Results,
   fetchPick4Results,
+  fetchAllDrawsFromPdf,
   formatDateForLabel,
+  formatAllReadForBot,
   formatResultsForBot,
 } from "./florida-lottery.js";
 
@@ -21,7 +23,7 @@ const WEBHOOK_URL = process.env.WEBHOOK_URL ?? ""; // ej: https://tu-bot.onrende
 const HELP_TEXT =
   "🎱 *Generar números*\nSimula una combinación tipo Power Ball: 5 números (1-69) + Power Ball (1-26).\n\n" +
   "📊 *Calcular probabilidad*\nProbabilidad de acertar el jackpot (1 entre ~292 millones).\n\n" +
-  "🏝 *Pick 3 / Pick 4 Florida*\nResultados por *Hoy*, *Ayer* o *Fecha custom* (mediodía y noche).\n\n" +
+  "🏝 *Pick 3 / Pick 4 Florida*\nResultados por *Hoy*, *Ayer* o *Fecha custom*. *Todo PDF*: todo lo leído del PDF oficial.\n\n" +
   "🔄 *Otra combinación*\nGenera una nueva combinación.\n\n" +
   "Usa los botones o escribe /start para ver el menú.";
 
@@ -109,6 +111,9 @@ function buildMainKeyboard(): InlineKeyboard {
     .text("🏝 Corrido Hoy", "fl_p4_hoy")
     .text("🏝 Corrido Ayer", "fl_p4_ayer")
     .text("🏝 Corrido Fecha", "fl_p4_fecha")
+    .row()
+    .text("📋 Fijo - Todo PDF", "fl_p3_todo")
+    .text("📋 Corrido - Todo PDF", "fl_p4_todo")
     .row()
     .text("🔄 Otra combinación", "generate")
     .text("❓ Ayuda", "help");
@@ -231,12 +236,28 @@ bot.on("callback_query:data", async (ctx) => {
     } else {
       result = "No se pudo iniciar. Intenta de nuevo.";
     }
+  } else if (data === "fl_p3_todo" || data === "fl_p4_todo") {
+    const game = data === "fl_p3_todo" ? "Pick 3" : "Pick 4";
+    try {
+      await ctx.answerCallbackQuery({ text: "Leyendo PDF…" });
+      const draws = await fetchAllDrawsFromPdf(game);
+      const officialLink =
+        game === "Pick 3"
+          ? "https://floridalottery.com/games/draw-games/pick-3"
+          : "https://floridalottery.com/games/draw-games/pick-4";
+      result = formatAllReadForBot(game, draws, officialLink);
+    } catch (e) {
+      console.error("Todo PDF fetch error:", e);
+      result =
+        `No pude leer el PDF de ${game}. Prueba más tarde.\n\n[Florida Lottery](${game === "Pick 3" ? "https://floridalottery.com/games/draw-games/pick-3" : "https://floridalottery.com/games/draw-games/pick-4"})`;
+    }
   } else {
     result = "Opción no reconocida. Usa /start para ver el menú.";
   }
 
   const isFloridaAsync = [
     "fl_p3_hoy", "fl_p3_ayer", "fl_p4_hoy", "fl_p4_ayer",
+    "fl_p3_todo", "fl_p4_todo",
   ].includes(data);
   const isFloridaFecha = data === "fl_p3_fecha" || data === "fl_p4_fecha";
 
