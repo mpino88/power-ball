@@ -241,10 +241,7 @@ async function handleFloridaTodo(
   }
 }
 
-async function handlePdfPages(
-  ctx: { answerCallbackQuery: (opts?: { text: string }) => Promise<unknown> }
-): Promise<string> {
-  await ctx.answerCallbackQuery({ text: "Consultando PDFs…" });
+async function handlePdfPages(): Promise<string> {
   try {
     const { pick3, pick4 } = await getPdfPageCounts();
     return (
@@ -305,7 +302,8 @@ bot.on("callback_query:data", async (ctx) => {
       result = "Opción no reconocida. Usa /start para ver el menú.";
     }
   } else if (data === "fl_pdf_pages") {
-    result = await handlePdfPages(ctx);
+    await ctx.answerCallbackQuery({ text: "Consultando PDFs…" });
+    result = await handlePdfPages();
   } else {
     result = "Opción no reconocida. Usa /start para ver el menú.";
   }
