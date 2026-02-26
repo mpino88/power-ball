@@ -6,7 +6,7 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { Bot, InlineKeyboard, webhookCallback } from "grammy";
-import type { DateFilter } from "./florida-lottery.js";
+import type { DateFilter, DrawPeriod } from "./florida-lottery.js";
 import {
   fetchPick3Results,
   fetchPick4Results,
@@ -27,8 +27,11 @@ const HELP_TEXT =
   "🔄 *Otra combinación*\nGenera una nueva combinación.\n\n" +
   "Usa los botones o escribe /start para ver el menú.";
 
-/** Usuarios esperando escribir una fecha (game = pick3 | pick4). */
-const waitingCustomDate = new Map<number, "pick3" | "pick4">();
+/** Usuarios esperando escribir una fecha: game y periodo (E/M). */
+const waitingCustomDate = new Map<
+  number,
+  { game: "pick3" | "pick4"; period: "evening" | "midday" }
+>();
 
 /** Convierte año 2 dígitos a 4 (25 → 2026, 99 → 1999). */
 function fullYear(yy: number): number {
@@ -104,16 +107,25 @@ function buildMainKeyboard(): InlineKeyboard {
     .text("🎱 Generar números", "generate")
     .text("📊 Calcular probabilidad", "probability")
     .row()
-    .text("🏝 Fijo Hoy", "fl_p3_hoy")
-    .text("🏝 Fijo Ayer", "fl_p3_ayer")
-    .text("🏝 Fijo Fecha", "fl_p3_fecha")
+    .text("🌙 E — Fijo Hoy", "fl_p3_hoy_e")
+    .text("E Fijo Ayer", "fl_p3_ayer_e")
+    .text("E Fijo Fecha", "fl_p3_fecha_e")
+    .text("E Fijo Todo", "fl_p3_todo_e")
     .row()
-    .text("🏝 Corrido Hoy", "fl_p4_hoy")
-    .text("🏝 Corrido Ayer", "fl_p4_ayer")
-    .text("🏝 Corrido Fecha", "fl_p4_fecha")
+    .text("🌙 E — Corrido Hoy", "fl_p4_hoy_e")
+    .text("E Corrido Ayer", "fl_p4_ayer_e")
+    .text("E Corrido Fecha", "fl_p4_fecha_e")
+    .text("E Corrido Todo", "fl_p4_todo_e")
     .row()
-    .text("📋 Fijo - Todo PDF", "fl_p3_todo")
-    .text("📋 Corrido - Todo PDF", "fl_p4_todo")
+    .text("☀️ M — Fijo Hoy", "fl_p3_hoy_m")
+    .text("M Fijo Ayer", "fl_p3_ayer_m")
+    .text("M Fijo Fecha", "fl_p3_fecha_m")
+    .text("M Fijo Todo", "fl_p3_todo_m")
+    .row()
+    .text("☀️ M — Corrido Hoy", "fl_p4_hoy_m")
+    .text("M Corrido Ayer", "fl_p4_ayer_m")
+    .text("M Corrido Fecha", "fl_p4_fecha_m")
+    .text("M Corrido Todo", "fl_p4_todo_m")
     .row()
     .text("🔄 Otra combinación", "generate")
     .text("❓ Ayuda", "help");
@@ -188,16 +200,41 @@ async function handleFloridaDate(
   _data: string,
   dateFilter: DateFilter,
   game: "Pick 3" | "Pick 4",
+  period: DrawPeriod,
   titleOverride?: string
 ): Promise<string> {
   await ctx.answerCallbackQuery({ text: `Consultando ${game}…` });
   try {
     const fetchResults = game === "Pick 3" ? fetchPick3Results : fetchPick4Results;
     const gameResults = await fetchResults(dateFilter);
-    return formatResultsForBot(gameResults, titleOverride);
+    const filtered = {
+      ...gameResults,
+      draws: gameResults.draws.filter((d) => d.period === period),
+    };
+    return formatResultsForBot(filtered, titleOverride);
   } catch (e) {
     console.error(`${game} fetch error:`, e);
     return `No pude cargar los resultados de ${game}. Prueba más tarde o revisa en:\n[${game} – Florida Lottery](https://floridalottery.com/games/draw-games/${game === "Pick 3" ? "pick-3" : "pick-4"})`;
+  }
+}
+
+async function handleFloridaTodo(
+  ctx: { answerCallbackQuery: (opts?: { text: string }) => Promise<unknown> },
+  game: "Pick 3" | "Pick 4",
+  period: DrawPeriod
+): Promise<string> {
+  await ctx.answerCallbackQuery({ text: "Leyendo PDF…" });
+  try {
+    const draws = await fetchAllDrawsFromPdf(game);
+    const filtered = draws.filter((d) => d.period === period);
+    const officialLink =
+      game === "Pick 3"
+        ? "https://floridalottery.com/games/draw-games/pick-3"
+        : "https://floridalottery.com/games/draw-games/pick-4";
+    return formatAllReadForBot(game, filtered, officialLink);
+  } catch (e) {
+    console.error("Todo PDF fetch error:", e);
+    return `No pude leer el PDF de ${game}. Prueba más tarde.\n\n[Florida Lottery](${game === "Pick 3" ? "https://floridalottery.com/games/draw-games/pick-3" : "https://floridalottery.com/games/draw-games/pick-4"})`;
   }
 }
 
@@ -212,54 +249,49 @@ bot.on("callback_query:data", async (ctx) => {
     result = processProbability();
   } else if (data === "help") {
     result = "*❓ Ayuda*\n\n" + HELP_TEXT;
-  } else if (data === "fl_p3_hoy") {
-    result = await handleFloridaDate(ctx, data, "today", "Pick 3", "Resultados de hoy — Pick 3");
-  } else if (data === "fl_p3_ayer") {
-    result = await handleFloridaDate(ctx, data, "yesterday", "Pick 3", "Resultados de ayer — Pick 3");
-  } else if (data === "fl_p4_hoy") {
-    result = await handleFloridaDate(ctx, data, "today", "Pick 4", "Resultados de hoy — Pick 4");
-  } else if (data === "fl_p4_ayer") {
-    result = await handleFloridaDate(ctx, data, "yesterday", "Pick 4", "Resultados de ayer — Pick 4");
-  } else if (data === "fl_p3_fecha" || data === "fl_p4_fecha") {
-    await ctx.answerCallbackQuery();
-    const game = data === "fl_p3_fecha" ? "pick3" : "pick4";
-    const userId = ctx.from?.id;
-    if (userId) {
-      waitingCustomDate.set(userId, game);
-      result =
-        `📅 *Fecha custom — ${game === "pick3" ? "Pick 3" : "Pick 4"}*\n\n` +
-        `Formato del documento: \`MM/DD/AA\`\n\n` +
-        `Introduce la fecha, por ejemplo:\n` +
-        `• \`02/25/26\` (25 feb 2026)\n` +
-        `• \`02/25/2026\` o \`2026-02-25\`\n\n` +
-        `Solo la fecha, sin texto. /cancel para cancelar.`;
+  } else if (data.startsWith("fl_p3_") || data.startsWith("fl_p4_")) {
+    const match = data.match(/^fl_p(3|4)_(hoy|ayer|fecha|todo)_(e|m)$/);
+    if (match) {
+      const game = match[1] === "3" ? "Pick 3" : "Pick 4";
+      const period: DrawPeriod = match[3] === "e" ? "evening" : "midday";
+      const periodLabel = period === "evening" ? "Noche (E)" : "Mediodía (M)";
+      if (match[2] === "fecha") {
+        await ctx.answerCallbackQuery();
+        const userId = ctx.from?.id;
+        if (userId) {
+          waitingCustomDate.set(userId, {
+            game: match[1] === "3" ? "pick3" : "pick4",
+            period,
+          });
+          result =
+            `📅 *Fecha custom — ${game} ${periodLabel}*\n\n` +
+            `Formato: \`MM/DD/AA\` (ej: 02/25/26)\n\n` +
+            `Solo la fecha. /cancel para cancelar.`;
+        } else {
+          result = "No se pudo iniciar. Intenta de nuevo.";
+        }
+      } else if (match[2] === "todo") {
+        result = await handleFloridaTodo(ctx, game, period);
+      } else {
+        const dateFilter = match[2] === "hoy" ? "today" : "yesterday";
+        const title =
+          match[2] === "hoy"
+            ? `Hoy ${periodLabel} — ${game}`
+            : `Ayer ${periodLabel} — ${game}`;
+        result = await handleFloridaDate(ctx, data, dateFilter, game, period, title);
+      }
     } else {
-      result = "No se pudo iniciar. Intenta de nuevo.";
-    }
-  } else if (data === "fl_p3_todo" || data === "fl_p4_todo") {
-    const game = data === "fl_p3_todo" ? "Pick 3" : "Pick 4";
-    try {
-      await ctx.answerCallbackQuery({ text: "Leyendo PDF…" });
-      const draws = await fetchAllDrawsFromPdf(game);
-      const officialLink =
-        game === "Pick 3"
-          ? "https://floridalottery.com/games/draw-games/pick-3"
-          : "https://floridalottery.com/games/draw-games/pick-4";
-      result = formatAllReadForBot(game, draws, officialLink);
-    } catch (e) {
-      console.error("Todo PDF fetch error:", e);
-      result =
-        `No pude leer el PDF de ${game}. Prueba más tarde.\n\n[Florida Lottery](${game === "Pick 3" ? "https://floridalottery.com/games/draw-games/pick-3" : "https://floridalottery.com/games/draw-games/pick-4"})`;
+      result = "Opción no reconocida. Usa /start para ver el menú.";
     }
   } else {
     result = "Opción no reconocida. Usa /start para ver el menú.";
   }
 
-  const isFloridaAsync = [
-    "fl_p3_hoy", "fl_p3_ayer", "fl_p4_hoy", "fl_p4_ayer",
-    "fl_p3_todo", "fl_p4_todo",
-  ].includes(data);
-  const isFloridaFecha = data === "fl_p3_fecha" || data === "fl_p4_fecha";
+  const isFloridaAsync =
+    (data.startsWith("fl_p3_") || data.startsWith("fl_p4_")) &&
+    !data.includes("fecha");
+  const isFloridaFecha =
+    data.includes("fl_p3_fecha_") || data.includes("fl_p4_fecha_");
 
   try {
     if (!isFloridaAsync && !isFloridaFecha) await ctx.answerCallbackQuery();
@@ -290,8 +322,8 @@ bot.command("cancel", async (ctx) => {
 
 bot.on("message:text", async (ctx) => {
   const userId = ctx.from?.id;
-  const game = userId ? waitingCustomDate.get(userId) : undefined;
-  if (!game) return;
+  const state = userId ? waitingCustomDate.get(userId) : undefined;
+  if (!state) return;
 
   const text = ctx.message.text.trim();
   const date = parseUserDate(text);
@@ -299,18 +331,23 @@ bot.on("message:text", async (ctx) => {
 
   if (!date) {
     await ctx.reply(
-      "❌ Fecha no válida. Usa formato MM/DD/AA (ej: 02/25/26). Escribe /start y elige de nuevo «Fijo Fecha» o «Corrido Fecha».",
+      "❌ Fecha no válida. Usa formato MM/DD/AA (ej: 02/25/26). Escribe /start y elige de nuevo.",
       { reply_markup: buildMainKeyboard() }
     );
     return;
   }
 
-  const gameName = game === "pick3" ? "Pick 3" : "Pick 4";
-  const titleOverride = `Resultados del ${formatDateForLabel(date)} — ${gameName}`;
+  const gameName = state.game === "pick3" ? "Pick 3" : "Pick 4";
+  const periodLabel = state.period === "evening" ? "Noche (E)" : "Mediodía (M)";
+  const titleOverride = `Resultados del ${formatDateForLabel(date)} ${periodLabel} — ${gameName}`;
   try {
-    const fetchResults = game === "pick3" ? fetchPick3Results : fetchPick4Results;
+    const fetchResults = state.game === "pick3" ? fetchPick3Results : fetchPick4Results;
     const gameResults = await fetchResults(date);
-    const result = formatResultsForBot(gameResults, titleOverride);
+    const filtered = {
+      ...gameResults,
+      draws: gameResults.draws.filter((d) => d.period === state.period),
+    };
+    const result = formatResultsForBot(filtered, titleOverride);
     await ctx.reply(result, {
       parse_mode: "Markdown",
       reply_markup: buildMainKeyboard(),
@@ -318,7 +355,7 @@ bot.on("message:text", async (ctx) => {
   } catch (e) {
     console.error("Florida custom date fetch error:", e);
     await ctx.reply(
-      `No pude cargar los resultados de ${gameName} para esa fecha. La web solo tiene historial reciente. Prueba otra fecha o [consulta en Florida Lottery](https://floridalottery.com/games/draw-games/${game === "pick3" ? "pick-3" : "pick-4"}).`,
+      `No pude cargar los resultados de ${gameName} para esa fecha. Prueba otra fecha o [consulta en Florida Lottery](https://floridalottery.com/games/draw-games/${state.game === "pick3" ? "pick-3" : "pick-4"}).`,
       { parse_mode: "Markdown", reply_markup: buildMainKeyboard() }
     );
   }

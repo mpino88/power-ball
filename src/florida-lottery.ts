@@ -38,32 +38,80 @@ function pdfDateToLabel(mm: string, dd: string, yy: string): string {
 }
 
 /**
- * Parsea el texto extraído del PDF. Busca líneas con formato:
- * MM/DD/YY E #-#-# (evening) o MM/DD/YY M #-#-# (midday)
- * Para Pick 4: #-#-#-# (cuatro números).
+ * Normaliza el texto del PDF: colapsa saltos de línea y espacios múltiples
+ * para que patrones como "MM/DD/YY E 9-7-3" matcheen aunque vengan en varias "líneas".
+ */
+function normalizePdfText(text: string): string {
+  return text.replace(/\s+/g, " ").replace(/\f/g, " ").trim();
+}
+
+/**
+ * Parsea el texto del PDF (todas las páginas ya concatenadas por pdf-parse).
+ * Busca fechas MM/DD/YY seguidas de E (evening) o M (midday) y sus números.
+ * Acepta números separados por guión o espacio: 9-7-3 o 9 7 3.
  */
 function parsePdfText(text: string, numDigits: 3 | 4): DrawResult[] {
+  let draws = parsePdfTextNormalized(normalizePdfText(text), numDigits);
+  if (draws.length === 0 && text.length > 0) {
+    draws = parsePdfTextByLines(text, numDigits);
+  }
+  return draws;
+}
+
+function parsePdfTextNormalized(normalized: string, numDigits: 3 | 4): DrawResult[] {
   const draws: DrawResult[] = [];
-  const pattern =
-    numDigits === 3
-      ? /(\d{2})\/(\d{2})\/(\d{2})\s+([EM])\s+(\d)\s*-\s*(\d)\s*-\s*(\d)/g
-      : /(\d{2})\/(\d{2})\/(\d{2})\s+([EM])\s+(\d)\s*-\s*(\d)\s*-\s*(\d)\s*-\s*(\d)/g;
+  const patternPick3 =
+    /(\d{2})\/(\d{2})\/(\d{2})\s*([EM])\s*(\d)[\s\-]*(\d)[\s\-]*(\d)/gi;
+  const patternPick4 =
+    /(\d{2})\/(\d{2})\/(\d{2})\s*([EM])\s*(\d)[\s\-]*(\d)[\s\-]*(\d)[\s\-]*(\d)/gi;
+  const pattern = numDigits === 3 ? patternPick3 : patternPick4;
 
   let m: RegExpExecArray | null;
-  while ((m = pattern.exec(text)) !== null) {
-    const dateLabel = pdfDateToLabel(m[1], m[2], m[3]);
-    const period: DrawPeriod = m[4].toUpperCase() === "E" ? "evening" : "midday";
+  while ((m = pattern.exec(normalized)) !== null) {
+    const mm = m[1];
+    const dd = m[2];
+    const yy = m[3];
+    const periodChar = m[4].toUpperCase();
+    const period: DrawPeriod = periodChar === "E" ? "evening" : "midday";
     const periodLabel = period === "midday" ? "Mediodía" : "Noche";
     const numbers = m.slice(5, 5 + numDigits).join("-");
-    const raw = m[0];
+    const dateLabel = pdfDateToLabel(mm, dd, yy);
 
     draws.push({
       date: dateLabel,
       period,
       periodLabel,
       numbers,
-      raw,
+      raw: m[0],
     });
+  }
+  return draws;
+}
+
+/** Fallback: PDF con una línea por fecha y la siguiente "E 9-7-3" / "M 5-3-3". */
+function parsePdfTextByLines(text: string, numDigits: 3 | 4): DrawResult[] {
+  const draws: DrawResult[] = [];
+  const dateRe = /^\s*(\d{2})\/(\d{2})\/(\d{2})/;
+  const numbersRe =
+    numDigits === 3
+      ? /([EM])\s*(\d)[\s\-]*(\d)[\s\-]*(\d)/
+      : /([EM])\s*(\d)[\s\-]*(\d)[\s\-]*(\d)[\s\-]*(\d)/;
+  const lines = text.split(/\r?\n/);
+  let lastDate: { mm: string; dd: string; yy: string } | null = null;
+  for (const line of lines) {
+    const dateMatch = line.match(dateRe);
+    if (dateMatch) lastDate = { mm: dateMatch[1], dd: dateMatch[2], yy: dateMatch[3] };
+    const numMatch = line.match(numbersRe);
+    if (numMatch && lastDate) {
+      const period: DrawPeriod = numMatch[1].toUpperCase() === "E" ? "evening" : "midday";
+      draws.push({
+        date: pdfDateToLabel(lastDate.mm, lastDate.dd, lastDate.yy),
+        period,
+        periodLabel: period === "midday" ? "Mediodía" : "Noche",
+        numbers: numMatch.slice(2, 2 + numDigits).join("-"),
+        raw: line.trim(),
+      });
+    }
   }
   return draws;
 }
