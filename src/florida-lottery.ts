@@ -135,12 +135,35 @@ function fetchPdfAsBuffer(url: string): Promise<Buffer> {
     });
 }
 
-async function extractTextFromPdf(buffer: Buffer): Promise<string> {
+type PdfParseResult = { text: string; numpages: number };
+
+async function parsePdf(buffer: Buffer): Promise<PdfParseResult> {
   const pdfParse = (await import("pdf-parse")).default as (
     buffer: Buffer
-  ) => Promise<{ text: string }>;
+  ) => Promise<PdfParseResult>;
   const data = await pdfParse(buffer);
-  return data.text ?? "";
+  return { text: data.text ?? "", numpages: data.numpages ?? 0 };
+}
+
+async function extractTextFromPdf(buffer: Buffer): Promise<string> {
+  const data = await parsePdf(buffer);
+  return data.text;
+}
+
+/** Devuelve el número de páginas del PDF indicado (P3 o P4). */
+async function getPdfPageCount(url: string): Promise<number> {
+  const buffer = await fetchPdfAsBuffer(url);
+  const data = await parsePdf(buffer);
+  return data.numpages;
+}
+
+/** Devuelve el número de páginas de los PDFs oficiales Pick 3 y Pick 4 (en paralelo). */
+export async function getPdfPageCounts(): Promise<{ pick3: number; pick4: number }> {
+  const [pick3, pick4] = await Promise.all([
+    getPdfPageCount(PICK3_PDF_URL),
+    getPdfPageCount(PICK4_PDF_URL),
+  ]);
+  return { pick3, pick4 };
 }
 
 const FLORIDA_TZ = "America/New_York";

@@ -11,6 +11,7 @@ import {
   fetchPick3Results,
   fetchPick4Results,
   fetchAllDrawsFromPdf,
+  getPdfPageCounts,
   formatDateForLabel,
   formatAllReadForBot,
   formatResultsForBot,
@@ -127,6 +128,8 @@ function buildMainKeyboard(): InlineKeyboard {
     .text("M Corrido Fecha", "fl_p4_fecha_m")
     .text("M Corrido Todo", "fl_p4_todo_m")
     .row()
+    .text("📄 Páginas PDF P3 y P4", "fl_pdf_pages")
+    .row()
     .text("🔄 Otra combinación", "generate")
     .text("❓ Ayuda", "help");
 }
@@ -238,6 +241,24 @@ async function handleFloridaTodo(
   }
 }
 
+async function handlePdfPages(
+  ctx: { answerCallbackQuery: (opts?: { text: string }) => Promise<unknown> }
+): Promise<string> {
+  await ctx.answerCallbackQuery({ text: "Consultando PDFs…" });
+  try {
+    const { pick3, pick4 } = await getPdfPageCounts();
+    return (
+      "📄 *Páginas de los PDF oficiales Florida Lottery*\n\n" +
+      `• *Pick 3* (Fijo): *${pick3}* página${pick3 !== 1 ? "s" : ""}\n` +
+      `• *Pick 4* (Corrido): *${pick4}* página${pick4 !== 1 ? "s" : ""}\n\n` +
+      "_Fuente: files.floridalottery.com_"
+    );
+  } catch (e) {
+    console.error("Pdf page count error:", e);
+    return "No pude leer los PDFs. Prueba más tarde.";
+  }
+}
+
 bot.on("callback_query:data", async (ctx) => {
   const data = ctx.callbackQuery.data;
 
@@ -283,6 +304,8 @@ bot.on("callback_query:data", async (ctx) => {
     } else {
       result = "Opción no reconocida. Usa /start para ver el menú.";
     }
+  } else if (data === "fl_pdf_pages") {
+    result = await handlePdfPages(ctx);
   } else {
     result = "Opción no reconocida. Usa /start para ver el menú.";
   }
@@ -292,9 +315,11 @@ bot.on("callback_query:data", async (ctx) => {
     !data.includes("fecha");
   const isFloridaFecha =
     data.includes("fl_p3_fecha_") || data.includes("fl_p4_fecha_");
+  const isFloridaPdfPages = data === "fl_pdf_pages";
 
   try {
-    if (!isFloridaAsync && !isFloridaFecha) await ctx.answerCallbackQuery();
+    if (!isFloridaAsync && !isFloridaFecha && !isFloridaPdfPages)
+      await ctx.answerCallbackQuery();
     await ctx.editMessageText(result, {
       parse_mode: "Markdown",
       reply_markup: buildMainKeyboard(),
