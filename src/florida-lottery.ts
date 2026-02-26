@@ -123,10 +123,30 @@ function todayOrLatest(
   };
 }
 
+const FLORIDA_TZ = "America/New_York";
+
 const MONTHS = "Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec".split(",");
 
 export function formatDateForLabel(d: Date): string {
   return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+}
+
+/** Fecha de hoy en hora de Florida (para que "Hoy" coincida con el día en EE.UU.). */
+function getTodayInFlorida(): string {
+  return new Date().toLocaleDateString("en-US", {
+    timeZone: FLORIDA_TZ,
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+/** Fecha de ayer en hora de Florida. */
+function getYesterdayInFlorida(): string {
+  const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: FLORIDA_TZ }); // YYYY-MM-DD
+  const [y, m, d] = todayStr.split("-").map(Number);
+  const yesterday = new Date(y, m - 1, d - 1);
+  return formatDateForLabel(yesterday);
 }
 
 /** Convierte "Feb 16, 2026" a "2026-02-16" para comparar. */
@@ -142,13 +162,8 @@ function dateLabelToYMD(label: string): string {
 export type DateFilter = "today" | "yesterday" | Date;
 
 function getYMDForFilter(filter: DateFilter): string {
-  const now = new Date();
-  if (filter === "today") return dateLabelToYMD(formatDateForLabel(now));
-  if (filter === "yesterday") {
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    return dateLabelToYMD(formatDateForLabel(yesterday));
-  }
+  if (filter === "today") return dateLabelToYMD(getTodayInFlorida());
+  if (filter === "yesterday") return dateLabelToYMD(getYesterdayInFlorida());
   const d = filter instanceof Date ? filter : new Date(filter);
   if (Number.isNaN(d.getTime())) return "";
   return dateLabelToYMD(formatDateForLabel(d));
@@ -182,7 +197,7 @@ export async function fetchPick3Results(dateFilter: DateFilter = "today"): Promi
   const html = await fetchWithTimeout(PICK3_URL);
   const allDraws = parseResultsPage(html, "Pick 3", 3);
   const draws = getDrawsForDate(allDraws, dateFilter);
-  const fallback = draws.length === 0 ? todayOrLatest(allDraws, formatDateForLabel(new Date())) : null;
+  const fallback = draws.length === 0 ? todayOrLatest(allDraws, getTodayInFlorida()) : null;
   const selected = draws.length > 0
     ? draws
     : [fallback!.evening, fallback!.midday].filter(Boolean) as DrawResult[];
@@ -201,7 +216,7 @@ export async function fetchPick4Results(dateFilter: DateFilter = "today"): Promi
   const html = await fetchWithTimeout(PICK4_URL);
   const allDraws = parseResultsPage(html, "Pick 4", 4);
   const draws = getDrawsForDate(allDraws, dateFilter);
-  const fallback = draws.length === 0 ? todayOrLatest(allDraws, formatDateForLabel(new Date())) : null;
+  const fallback = draws.length === 0 ? todayOrLatest(allDraws, getTodayInFlorida()) : null;
   const selected = draws.length > 0
     ? draws
     : [fallback!.evening, fallback!.midday].filter(Boolean) as DrawResult[];
@@ -221,7 +236,7 @@ export function formatResultsForBot(
   data: GameResults,
   titleOverride?: string
 ): string {
-  const todayLabel = formatDateForLabel(new Date());
+  const todayLabel = getTodayInFlorida();
   let title = titleOverride;
   if (!title) {
     const isToday = data.draws.some((d) => d.date === todayLabel);

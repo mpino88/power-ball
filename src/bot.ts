@@ -28,14 +28,29 @@ const HELP_TEXT =
 /** Usuarios esperando escribir una fecha (game = pick3 | pick4). */
 const waitingCustomDate = new Map<number, "pick3" | "pick4">();
 
-/** Parsea fecha escrita por el usuario (ej: 16/02/2026, 2026-02-16, 02/16/2026). */
+/** Convierte año 2 dígitos a 4 (25 → 2026, 99 → 1999). */
+function fullYear(yy: number): number {
+  if (yy >= 0 && yy <= 99) return yy >= 50 ? 1900 + yy : 2000 + yy;
+  return yy;
+}
+
+/** Parsea fecha escrita por el usuario. Formatos: MM/DD/YY, MM/DD/YYYY, DD/MM/YYYY, YYYY-MM-DD. */
 function parseUserDate(text: string): Date | null {
   const t = text.trim();
   const dash = /^(\d{4})-(\d{1,2})-(\d{1,2})$/;
   const slash = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$|^(\d{4})\/(\d{1,2})\/(\d{1,2})$/;
+  const mmddyy = /^(\d{1,2})\/(\d{1,2})\/(\d{2})$/; // MM/DD/YY
   let m = t.match(dash);
   if (m) {
     const d = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  m = t.match(mmddyy);
+  if (m) {
+    const month = parseInt(m[1], 10);
+    const day = parseInt(m[2], 10);
+    const year = fullYear(parseInt(m[3], 10));
+    const d = new Date(year, month - 1, day);
     return Number.isNaN(d.getTime()) ? null : d;
   }
   m = t.match(slash);
@@ -176,11 +191,11 @@ bot.on("callback_query:data", async (ctx) => {
       waitingCustomDate.set(userId, game);
       result =
         `📅 *Fecha custom — ${game === "pick3" ? "Pick 3" : "Pick 4"}*\n\n` +
-        `Introduce la fecha en uno de estos formatos:\n\n` +
-        `• \`DD/MM/AAAA\` → ej: \`25/02/2026\`\n` +
-        `• \`AAAA-MM-DD\` → ej: \`2026-02-25\`\n` +
-        `• \`MM/DD/AAAA\` → ej: \`02/25/2026\`\n\n` +
-        `Escribe solo la fecha (sin texto extra). Usa /cancel para cancelar.`;
+        `Formato del documento: \`MM/DD/AA\`\n\n` +
+        `Introduce la fecha, por ejemplo:\n` +
+        `• \`02/25/26\` (25 feb 2026)\n` +
+        `• \`02/25/2026\` o \`2026-02-25\`\n\n` +
+        `Solo la fecha, sin texto. /cancel para cancelar.`;
     } else {
       result = "No se pudo iniciar. Intenta de nuevo.";
     }
@@ -231,7 +246,7 @@ bot.on("message:text", async (ctx) => {
 
   if (!date) {
     await ctx.reply(
-      "❌ Fecha no válida. Usa formato DD/MM/AAAA (ej: 25/02/2026) o AAAA-MM-DD (ej: 2026-02-25). Escribe /start y elige de nuevo «P3 Fecha» o «P4 Fecha».",
+      "❌ Fecha no válida. Usa formato MM/DD/AA (ej: 02/25/26). Escribe /start y elige de nuevo «P3 Fecha» o «P4 Fecha».",
       { reply_markup: buildMainKeyboard() }
     );
     return;
