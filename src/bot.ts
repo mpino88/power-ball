@@ -70,13 +70,13 @@ function buildMainKeyboard(): InlineKeyboard {
     .text("🎱 Generar números", "generate")
     .text("📊 Calcular probabilidad", "probability")
     .row()
-    .text("🏝 P3 Hoy", "fl_p3_hoy")
-    .text("🏝 P3 Ayer", "fl_p3_ayer")
-    .text("🏝 P3 Fecha", "fl_p3_fecha")
+    .text("🏝 Fijo (P3) Hoy", "fl_p3_hoy")
+    .text("🏝 Fijo (P3) Ayer", "fl_p3_ayer")
+    .text("🏝 Fijo (P3) Fecha", "fl_p3_fecha")
     .row()
-    .text("🏝 P4 Hoy", "fl_p4_hoy")
-    .text("🏝 P4 Ayer", "fl_p4_ayer")
-    .text("🏝 P4 Fecha", "fl_p4_fecha")
+    .text("🏝 Corrido (P4) Hoy", "fl_p4_hoy")
+    .text("🏝 Corrido (P4) Ayer", "fl_p4_ayer")
+    .text("🏝 Corrido (P4) Fecha", "fl_p4_fecha")
     .row()
     .text("🔄 Otra combinación", "generate")
     .text("❓ Ayuda", "help");
@@ -246,7 +246,7 @@ bot.on("message:text", async (ctx) => {
 
   if (!date) {
     await ctx.reply(
-      "❌ Fecha no válida. Usa formato MM/DD/AA (ej: 02/25/26). Escribe /start y elige de nuevo «P3 Fecha» o «P4 Fecha».",
+      "❌ Fecha no válida. Usa formato MM/DD/AA (ej: 02/25/26). Escribe /start y elige de nuevo «Fijo (P3) Fecha» o «Corrido (P4) Fecha».",
       { reply_markup: buildMainKeyboard() }
     );
     return;
