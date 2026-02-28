@@ -8,12 +8,21 @@
     "start": "node dist/bot.js",
     "dev": "tsx src/bot.ts"
   },
-  "keywords": ["telegram", "bot", "grammy", "florida", "lottery"],
+  "keywords": [
+    "telegram",
+    "bot",
+    "grammy",
+    "florida",
+    "lottery"
+  ],
   "license": "MIT",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "grammy": "^1.28.0",
-    "playwright": "^1.49.0"
+    "playwright": "^1.49.0",
+    "pdfjs-dist": "^4.4.168"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
