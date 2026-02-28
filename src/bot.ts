@@ -52,6 +52,7 @@ let hotThresholdDays = 5;
 function buildEstadisticasKeyboard(threshold: number = hotThresholdDays): InlineKeyboard {
   return new InlineKeyboard()
     .text("📊 Ver estadísticas", "stats_grupos")
+    .text("📈 Est. individuales", "stats_individual")
     .row()
     .text(`🔢 Días diferencia: ${threshold}`, "stats_set_days")
     .row()
@@ -91,12 +92,15 @@ bot.command("help", async (ctx) => {
 /** Usuario esperando escribir fecha → juego elegido (fijo, corrido o ambos). */
 const waitingCustomDateGame = new Map<number, GameMenu>();
 
+/** Usuario en Estadísticas individuales: puede escribir 00-99 para consultar. */
+const waitingIndividualNumber = new Set<number>();
+
 bot.on("callback_query:data", async (ctx) => {
   const data = ctx.callbackQuery.data;
   let result: string;
   let keyboard: InlineKeyboard = buildMainKeyboard();
   const asyncData =
-    /^(fijo|corrido|ambos)_(hoy|ayer|semana)$/.test(data) || data === "stats_grupos";
+    /^(fijo|corrido|ambos)_(hoy|ayer|semana)$/.test(data) || data === "stats_grupos" || data === "stats_individual";
 
   if (data === "help") {
     result = "*❓ Ayuda*\n\n" + HELP_TEXT;
@@ -169,6 +173,25 @@ bot.on("callback_query:data", async (ctx) => {
       await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
     } catch (e) {
       if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
+  } else if (data === "stats_individual") {
+    await ctx.answerCallbackQuery({ text: "Calculando…" });
+    const userId = ctx.from?.id;
+    try {
+      const map3 = await getP3Map();
+      result = buildIndividualTop10Message(map3, hotThresholdDays);
+      if (userId) waitingIndividualNumber.add(userId);
+      keyboard = buildMainKeyboard();
+    } catch (e) {
+      console.error("Individual stats error:", e);
+      result = "No pude cargar el historial P3. Prueba más tarde.";
+    }
+    try {
+      await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
+    } catch (err) {
+      const msg = (err as Error).message ?? "";
+      if (!msg.includes("message is not modified")) console.error("Error en callback_query:", err);
     }
     return;
   } else if (data === "stats_grupos") {
@@ -296,16 +319,44 @@ function buildResultWeek(
 
 bot.command("cancel", async (ctx) => {
   const userId = ctx.from?.id;
-  if (userId) waitingCustomDateGame.delete(userId);
+  if (userId) {
+    waitingCustomDateGame.delete(userId);
+    waitingIndividualNumber.delete(userId);
+  }
   await ctx.reply("Cancelado.", { reply_markup: buildMainKeyboard() });
 });
 
 bot.on("message:text", async (ctx) => {
   const userId = ctx.from?.id;
+  const text = ctx.message.text.trim();
+
+  if (userId && waitingIndividualNumber.has(userId)) {
+    const num = parseIndividualNumber(text);
+    if (num === null) {
+      await ctx.reply("❌ Escribe un número entre 00 y 99 (ej: 42). /cancel para volver.");
+      return;
+    }
+    try {
+      const map3 = await getP3Map();
+      const stats = computeIndividualStats(map3);
+      const s = stats[num]!;
+      const diff = s.currentGapDays !== null ? s.maxGapDays - s.currentGapDays : null;
+      const hotStr = diff !== null && diff <= hotThresholdDays ? " 🔥 Hot" : "";
+      const curStr = s.currentGapDays !== null ? String(s.currentGapDays) : "—";
+      const msg =
+        `📈 *Número ${String(num).padStart(2, "0")}*\n\n` +
+        `Máx. histórico: ${s.maxGapDays} días\nMáx. actual: ${curStr}${hotStr}`;
+      await ctx.reply(msg, { parse_mode: "Markdown" });
+    } catch (e) {
+      console.error("Individual stats error:", e);
+      await ctx.reply("No pude cargar el historial. Prueba más tarde.");
+    }
+    return;
+  }
+
   const game = userId ? waitingCustomDateGame.get(userId) : undefined;
   if (!userId || game === undefined) return;
   waitingCustomDateGame.delete(userId);
-  const text = ctx.message.text.trim();
   const key = parseUserDateToMMDDYY(text);
   if (!key) {
     await ctx.reply("❌ Fecha no válida. Usa MM/DD/AA (ej: 02/25/26).", {
@@ -438,6 +489,107 @@ function computeGroupStats(map: DateDrawsMap): {
     iniciales: iniciales.map(toGap),
     dobles: toGap(doblesTrack),
   };
+}
+
+/** Estadísticas por número individual 0-99 (mismo criterio: contador + máx histórico). */
+function computeIndividualStats(map: DateDrawsMap): (GroupGap)[] {
+  const sortedDates = sortDateKeys(Object.keys(map));
+  const result: (GroupGap)[] = Array.from({ length: 100 }, () => ({ maxGapDays: 0, currentGapDays: null }));
+  if (sortedDates.length === 0) return result;
+
+  const dayDiff = (aStr: string, bStr: string): number => {
+    const da = mmddyyToDate(aStr)?.getTime();
+    const db = mmddyyToDate(bStr)?.getTime();
+    if (da == null || db == null) return 0;
+    return Math.round((db - da) / 864e5);
+  };
+
+  type Track = { counter: number; maxHistorical: number; everAppeared: boolean };
+  const tracks: Track[] = Array.from({ length: 100 }, () => ({ counter: 0, maxHistorical: 0, everAppeared: false }));
+  let prevDateStr: string | null = null;
+
+  for (const dateStr of sortedDates) {
+    const draws = map[dateStr];
+    const numbersThisDay = new Set<number>();
+    for (const draw of [draws?.m, draws?.e]) {
+      if (!draw || draw.length < 3) continue;
+      numbersThisDay.add(twoDigitFromP3(draw));
+    }
+    const daysSincePrev = prevDateStr !== null ? dayDiff(prevDateStr, dateStr) : 0;
+
+    for (let n = 0; n < 100; n++) {
+      const t = tracks[n]!;
+      if (numbersThisDay.has(n)) {
+        if (t.counter > t.maxHistorical) t.maxHistorical = t.counter;
+        t.counter = 0;
+        t.everAppeared = true;
+      } else {
+        t.counter += daysSincePrev;
+      }
+    }
+    prevDateStr = dateStr;
+  }
+
+  for (let n = 0; n < 100; n++) {
+    const t = tracks[n]!;
+    result[n] = {
+      maxGapDays: t.maxHistorical,
+      currentGapDays: t.everAppeared ? t.counter : null,
+    };
+  }
+  return result;
+}
+
+/** Parsea texto a número 0-99 (acepta "0"-"99", "00"-"99"). */
+function parseIndividualNumber(text: string): number | null {
+  const t = text.trim();
+  if (/^\d{1,2}$/.test(t)) {
+    const n = parseInt(t, 10);
+    if (n >= 0 && n <= 99) return n;
+  }
+  return null;
+}
+
+/** Top 10 más Hot: menor (Máx.hist − Máx.actual) entre los que han aparecido. */
+function getTop10HottestIndividual(stats: (GroupGap)[]): { num: number; maxGapDays: number; currentGapDays: number }[] {
+  const withCur: { num: number; maxGapDays: number; currentGapDays: number }[] = [];
+  for (let n = 0; n < 100; n++) {
+    const s = stats[n]!;
+    if (s.currentGapDays !== null) withCur.push({ num: n, maxGapDays: s.maxGapDays, currentGapDays: s.currentGapDays });
+  }
+  withCur.sort((a, b) => a.maxGapDays - a.currentGapDays - (b.maxGapDays - b.currentGapDays));
+  return withCur.slice(0, 10);
+}
+
+function buildIndividualTop10Message(map: DateDrawsMap, diasDiferencia: number): string {
+  const stats = computeIndividualStats(map);
+  const top10 = getTop10HottestIndividual(stats);
+  const W_NUM = 6;
+  const W_MAX = 10;
+  const W_ACT = 10;
+  const W_HOT = 8;
+  const fmt = (num: number, maxH: number, cur: number) => {
+    const diff = maxH - cur;
+    const hotStr = diff <= diasDiferencia ? "🔥 Hot" : "";
+    return (
+      String(num).padStart(2, "0").padEnd(W_NUM) +
+      String(maxH).padStart(W_MAX) +
+      String(cur).padStart(W_ACT) +
+      hotStr.padStart(W_HOT)
+    );
+  };
+  const sep = "─".repeat(W_NUM + W_MAX + W_ACT + W_HOT);
+  const header = "Número".padEnd(W_NUM) + "Máx.hist".padStart(W_MAX) + "Máx.actual".padStart(W_ACT) + "Hot".padStart(W_HOT);
+  const lines: string[] = [
+    `📈 *Top 10 más Hot* (números 00-99, 2 últimos dígitos P3)\n`,
+    "```",
+    header,
+    sep,
+    ...top10.map(({ num, maxGapDays, currentGapDays }) => fmt(num, maxGapDays, currentGapDays)),
+    "```",
+    "\nEscribe un número *00-99* para consultar uno específico. /cancel para volver.",
+  ];
+  return lines.join("\n");
 }
 
 function buildGroupStatsMessage(map: DateDrawsMap, diasDiferencia: number = 5): string {
