@@ -6,7 +6,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { Bot, InlineKeyboard, webhookCallback } from "grammy";
+import { Bot, InlineKeyboard } from "grammy";
+import type { Update } from "grammy/types";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
@@ -554,15 +555,32 @@ async function main(): Promise<void> {
     const fullUrl = `${WEBHOOK_URL.replace(/\/$/, "")}${webhookPath}`;
     await bot.api.setWebhook(fullUrl);
 
-    const handleUpdate = webhookCallback(bot, "http");
-    const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+    const server = createServer((req: IncomingMessage, res: ServerResponse) => {
       if (req.method === "GET" && (req.url === "/" || req.url === "/health")) {
         res.writeHead(200, { "Content-Type": "text/plain" });
         res.end("OK");
         return;
       }
       if (req.method === "POST" && req.url === webhookPath) {
-        await handleUpdate(req, res);
+        const chunks: Buffer[] = [];
+        req.on("data", (chunk: Buffer) => chunks.push(chunk));
+        req.on("end", () => {
+          let update: Update;
+          try {
+            update = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Update;
+          } catch {
+            res.writeHead(400, { "Content-Type": "text/plain" });
+            res.end("Bad Request");
+            return;
+          }
+          res.writeHead(200);
+          res.end();
+          bot.handleUpdate(update).catch((e) => console.error("Webhook handleUpdate error:", e));
+        });
+        req.on("error", () => {
+          res.writeHead(500);
+          res.end();
+        });
         return;
       }
       res.writeHead(404);
