@@ -17,8 +17,7 @@ const FLORIDA_TZ = "America/New_York";
 const HELP_TEXT =
   "🏝 *Florida Lottery — Fijo y Corrido*\n\n" +
   "☀️ *Mediodía (M)* · 🌙 *Noche (E)*\n\n" +
-  "Elige *Fijo* (P3), *Corrido* (P4) o *Ambos*; luego Hoy, Ayer, Esta semana o una fecha.\n\n" +
-  "[Fijo P3](https://files.floridalottery.com/exptkt/p3.pdf) · [Corrido P4](https://files.floridalottery.com/exptkt/p4.pdf)";
+  "Elige *Fijo* (P3), *Corrido* (P4) o *Ambos*; luego Hoy, Ayer, Esta semana o una fecha.";
 
 type GameMenu = "fijo" | "corrido" | "ambos";
 
@@ -181,16 +180,15 @@ function buildResultOneDay(
   game: GameMenu,
   title: string
 ): string {
-  const links = "\n\n[Fijo P3](https://files.floridalottery.com/exptkt/p3.pdf) · [Corrido P4](https://files.floridalottery.com/exptkt/p4.pdf)";
   if (game === "fijo") {
-    return `☀️🌙 *${title}* (Fijo) ${key}\n\n` + formatDrawsForMessage(key, d3) + links;
+    return `☀️🌙 *${title}* (Fijo) ${key}\n\n` + formatDrawsForMessage(key, d3);
   }
   if (game === "corrido") {
-    return `☀️🌙 *${title}* (Corrido) ${key}\n\n` + formatDrawsForMessage(key, d4) + links;
+    return `☀️🌙 *${title}* (Corrido) ${key}\n\n` + formatDrawsForMessage(key, d4);
   }
   return (
     `☀️🌙 *${title}* ${key}\n\n*Fijo*\n` + formatDrawsForMessage(key, d3) +
-    "\n\n*Corrido*\n" + formatDrawsForMessage(key, d4) + links
+    "\n\n*Corrido*\n" + formatDrawsForMessage(key, d4)
   );
 }
 
@@ -200,7 +198,6 @@ function buildResultWeek(
   dates: string[],
   game: GameMenu
 ): string {
-  const links = "\n\n[Fijo P3](https://files.floridalottery.com/exptkt/p3.pdf) · [Corrido P4](https://files.floridalottery.com/exptkt/p4.pdf)";
   let body = "📆 *Esta semana*";
   if (game === "fijo") body += " — Fijo (P3)";
   else if (game === "corrido") body += " — Corrido (P4)";
@@ -219,7 +216,7 @@ function buildResultWeek(
       body += "\n";
     }
   }
-  return (body.trim() || "_Sin datos para estos días._") + links;
+  return body.trim() || "_Sin datos para estos días._";
 }
 
 bot.command("cancel", async (ctx) => {
@@ -245,8 +242,7 @@ bot.on("message:text", async (ctx) => {
     const [map3, map4] = await Promise.all([getP3Map(), getP4Map()]);
     const d3 = map3[key] ?? {};
     const d4 = map4[key] ?? {};
-    const msg = buildResultOneDay(key, d3, d4, game, "Fecha") +
-      "\n\n[Fijo P3](https://files.floridalottery.com/exptkt/p3.pdf) · [Corrido P4](https://files.floridalottery.com/exptkt/p4.pdf)";
+    const msg = buildResultOneDay(key, d3, d4, game, "Fecha");
     await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: buildMainKeyboard() });
   } catch (e) {
     console.error("PDF map error:", e);
