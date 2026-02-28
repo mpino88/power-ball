@@ -28,6 +28,8 @@ function buildMainKeyboard(): InlineKeyboard {
     .row()
     .text("☀️🌙 Ambos (Fijo + Corrido)", "menu_ambos")
     .row()
+    .text("📊 Estadísticas (grupos)", "menu_estadisticas")
+    .row()
     .text("❓ Ayuda", "help");
 }
 
@@ -40,6 +42,29 @@ function buildSubmenuKeyboard(game: GameMenu): InlineKeyboard {
     .text("📆 Esta semana", `${prefix}_semana`)
     .row()
     .text("📅 Escoger fecha", `${prefix}_fecha`)
+    .row()
+    .text("◀️ Volver", "volver");
+}
+
+/** Días de diferencia por defecto para marcar Hot: (Máx.hist - Máx.actual) ≤ este valor. */
+let hotThresholdDays = 5;
+
+function buildEstadisticasKeyboard(threshold: number = hotThresholdDays): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("📊 Ver estadísticas", "stats_grupos")
+    .row()
+    .text(`🔢 Días diferencia: ${threshold}`, "stats_set_days")
+    .row()
+    .text("◀️ Volver", "volver");
+}
+
+function buildDiasDiferenciaKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("1", "stats_days_1")
+    .text("3", "stats_days_3")
+    .text("5", "stats_days_5")
+    .text("7", "stats_days_7")
+    .text("10", "stats_days_10")
     .row()
     .text("◀️ Volver", "volver");
 }
@@ -70,7 +95,8 @@ bot.on("callback_query:data", async (ctx) => {
   const data = ctx.callbackQuery.data;
   let result: string;
   let keyboard: InlineKeyboard = buildMainKeyboard();
-  const asyncData = /^(fijo|corrido|ambos)_(hoy|ayer|semana)$/.test(data);
+  const asyncData =
+    /^(fijo|corrido|ambos)_(hoy|ayer|semana)$/.test(data) || data === "stats_grupos";
 
   if (data === "help") {
     result = "*❓ Ayuda*\n\n" + HELP_TEXT;
@@ -104,6 +130,16 @@ bot.on("callback_query:data", async (ctx) => {
       if (!(e as Error).message?.includes("message is not modified")) console.error(e);
     }
     return;
+  } else if (data === "menu_estadisticas") {
+    await ctx.answerCallbackQuery();
+    result = "📊 *Estadísticas por grupos* (Fijo P3)\n\nUsa los 2 últimos dígitos de cada sorteo (M y E). Grupos: terminales (0-9), iniciales (0-9), dobles.\n\n🔥 Hot = (Máx.hist − Máx.actual) ≤ Días diferencia.";
+    keyboard = buildEstadisticasKeyboard();
+    try {
+      await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
   } else if (data === "volver") {
     await ctx.answerCallbackQuery();
     result = "👋 Elige juego y luego el período:";
@@ -113,6 +149,38 @@ bot.on("callback_query:data", async (ctx) => {
       if (!(e as Error).message?.includes("message is not modified")) console.error(e);
     }
     return;
+  } else if (data === "stats_set_days") {
+    await ctx.answerCallbackQuery();
+    result = `🔢 *Días de diferencia* (valor actual: ${hotThresholdDays})\n\nSi (Máx.hist − Máx.actual) ≤ N, el grupo se marca 🔥 Hot. Elige N:`;
+    keyboard = buildDiasDiferenciaKeyboard();
+    try {
+      await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
+  } else if (/^stats_days_\d+$/.test(data)) {
+    const n = parseInt(data.replace("stats_days_", ""), 10);
+    if (n >= 1 && n <= 30) hotThresholdDays = n;
+    await ctx.answerCallbackQuery({ text: `Días diferencia = ${hotThresholdDays}` });
+    result = "📊 *Estadísticas por grupos* (Fijo P3)\n\nUsa los 2 últimos dígitos de cada sorteo (M y E). Grupos: terminales (0-9), iniciales (0-9), dobles.\n\n🔥 Hot = (Máx.hist − Máx.actual) ≤ Días diferencia.";
+    keyboard = buildEstadisticasKeyboard();
+    try {
+      await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
+  } else if (data === "stats_grupos") {
+    await ctx.answerCallbackQuery({ text: "Calculando estadísticas…" });
+    try {
+      const map3 = await getP3Map();
+      result = buildGroupStatsMessage(map3, hotThresholdDays);
+      keyboard = buildMainKeyboard();
+    } catch (e) {
+      console.error("Group stats error:", e);
+      result = "No pude cargar el historial P3. Prueba más tarde.";
+    }
   } else if (data === "fijo_fecha" || data === "corrido_fecha" || data === "ambos_fecha") {
     await ctx.answerCallbackQuery();
     const userId = ctx.from?.id;
@@ -251,6 +319,164 @@ bot.on("message:text", async (ctx) => {
     });
   }
 });
+
+// --- Estadísticas por grupos (P3: dos últimos dígitos) ---
+
+/** Convierte MM/DD/YY a Date (año 20xx si yy < 50, sino 19xx). */
+function mmddyyToDate(key: string): Date | null {
+  const m = key.match(/^(\d{2})\/(\d{2})\/(\d{2})$/);
+  if (!m) return null;
+  const mm = parseInt(m[1], 10);
+  const dd = parseInt(m[2], 10);
+  let yy = parseInt(m[3], 10);
+  yy = yy >= 50 ? 1900 + yy : 2000 + yy;
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+  const d = new Date(yy, mm - 1, dd);
+  if (d.getDate() !== dd || d.getMonth() !== mm - 1) return null;
+  return d;
+}
+
+/** Ordena claves MM/DD/YY de más antiguo a más reciente. */
+function sortDateKeys(keys: string[]): string[] {
+  return [...keys].sort((a, b) => {
+    const da = mmddyyToDate(a)?.getTime() ?? 0;
+    const db = mmddyyToDate(b)?.getTime() ?? 0;
+    return da - db;
+  });
+}
+
+/** De un sorteo P3 [x,y,z] devuelve el número de 2 cifras yz (0-99). */
+function twoDigitFromP3(draw: number[]): number {
+  if (draw.length < 3) return 0;
+  return draw[1]! * 10 + draw[2]!;
+}
+
+/** Números dobles: 00, 11, 22, ..., 99. */
+const DOUBLES_SET = new Set([0, 11, 22, 33, 44, 55, 66, 77, 88, 99]);
+
+interface GroupGap {
+  maxGapDays: number;
+  currentGapDays: number | null;
+}
+
+/**
+ * Calcula Máx. histórico y Máx. actual por grupo con contadores (en días naturales):
+ * - Si el grupo aparece hoy: contador → 0 y, si contador > máx histórico, actualizar máx histórico.
+ * - Si el grupo no aparece hoy: contador += días transcurridos desde la fecha anterior.
+ * Al final, Máx. actual = valor actual del contador (o — si nunca apareció).
+ */
+function computeGroupStats(map: DateDrawsMap): {
+  terminales: GroupGap[];
+  iniciales: GroupGap[];
+  dobles: GroupGap;
+} {
+  const sortedDates = sortDateKeys(Object.keys(map));
+  const emptyGap = (): GroupGap[] => Array.from({ length: 10 }, () => ({ maxGapDays: 0, currentGapDays: null }));
+  if (sortedDates.length === 0) {
+    return { terminales: emptyGap(), iniciales: emptyGap(), dobles: { maxGapDays: 0, currentGapDays: null } };
+  }
+
+  const dayDiff = (aStr: string, bStr: string): number => {
+    const da = mmddyyToDate(aStr)?.getTime();
+    const db = mmddyyToDate(bStr)?.getTime();
+    if (da == null || db == null) return 0;
+    return Math.round((db - da) / 864e5);
+  };
+
+  type Track = { counter: number; maxHistorical: number; everAppeared: boolean };
+  const initTrack = (): Track => ({ counter: 0, maxHistorical: 0, everAppeared: false });
+  const terminales = Array.from({ length: 10 }, () => initTrack());
+  const iniciales = Array.from({ length: 10 }, () => initTrack());
+  const doblesTrack = initTrack();
+
+  let prevDateStr: string | null = null;
+
+  for (const dateStr of sortedDates) {
+    const draws = map[dateStr];
+    const groupsThisDay = new Set<string>();
+    for (const draw of [draws?.m, draws?.e]) {
+      if (!draw || draw.length < 3) continue;
+      const n = twoDigitFromP3(draw);
+      groupsThisDay.add(`T${n % 10}`);
+      groupsThisDay.add(`I${Math.floor(n / 10)}`);
+      if (DOUBLES_SET.has(n)) groupsThisDay.add("D");
+    }
+
+    const daysSincePrev = prevDateStr !== null ? dayDiff(prevDateStr, dateStr) : 0;
+
+    const tick = (t: Track, appeared: boolean) => {
+      if (appeared) {
+        if (t.counter > t.maxHistorical) t.maxHistorical = t.counter;
+        t.counter = 0;
+        t.everAppeared = true;
+      } else {
+        t.counter += daysSincePrev;
+      }
+    };
+
+    for (let k = 0; k < 10; k++) tick(terminales[k]!, groupsThisDay.has(`T${k}`));
+    for (let k = 0; k < 10; k++) tick(iniciales[k]!, groupsThisDay.has(`I${k}`));
+    tick(doblesTrack, groupsThisDay.has("D"));
+
+    prevDateStr = dateStr;
+  }
+
+  const toGap = (t: Track): GroupGap => ({
+    maxGapDays: t.maxHistorical,
+    currentGapDays: t.everAppeared ? t.counter : null,
+  });
+
+  return {
+    terminales: terminales.map(toGap),
+    iniciales: iniciales.map(toGap),
+    dobles: toGap(doblesTrack),
+  };
+}
+
+function buildGroupStatsMessage(map: DateDrawsMap, diasDiferencia: number = 5): string {
+  const stats = computeGroupStats(map);
+  const W_NAME = 12;
+  const W_MAX = 10;
+  const W_ACT = 10;
+  const W_HOT = 8;
+  const isHot = (maxH: number, cur: number | null) =>
+    cur !== null && maxH - cur <= diasDiferencia;
+  const fmt = (name: string, maxH: number, cur: number | null) => {
+    const curStr = cur !== null ? String(cur) : "—";
+    const hotStr = isHot(maxH, cur) ? "🔥 Hot" : "";
+    return (
+      name.padEnd(W_NAME) +
+      String(maxH).padStart(W_MAX) +
+      curStr.padStart(W_ACT) +
+      hotStr.padStart(W_HOT)
+    );
+  };
+  const sep = "─".repeat(W_NAME + W_MAX + W_ACT + W_HOT);
+  const header =
+    "Grupo".padEnd(W_NAME) +
+    "Máx.hist".padStart(W_MAX) +
+    "Máx.actual".padStart(W_ACT) +
+    "Hot".padStart(W_HOT);
+  const lines: string[] = [
+    `📊 *Estadísticas por grupos* (Fijo P3, 2 últimos dígitos) · Hot si (Máx.hist−Máx.actual) ≤ ${diasDiferencia}\n`,
+    "```",
+    header,
+    sep,
+  ];
+  for (let k = 0; k < 10; k++) {
+    const t = stats.terminales[k]!;
+    lines.push(fmt(`Terminal ${k}`, t.maxGapDays, t.currentGapDays));
+  }
+  lines.push(sep);
+  for (let k = 0; k < 10; k++) {
+    const t = stats.iniciales[k]!;
+    lines.push(fmt(`Inicial ${k}`, t.maxGapDays, t.currentGapDays));
+  }
+  lines.push(sep);
+  lines.push(fmt("Dobles", stats.dobles.maxGapDays, stats.dobles.currentGapDays));
+  lines.push("```");
+  return lines.join("\n");
+}
 
 /** PDF oficial Florida Lottery — Winning Numbers History (E: Evening, M: Midday). */
 const P3_PDF_URL = "https://files.floridalottery.com/exptkt/p3.pdf";
