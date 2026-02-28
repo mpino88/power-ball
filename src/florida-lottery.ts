@@ -75,25 +75,37 @@ function parsePageTextForDraws(text: string, numDigits: 3 | 4): DrawResult[] {
     const start = dateBlocks[i].index;
     const end = dateBlocks[i + 1]?.index ?? text.length;
     const block = text.slice(start, end);
-    const isMidday = /midday|mid\s*day|1:30|1:20/i.test(block);
-    const isEvening = /evening|eve|9:45|9:35/i.test(block);
-    const period: DrawPeriod = isMidday ? "midday" : isEvening ? "evening" : "evening";
-    const periodLabel = period === "midday" ? "Mediodía" : "Noche";
+    const dateLabel = dateBlocks[i].dateLabel;
 
     numberRe.lastIndex = 0;
-    const numMatch = numberRe.exec(block);
-    if (!numMatch) continue;
-    const numbers = numMatch.slice(1, 1 + numDigits).join("-");
-    const fireballM = block.match(/fireball\s*[:\s]*(\d)|(\d)\s*[•·]?\s*fireball/i);
-    const fireball = fireballM ? (fireballM[1] ?? fireballM[2]) : undefined;
+    let numMatch: RegExpExecArray | null;
+    while ((numMatch = numberRe.exec(block)) !== null) {
+      const numbers = numMatch.slice(1, 1 + numDigits).join("-");
+      const textBeforeMatch = block.slice(0, numMatch.index);
+      const middayMatches = [...textBeforeMatch.matchAll(/\b(?:midday|mid\s*day|1:30|1:20)\b/gi)];
+      const eveningMatches = [...textBeforeMatch.matchAll(/\b(?:evening|eve|9:45|9:35)\b/gi)];
+      const lastMiddayIdx = middayMatches.length ? middayMatches[middayMatches.length - 1].index! : -1;
+      const lastEveningIdx = eveningMatches.length ? eveningMatches[eveningMatches.length - 1].index! : -1;
+      let period: DrawPeriod;
+      if (lastMiddayIdx >= 0 && lastEveningIdx >= 0) {
+        period = lastEveningIdx > lastMiddayIdx ? "evening" : "midday";
+      } else if (lastMiddayIdx >= 0) {
+        period = "midday";
+      } else {
+        period = "evening";
+      }
+      const periodLabel = period === "midday" ? "Mediodía" : "Noche";
+      const fireballM = block.slice(numMatch.index).match(/fireball\s*[:\s]*(\d)|(\d)\s*[•·]?\s*fireball/i);
+      const fireball = fireballM ? (fireballM[1] ?? fireballM[2]) : undefined;
 
-    draws.push({
-      date: dateBlocks[i].dateLabel,
-      period,
-      periodLabel,
-      numbers,
-      fireball,
-    });
+      draws.push({
+        date: dateLabel,
+        period,
+        periodLabel,
+        numbers,
+        fireball,
+      });
+    }
   }
 
   return draws;
