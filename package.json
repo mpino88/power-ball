@@ -20,9 +20,11 @@
     "node": ">=18"
   },
   "dependencies": {
+    "google-auth-library": "^10.6.1",
+    "google-spreadsheet": "^5.2.0",
     "grammy": "^1.28.0",
-    "playwright": "^1.49.0",
-    "pdfjs-dist": "^4.4.168"
+    "pdfjs-dist": "^4.4.168",
+    "playwright": "^1.49.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

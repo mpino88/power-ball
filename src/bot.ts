@@ -8,6 +8,20 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { Bot, InlineKeyboard } from "grammy";
 import type { Update } from "grammy/types";
+import {
+  getOwnerId,
+  isAllowed,
+  getExtraMenus,
+  addAllowed,
+  removeAllowed,
+  toggleExtraMenu,
+  getAllowedUsers,
+  isOwner,
+  initUserConfig,
+  EXTRA_MENU_IDS,
+  EXTRA_MENU_LABELS,
+  type ExtraMenuId,
+} from "./user-config.js";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
@@ -21,17 +35,35 @@ const HELP_TEXT =
 
 type GameMenu = "fijo" | "corrido" | "ambos";
 
-function buildMainKeyboard(): InlineKeyboard {
-  return new InlineKeyboard()
+/** Menú según usuario: siempre Fijo, Corrido, Ambos, Ayuda. Est. grupos/individuales: todos si no hay dueño; si hay dueño, él los ve siempre y a otros solo si los asigna. */
+function buildMainKeyboard(userId: number | undefined): InlineKeyboard {
+  const kb = new InlineKeyboard()
     .text("🎯 Fijo (P3)", "menu_fijo")
     .text("🎲 Corrido (P4)", "menu_corrido")
     .row()
-    .text("☀️🌙 Ambos (Fijo + Corrido)", "menu_ambos")
-    .row()
-    .text("📊 Est. grupos", "menu_estadisticas")
-    .text("📈 Est. individuales", "stats_individual")
-    .row()
-    .text("❓ Ayuda", "help");
+    .text("☀️🌙 Ambos (Fijo + Corrido)", "menu_ambos");
+  const ownerId = getOwnerId();
+  if (ownerId === null) {
+    kb.row().text(EXTRA_MENU_LABELS.est_grupos, "menu_estadisticas").text(EXTRA_MENU_LABELS.est_individuales, "stats_individual");
+  } else if (userId !== undefined) {
+    if (userId === ownerId) {
+      kb.row().text(EXTRA_MENU_LABELS.est_grupos, "menu_estadisticas").text(EXTRA_MENU_LABELS.est_individuales, "stats_individual");
+    } else {
+      const extra = getExtraMenus(userId);
+      if (extra.length > 0) {
+        kb.row();
+        for (const id of extra) {
+          if (id === "est_grupos") kb.text(EXTRA_MENU_LABELS.est_grupos, "menu_estadisticas");
+          else if (id === "est_individuales") kb.text(EXTRA_MENU_LABELS.est_individuales, "stats_individual");
+        }
+      }
+    }
+  }
+  kb.row().text("❓ Ayuda", "help");
+  if (ownerId !== null && userId === ownerId) {
+    kb.row().text("🔒 Seguridad", "security_open");
+  }
+  return kb;
 }
 
 function buildSubmenuKeyboard(game: GameMenu): InlineKeyboard {
@@ -72,12 +104,32 @@ function buildDiasDiferenciaKeyboard(): InlineKeyboard {
 
 const bot = new Bot(BOT_TOKEN);
 
+/** Si BOT_OWNER_ID está definido, solo el dueño y usuarios en la whitelist pueden usar el bot. */
+bot.use(async (ctx, next) => {
+  const uid = ctx.from?.id;
+  if (uid === undefined) return next();
+  const ownerId = getOwnerId();
+  if (ownerId === null) return next();
+  if (isAllowed(uid)) return next();
+  const isStart = ctx.message?.text?.trim().startsWith("/start");
+  if (isStart) {
+    await ctx.reply(
+      `No tienes acceso a este bot.\n\nTu ID de Telegram: \`${uid}\`. Envía este número al administrador para solicitar acceso.`,
+      { parse_mode: "Markdown" }
+    );
+  } else {
+    await ctx.reply("No tienes acceso a este bot.");
+  }
+  return;
+});
+
 bot.command("start", async (ctx) => {
+  const userId = ctx.from?.id;
   await ctx.reply(
     "👋 Resultados *Fijo* (P3) y *Corrido* (P4) de Florida Lottery.\n\nElige juego y luego el período:",
     {
       parse_mode: "Markdown",
-      reply_markup: buildMainKeyboard(),
+      reply_markup: buildMainKeyboard(userId),
     }
   );
 });
@@ -85,22 +137,124 @@ bot.command("start", async (ctx) => {
 bot.command("help", async (ctx) => {
   await ctx.reply(HELP_TEXT, {
     parse_mode: "Markdown",
-    reply_markup: buildMainKeyboard(),
+    reply_markup: buildMainKeyboard(ctx.from?.id),
   });
 });
 
 /** Usuario esperando escribir fecha → juego elegido (fijo, corrido o ambos). */
 const waitingCustomDateGame = new Map<number, GameMenu>();
 
+/** Dueño esperando ID para agregar/quitar usuario. */
+const waitingAdminAdd = new Set<number>();
+const waitingAdminRemove = new Set<number>();
+
+function buildSecurityKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("👥 Listar usuarios con acceso", "admin_list")
+    .row()
+    .text("➕ Agregar acceso", "admin_add")
+    .text("➖ Quitar acceso", "admin_remove")
+    .row()
+    .text("📋 Menús por usuario", "admin_menus")
+    .row()
+    .text("◀️ Volver al menú principal", "security_main");
+}
+
+bot.command("admin", async (ctx) => {
+  if (!isOwner(ctx.from?.id ?? 0)) return;
+  await ctx.reply("🔒 *Seguridad* — Gestiona quién puede usar el bot y sus menús.", {
+    parse_mode: "Markdown",
+    reply_markup: buildSecurityKeyboard(),
+  });
+});
+
 bot.on("callback_query:data", async (ctx) => {
   const data = ctx.callbackQuery.data;
   let result: string;
-  let keyboard: InlineKeyboard = buildMainKeyboard();
+  let keyboard: InlineKeyboard = buildMainKeyboard(ctx.from?.id);
   const asyncData =
     /^(fijo|corrido|ambos)_(hoy|ayer|semana)$/.test(data) || data === "stats_grupos" || data === "stats_individual";
 
   if (data === "help") {
     result = "*❓ Ayuda*\n\n" + HELP_TEXT;
+  } else if ((data === "security_open" || data === "security_main" || data.startsWith("admin_")) && ctx.from && isOwner(ctx.from.id)) {
+    await ctx.answerCallbackQuery();
+    if (data === "security_open") {
+      result = "🔒 *Seguridad* — Gestiona quién puede usar el bot y sus menús.";
+      keyboard = buildSecurityKeyboard();
+    } else if (data === "security_main") {
+      waitingAdminAdd.delete(ctx.from.id);
+      waitingAdminRemove.delete(ctx.from.id);
+      result = "👋 Elige juego y luego el período:";
+      keyboard = buildMainKeyboard(ctx.from?.id);
+    } else if (data === "admin_list") {
+      const list = getAllowedUsers();
+      result =
+        "👥 *Usuarios con acceso* (" + list.length + ")\n\n" +
+        (list.length ? list.map((id) => `• \`${id}\``).join("\n") : "_Ninguno_");
+      keyboard = new InlineKeyboard().text("◀️ Volver a Seguridad", "security_open");
+    } else if (data === "admin_add") {
+      waitingAdminAdd.add(ctx.from.id);
+      result = "➕ *Agregar acceso*\n\nEnvía el *ID* del usuario (número) que quieres dar acceso. Ese usuario puede ver su ID si escribe /start sin acceso.\n\n/cancel para cancelar.";
+      keyboard = new InlineKeyboard().text("◀️ Cancelar", "security_open");
+    } else if (data === "admin_remove") {
+      waitingAdminRemove.add(ctx.from.id);
+      result = "➖ *Quitar acceso*\n\nEnvía el *ID* del usuario a quitar.\n\n/cancel para cancelar.";
+      keyboard = new InlineKeyboard().text("◀️ Cancelar", "security_open");
+    } else if (data === "admin_menus") {
+      const list = getAllowedUsers();
+      keyboard = new InlineKeyboard();
+      for (const uid of list.slice(0, 20)) {
+        keyboard.text(`Usuario ${uid}`, `admin_menus_${uid}`).row();
+      }
+      keyboard.text("◀️ Volver a Seguridad", "security_open");
+      result = "📋 *Menús por usuario*\n\nElige un usuario para asignar menús extra (Est. grupos, Est. individuales):";
+    } else if (data.startsWith("admin_menus_")) {
+      const uid = parseInt(data.replace("admin_menus_", ""), 10);
+      if (Number.isNaN(uid)) {
+        result = "Error.";
+        keyboard = buildSecurityKeyboard();
+      } else {
+        const extra = getExtraMenus(uid);
+        keyboard = new InlineKeyboard()
+          .text(extra.includes("est_grupos") ? "📊 Est. grupos ✓" : "📊 Est. grupos", `admin_toggle_${uid}_est_grupos`)
+          .text(extra.includes("est_individuales") ? "📈 Est. indiv. ✓" : "📈 Est. indiv.", `admin_toggle_${uid}_est_individuales`)
+          .row()
+          .text("◀️ Volver a Seguridad", "security_open");
+        result = `📋 Menús para usuario \`${uid}\`. Activa/desactiva los que quieras:`;
+      }
+    } else if (data.startsWith("admin_toggle_")) {
+      const rest = data.replace("admin_toggle_", "");
+      const [uidStr, menuId] = rest.split("_");
+      const uid = parseInt(uidStr!, 10);
+      if (Number.isNaN(uid) || !EXTRA_MENU_IDS.includes(menuId as ExtraMenuId)) {
+        result = "Error.";
+        keyboard = buildSecurityKeyboard();
+      } else {
+        const nowOn = await toggleExtraMenu(uid, menuId as ExtraMenuId);
+        const extra = getExtraMenus(uid);
+        keyboard = new InlineKeyboard()
+          .text(extra.includes("est_grupos") ? "📊 Est. grupos ✓" : "📊 Est. grupos", `admin_toggle_${uid}_est_grupos`)
+          .text(extra.includes("est_individuales") ? "📈 Est. indiv. ✓" : "📈 Est. indiv.", `admin_toggle_${uid}_est_individuales`)
+          .row()
+          .text("◀️ Volver a Seguridad", "security_open");
+        result = `📋 Menús para usuario \`${uid}\`. ${nowOn ? "Activado" : "Desactivado"}: ${EXTRA_MENU_LABELS[menuId as ExtraMenuId]}`;
+      }
+    } else if (data === "admin_back") {
+      waitingAdminAdd.delete(ctx.from!.id);
+      waitingAdminRemove.delete(ctx.from!.id);
+      result = "🔒 *Seguridad* — Gestiona quién puede usar el bot y sus menús.";
+      keyboard = buildSecurityKeyboard();
+    } else {
+      result = "🔒 *Seguridad* — Gestiona quién puede usar el bot y sus menús.";
+      keyboard = buildSecurityKeyboard();
+    }
+    try {
+      await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
   } else if (data === "menu_fijo") {
     await ctx.answerCallbackQuery();
     result = "🎯 *Fijo* (P3)\n\nElige período (☀️ Mediodía y 🌙 Noche):";
@@ -177,7 +331,7 @@ bot.on("callback_query:data", async (ctx) => {
     try {
       const map3 = await getP3Map();
       result = buildIndividualTop10Message(map3, hotThresholdDays);
-      keyboard = buildMainKeyboard();
+      keyboard = buildMainKeyboard(ctx.from?.id);
     } catch (e) {
       console.error("Individual stats error:", e);
       result = "No pude cargar el historial P3. Prueba más tarde.";
@@ -194,7 +348,7 @@ bot.on("callback_query:data", async (ctx) => {
     try {
       const map3 = await getP3Map();
       result = buildGroupStatsMessage(map3, hotThresholdDays);
-      keyboard = buildMainKeyboard();
+      keyboard = buildMainKeyboard(ctx.from?.id);
     } catch (e) {
       console.error("Group stats error:", e);
       result = "No pude cargar el historial P3. Prueba más tarde.";
@@ -217,7 +371,7 @@ bot.on("callback_query:data", async (ctx) => {
     } else {
       result = "No se pudo iniciar.";
     }
-    keyboard = buildMainKeyboard();
+    keyboard = buildMainKeyboard(ctx.from?.id);
     try {
       await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
     } catch (e) {
@@ -247,7 +401,7 @@ bot.on("callback_query:data", async (ctx) => {
         const dates = getThisWeekFloridaMMDDYY();
         result = buildResultWeek(map3, map4, dates, game);
       }
-      keyboard = buildMainKeyboard();
+      keyboard = buildMainKeyboard(ctx.from?.id);
     } catch (e) {
       console.error("PDF map error:", e);
       result = "No pude cargar los PDF. Prueba más tarde.";
@@ -314,20 +468,50 @@ function buildResultWeek(
 
 bot.command("cancel", async (ctx) => {
   const userId = ctx.from?.id;
-  if (userId) waitingCustomDateGame.delete(userId);
-  await ctx.reply("Cancelado.", { reply_markup: buildMainKeyboard() });
+  if (userId) {
+    waitingCustomDateGame.delete(userId);
+    waitingAdminAdd.delete(userId);
+    waitingAdminRemove.delete(userId);
+  }
+  await ctx.reply("Cancelado.", { reply_markup: buildMainKeyboard(ctx.from?.id) });
 });
 
 bot.on("message:text", async (ctx) => {
   const userId = ctx.from?.id;
   const text = ctx.message.text.trim();
+
+  if (userId && isOwner(userId)) {
+    if (waitingAdminAdd.has(userId)) {
+      waitingAdminAdd.delete(userId);
+      const id = parseInt(text, 10);
+      if (Number.isNaN(id) || id < 0) {
+        await ctx.reply("ID inválido. Usa un número (ej: 123456789).");
+        return;
+      }
+      await addAllowed(id);
+      await ctx.reply(`✅ Usuario ${id} agregado. Ya puede usar el bot.`);
+      return;
+    }
+    if (waitingAdminRemove.has(userId)) {
+      waitingAdminRemove.delete(userId);
+      const id = parseInt(text, 10);
+      if (Number.isNaN(id) || id < 0) {
+        await ctx.reply("ID inválido. Usa un número (ej: 123456789).");
+        return;
+      }
+      await removeAllowed(id);
+      await ctx.reply(`✅ Usuario ${id} quitado. Ya no tiene acceso.`);
+      return;
+    }
+  }
+
   const game = userId ? waitingCustomDateGame.get(userId) : undefined;
   if (!userId || game === undefined) return;
   waitingCustomDateGame.delete(userId);
   const key = parseUserDateToMMDDYY(text);
   if (!key) {
     await ctx.reply("❌ Fecha no válida. Usa MM/DD/AA (ej: 02/25/26).", {
-      reply_markup: buildMainKeyboard(),
+      reply_markup: buildMainKeyboard(ctx.from?.id),
     });
     return;
   }
@@ -336,11 +520,11 @@ bot.on("message:text", async (ctx) => {
     const d3 = map3[key] ?? {};
     const d4 = map4[key] ?? {};
     const msg = buildResultOneDay(key, d3, d4, game, "Fecha");
-    await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: buildMainKeyboard() });
+    await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: buildMainKeyboard(ctx.from?.id) });
   } catch (e) {
     console.error("PDF map error:", e);
     await ctx.reply("No pude cargar los PDF. Prueba más tarde.", {
-      reply_markup: buildMainKeyboard(),
+      reply_markup: buildMainKeyboard(ctx.from?.id),
     });
   }
 });
@@ -840,6 +1024,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  await initUserConfig();
   await bot.init();
 
   await bot.api.setMyCommands([
