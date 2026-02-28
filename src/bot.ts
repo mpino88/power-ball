@@ -28,7 +28,8 @@ function buildMainKeyboard(): InlineKeyboard {
     .row()
     .text("☀️🌙 Ambos (Fijo + Corrido)", "menu_ambos")
     .row()
-    .text("📊 Estadísticas (grupos)", "menu_estadisticas")
+    .text("📊 Est. grupos", "menu_estadisticas")
+    .text("📈 Est. individuales", "stats_individual")
     .row()
     .text("❓ Ayuda", "help");
 }
@@ -52,7 +53,6 @@ let hotThresholdDays = 5;
 function buildEstadisticasKeyboard(threshold: number = hotThresholdDays): InlineKeyboard {
   return new InlineKeyboard()
     .text("📊 Ver estadísticas", "stats_grupos")
-    .text("📈 Est. individuales", "stats_individual")
     .row()
     .text(`🔢 Días diferencia: ${threshold}`, "stats_set_days")
     .row()
@@ -91,9 +91,6 @@ bot.command("help", async (ctx) => {
 
 /** Usuario esperando escribir fecha → juego elegido (fijo, corrido o ambos). */
 const waitingCustomDateGame = new Map<number, GameMenu>();
-
-/** Usuario en Estadísticas individuales: puede escribir 00-99 para consultar. */
-const waitingIndividualNumber = new Set<number>();
 
 bot.on("callback_query:data", async (ctx) => {
   const data = ctx.callbackQuery.data;
@@ -177,11 +174,9 @@ bot.on("callback_query:data", async (ctx) => {
     return;
   } else if (data === "stats_individual") {
     await ctx.answerCallbackQuery({ text: "Calculando…" });
-    const userId = ctx.from?.id;
     try {
       const map3 = await getP3Map();
       result = buildIndividualTop10Message(map3, hotThresholdDays);
-      if (userId) waitingIndividualNumber.add(userId);
       keyboard = buildMainKeyboard();
     } catch (e) {
       console.error("Individual stats error:", e);
@@ -319,41 +314,13 @@ function buildResultWeek(
 
 bot.command("cancel", async (ctx) => {
   const userId = ctx.from?.id;
-  if (userId) {
-    waitingCustomDateGame.delete(userId);
-    waitingIndividualNumber.delete(userId);
-  }
+  if (userId) waitingCustomDateGame.delete(userId);
   await ctx.reply("Cancelado.", { reply_markup: buildMainKeyboard() });
 });
 
 bot.on("message:text", async (ctx) => {
   const userId = ctx.from?.id;
   const text = ctx.message.text.trim();
-
-  if (userId && waitingIndividualNumber.has(userId)) {
-    const num = parseIndividualNumber(text);
-    if (num === null) {
-      await ctx.reply("❌ Escribe un número entre 00 y 99 (ej: 42). /cancel para volver.");
-      return;
-    }
-    try {
-      const map3 = await getP3Map();
-      const stats = computeIndividualStats(map3);
-      const s = stats[num]!;
-      const diff = s.currentGapDays !== null ? s.maxGapDays - s.currentGapDays : null;
-      const hotStr = diff !== null && diff <= hotThresholdDays ? " 🔥 Hot" : "";
-      const curStr = s.currentGapDays !== null ? String(s.currentGapDays) : "—";
-      const msg =
-        `📈 *Número ${String(num).padStart(2, "0")}*\n\n` +
-        `Máx. histórico: ${s.maxGapDays} días\nMáx. actual: ${curStr}${hotStr}`;
-      await ctx.reply(msg, { parse_mode: "Markdown" });
-    } catch (e) {
-      console.error("Individual stats error:", e);
-      await ctx.reply("No pude cargar el historial. Prueba más tarde.");
-    }
-    return;
-  }
-
   const game = userId ? waitingCustomDateGame.get(userId) : undefined;
   if (!userId || game === undefined) return;
   waitingCustomDateGame.delete(userId);
@@ -417,21 +384,28 @@ interface GroupGap {
   currentGapDays: number | null;
 }
 
+type Track = { counter: number; maxHistorical: number; everAppeared: boolean };
+
+const toGap = (t: Track): GroupGap => ({
+  maxGapDays: t.maxHistorical,
+  currentGapDays: t.everAppeared ? t.counter : null,
+});
+
 /**
- * Calcula Máx. histórico y Máx. actual por grupo con contadores (en días naturales):
- * - Si el grupo aparece hoy: contador → 0 y, si contador > máx histórico, actualizar máx histórico.
- * - Si el grupo no aparece hoy: contador += días transcurridos desde la fecha anterior.
- * Al final, Máx. actual = valor actual del contador (o — si nunca apareció).
+ * Un solo recorrido del historial: calcula estadísticas de grupos (terminales, iniciales, dobles)
+ * y de números individuales (0-99) en una pasada. Misma lógica de contadores para ambos.
  */
-function computeGroupStats(map: DateDrawsMap): {
-  terminales: GroupGap[];
-  iniciales: GroupGap[];
-  dobles: GroupGap;
+function computeStatsCombined(map: DateDrawsMap): {
+  groups: { terminales: GroupGap[]; iniciales: GroupGap[]; dobles: GroupGap };
+  individual: (GroupGap)[];
 } {
   const sortedDates = sortDateKeys(Object.keys(map));
   const emptyGap = (): GroupGap[] => Array.from({ length: 10 }, () => ({ maxGapDays: 0, currentGapDays: null }));
   if (sortedDates.length === 0) {
-    return { terminales: emptyGap(), iniciales: emptyGap(), dobles: { maxGapDays: 0, currentGapDays: null } };
+    return {
+      groups: { terminales: emptyGap(), iniciales: emptyGap(), dobles: { maxGapDays: 0, currentGapDays: null } },
+      individual: Array.from({ length: 100 }, () => ({ maxGapDays: 0, currentGapDays: null })),
+    };
   }
 
   const dayDiff = (aStr: string, bStr: string): number => {
@@ -441,20 +415,22 @@ function computeGroupStats(map: DateDrawsMap): {
     return Math.round((db - da) / 864e5);
   };
 
-  type Track = { counter: number; maxHistorical: number; everAppeared: boolean };
   const initTrack = (): Track => ({ counter: 0, maxHistorical: 0, everAppeared: false });
   const terminales = Array.from({ length: 10 }, () => initTrack());
   const iniciales = Array.from({ length: 10 }, () => initTrack());
   const doblesTrack = initTrack();
+  const individualTracks = Array.from({ length: 100 }, () => initTrack());
 
   let prevDateStr: string | null = null;
 
   for (const dateStr of sortedDates) {
     const draws = map[dateStr];
+    const numbersThisDay = new Set<number>();
     const groupsThisDay = new Set<string>();
     for (const draw of [draws?.m, draws?.e]) {
       if (!draw || draw.length < 3) continue;
       const n = twoDigitFromP3(draw);
+      numbersThisDay.add(n);
       groupsThisDay.add(`T${n % 10}`);
       groupsThisDay.add(`I${Math.floor(n / 10)}`);
       if (DOUBLES_SET.has(n)) groupsThisDay.add("D");
@@ -475,79 +451,19 @@ function computeGroupStats(map: DateDrawsMap): {
     for (let k = 0; k < 10; k++) tick(terminales[k]!, groupsThisDay.has(`T${k}`));
     for (let k = 0; k < 10; k++) tick(iniciales[k]!, groupsThisDay.has(`I${k}`));
     tick(doblesTrack, groupsThisDay.has("D"));
+    for (let n = 0; n < 100; n++) tick(individualTracks[n]!, numbersThisDay.has(n));
 
     prevDateStr = dateStr;
   }
-
-  const toGap = (t: Track): GroupGap => ({
-    maxGapDays: t.maxHistorical,
-    currentGapDays: t.everAppeared ? t.counter : null,
-  });
 
   return {
-    terminales: terminales.map(toGap),
-    iniciales: iniciales.map(toGap),
-    dobles: toGap(doblesTrack),
+    groups: {
+      terminales: terminales.map(toGap),
+      iniciales: iniciales.map(toGap),
+      dobles: toGap(doblesTrack),
+    },
+    individual: individualTracks.map(toGap),
   };
-}
-
-/** Estadísticas por número individual 0-99 (mismo criterio: contador + máx histórico). */
-function computeIndividualStats(map: DateDrawsMap): (GroupGap)[] {
-  const sortedDates = sortDateKeys(Object.keys(map));
-  const result: (GroupGap)[] = Array.from({ length: 100 }, () => ({ maxGapDays: 0, currentGapDays: null }));
-  if (sortedDates.length === 0) return result;
-
-  const dayDiff = (aStr: string, bStr: string): number => {
-    const da = mmddyyToDate(aStr)?.getTime();
-    const db = mmddyyToDate(bStr)?.getTime();
-    if (da == null || db == null) return 0;
-    return Math.round((db - da) / 864e5);
-  };
-
-  type Track = { counter: number; maxHistorical: number; everAppeared: boolean };
-  const tracks: Track[] = Array.from({ length: 100 }, () => ({ counter: 0, maxHistorical: 0, everAppeared: false }));
-  let prevDateStr: string | null = null;
-
-  for (const dateStr of sortedDates) {
-    const draws = map[dateStr];
-    const numbersThisDay = new Set<number>();
-    for (const draw of [draws?.m, draws?.e]) {
-      if (!draw || draw.length < 3) continue;
-      numbersThisDay.add(twoDigitFromP3(draw));
-    }
-    const daysSincePrev = prevDateStr !== null ? dayDiff(prevDateStr, dateStr) : 0;
-
-    for (let n = 0; n < 100; n++) {
-      const t = tracks[n]!;
-      if (numbersThisDay.has(n)) {
-        if (t.counter > t.maxHistorical) t.maxHistorical = t.counter;
-        t.counter = 0;
-        t.everAppeared = true;
-      } else {
-        t.counter += daysSincePrev;
-      }
-    }
-    prevDateStr = dateStr;
-  }
-
-  for (let n = 0; n < 100; n++) {
-    const t = tracks[n]!;
-    result[n] = {
-      maxGapDays: t.maxHistorical,
-      currentGapDays: t.everAppeared ? t.counter : null,
-    };
-  }
-  return result;
-}
-
-/** Parsea texto a número 0-99 (acepta "0"-"99", "00"-"99"). */
-function parseIndividualNumber(text: string): number | null {
-  const t = text.trim();
-  if (/^\d{1,2}$/.test(t)) {
-    const n = parseInt(t, 10);
-    if (n >= 0 && n <= 99) return n;
-  }
-  return null;
 }
 
 /** Top 10 más Hot: menor (Máx.hist − Máx.actual) entre los que han aparecido. */
@@ -562,7 +478,7 @@ function getTop10HottestIndividual(stats: (GroupGap)[]): { num: number; maxGapDa
 }
 
 function buildIndividualTop10Message(map: DateDrawsMap, diasDiferencia: number): string {
-  const stats = computeIndividualStats(map);
+  const { individual: stats } = computeStatsCombined(map);
   const top10 = getTop10HottestIndividual(stats);
   const W_NUM = 6;
   const W_MAX = 10;
@@ -570,7 +486,7 @@ function buildIndividualTop10Message(map: DateDrawsMap, diasDiferencia: number):
   const W_HOT = 8;
   const fmt = (num: number, maxH: number, cur: number) => {
     const diff = maxH - cur;
-    const hotStr = diff <= diasDiferencia ? "🔥 Hot" : "";
+    const hotStr = diff <= diasDiferencia ? "🔥 Hot" : String(diff);
     return (
       String(num).padStart(2, "0").padEnd(W_NUM) +
       String(maxH).padStart(W_MAX) +
@@ -579,7 +495,7 @@ function buildIndividualTop10Message(map: DateDrawsMap, diasDiferencia: number):
     );
   };
   const sep = "─".repeat(W_NUM + W_MAX + W_ACT + W_HOT);
-  const header = "Número".padEnd(W_NUM) + "Máx.hist".padStart(W_MAX) + "Máx.actual".padStart(W_ACT) + "Hot".padStart(W_HOT);
+  const header = "Número".padEnd(W_NUM) + "Máx.hist".padStart(W_MAX) + "Máx.actual".padStart(W_ACT) + "Hot/diff".padStart(W_HOT);
   const lines: string[] = [
     `📈 *Top 10 más Hot* (números 00-99, 2 últimos dígitos P3)\n`,
     "```",
@@ -587,13 +503,12 @@ function buildIndividualTop10Message(map: DateDrawsMap, diasDiferencia: number):
     sep,
     ...top10.map(({ num, maxGapDays, currentGapDays }) => fmt(num, maxGapDays, currentGapDays)),
     "```",
-    "\nEscribe un número *00-99* para consultar uno específico. /cancel para volver.",
   ];
   return lines.join("\n");
 }
 
 function buildGroupStatsMessage(map: DateDrawsMap, diasDiferencia: number = 5): string {
-  const stats = computeGroupStats(map);
+  const { groups: stats } = computeStatsCombined(map);
   const W_NAME = 12;
   const W_MAX = 10;
   const W_ACT = 10;
@@ -602,7 +517,7 @@ function buildGroupStatsMessage(map: DateDrawsMap, diasDiferencia: number = 5): 
     cur !== null && maxH - cur <= diasDiferencia;
   const fmt = (name: string, maxH: number, cur: number | null) => {
     const curStr = cur !== null ? String(cur) : "—";
-    const hotStr = isHot(maxH, cur) ? "🔥 Hot" : "";
+    const hotStr = isHot(maxH, cur) ? "🔥 Hot" : cur !== null ? String(maxH - cur) : "—";
     return (
       name.padEnd(W_NAME) +
       String(maxH).padStart(W_MAX) +
@@ -615,7 +530,7 @@ function buildGroupStatsMessage(map: DateDrawsMap, diasDiferencia: number = 5): 
     "Grupo".padEnd(W_NAME) +
     "Máx.hist".padStart(W_MAX) +
     "Máx.actual".padStart(W_ACT) +
-    "Hot".padStart(W_HOT);
+    "Hot/diff".padStart(W_HOT);
   const lines: string[] = [
     `📊 *Estadísticas por grupos* (Fijo P3, 2 últimos dígitos) · Hot si (Máx.hist−Máx.actual) ≤ ${diasDiferencia}\n`,
     "```",
