@@ -766,6 +766,8 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  await bot.init();
+
   await bot.api.setMyCommands([
     { command: "start", description: "Iniciar y ver opciones" },
     { command: "help", description: "Ver ayuda" },
