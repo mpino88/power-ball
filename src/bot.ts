@@ -16,27 +16,39 @@ const FLORIDA_TZ = "America/New_York";
 const HELP_TEXT =
   "🏝 *Florida Lottery — Fijo y Corrido*\n\n" +
   "☀️ *Mediodía (M)* · 🌙 *Noche (E)*\n\n" +
-  "*Fijo* (P3) y *Corrido* (P4).\n" +
-  "*Hoy / Ayer / Esta Semana / Fecha específica:* resultados de ambos.\n\n" +
+  "Elige *Fijo* (P3), *Corrido* (P4) o *Ambos*; luego Hoy, Ayer, Esta semana o una fecha.\n\n" +
   "[Fijo P3](https://files.floridalottery.com/exptkt/p3.pdf) · [Corrido P4](https://files.floridalottery.com/exptkt/p4.pdf)";
+
+type GameMenu = "fijo" | "corrido" | "ambos";
 
 function buildMainKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
-    .text("☀️🌙 Hoy", "p3_hoy")
-    .text("☀️🌙 Ayer", "p3_ayer")
+    .text("🎯 Fijo (P3)", "menu_fijo")
+    .text("🎲 Corrido (P4)", "menu_corrido")
     .row()
-    .text("☀️🌙 Esta Semana", "p3_semana")
-    .row()
-    .text("📅 Fecha específica", "p3_fecha")
+    .text("☀️🌙 Ambos (Fijo + Corrido)", "menu_ambos")
     .row()
     .text("❓ Ayuda", "help");
+}
+
+function buildSubmenuKeyboard(game: GameMenu): InlineKeyboard {
+  const prefix = game === "fijo" ? "fijo" : game === "corrido" ? "corrido" : "ambos";
+  return new InlineKeyboard()
+    .text("☀️🌙 Hoy", `${prefix}_hoy`)
+    .text("☀️🌙 Ayer", `${prefix}_ayer`)
+    .row()
+    .text("📆 Esta semana", `${prefix}_semana`)
+    .row()
+    .text("📅 Escoger fecha", `${prefix}_fecha`)
+    .row()
+    .text("◀️ Volver", "volver");
 }
 
 const bot = new Bot(BOT_TOKEN);
 
 bot.command("start", async (ctx) => {
   await ctx.reply(
-    "👋 Resultados recientes de *Florida Lottery*.\n\nElige:",
+    "👋 Resultados *Fijo* (P3) y *Corrido* (P4) de Florida Lottery.\n\nElige juego y luego el período:",
     {
       parse_mode: "Markdown",
       reply_markup: buildMainKeyboard(),
@@ -51,103 +63,175 @@ bot.command("help", async (ctx) => {
   });
 });
 
-const waitingCustomDate = new Set<number>();
+/** Usuario esperando escribir fecha → juego elegido (fijo, corrido o ambos). */
+const waitingCustomDateGame = new Map<number, GameMenu>();
 
 bot.on("callback_query:data", async (ctx) => {
   const data = ctx.callbackQuery.data;
   let result: string;
-  const isAsync =
-    data === "p3_hoy" || data === "p3_ayer" || data === "p3_semana" || data === "p3_fecha";
+  let keyboard: InlineKeyboard = buildMainKeyboard();
+  const asyncData = /^(fijo|corrido|ambos)_(hoy|ayer|semana)$/.test(data);
 
   if (data === "help") {
     result = "*❓ Ayuda*\n\n" + HELP_TEXT;
-  } else if (data === "p3_hoy") {
-    await ctx.answerCallbackQuery({ text: "Cargando Hoy…" });
+  } else if (data === "menu_fijo") {
+    await ctx.answerCallbackQuery();
+    result = "🎯 *Fijo* (P3)\n\nElige período (☀️ Mediodía y 🌙 Noche):";
+    keyboard = buildSubmenuKeyboard("fijo");
     try {
-      const [map3, map4] = await Promise.all([getP3Map(), getP4Map()]);
-      const key = getTodayFloridaMMDDYY();
-      const d3 = map3[key] ?? {};
-      const d4 = map4[key] ?? {};
-      result =
-        "☀️🌙 *Hoy* " + key + "\n\n*Fijo*\n" + formatDrawsForMessage(key, d3) +
-        "\n\n*Corrido*\n" + formatDrawsForMessage(key, d4) +
-        "\n\n[Fijo P3](https://files.floridalottery.com/exptkt/p3.pdf) · [Corrido P4](https://files.floridalottery.com/exptkt/p4.pdf)";
+      await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
     } catch (e) {
-      console.error("PDF map error:", e);
-      result = "No pude cargar los PDF. Prueba más tarde.";
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
     }
-  } else if (data === "p3_ayer") {
-    await ctx.answerCallbackQuery({ text: "Cargando Ayer…" });
+    return;
+  } else if (data === "menu_corrido") {
+    await ctx.answerCallbackQuery();
+    result = "🎲 *Corrido* (P4)\n\nElige período (☀️ Mediodía y 🌙 Noche):";
+    keyboard = buildSubmenuKeyboard("corrido");
     try {
-      const [map3, map4] = await Promise.all([getP3Map(), getP4Map()]);
-      const key = getYesterdayFloridaMMDDYY();
-      const d3 = map3[key] ?? {};
-      const d4 = map4[key] ?? {};
-      result =
-        "☀️🌙 *Ayer* " + key + "\n\n*Fijo*\n" + formatDrawsForMessage(key, d3) +
-        "\n\n*Corrido*\n" + formatDrawsForMessage(key, d4) +
-        "\n\n[Fijo P3](https://files.floridalottery.com/exptkt/p3.pdf) · [Corrido P4](https://files.floridalottery.com/exptkt/p4.pdf)";
+      await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
     } catch (e) {
-      console.error("PDF map error:", e);
-      result = "No pude cargar los PDF. Prueba más tarde.";
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
     }
-  } else if (data === "p3_semana") {
-    await ctx.answerCallbackQuery({ text: "Cargando Esta Semana…" });
+    return;
+  } else if (data === "menu_ambos") {
+    await ctx.answerCallbackQuery();
+    result = "☀️🌙 *Ambos* — Fijo y Corrido\n\nElige período:";
+    keyboard = buildSubmenuKeyboard("ambos");
     try {
-      const [map3, map4] = await Promise.all([getP3Map(), getP4Map()]);
-      const dates = getThisWeekFloridaMMDDYY();
-      let body = "☀️🌙 *Esta Semana*\n\n";
-      for (const key of dates) {
-        const d3 = map3[key];
-        const d4 = map4[key];
-        if ((d3 && (d3.m || d3.e)) || (d4 && (d4.m || d4.e))) {
-          if (d3 && (d3.m || d3.e)) body += "*Fijo* " + formatDrawsForMessage(key, d3) + "\n\n";
-          if (d4 && (d4.m || d4.e)) body += "*Corrido* " + formatDrawsForMessage(key, d4) + "\n\n";
-        }
-      }
-      result = (body.trim() || "_Sin datos para estos días._") + "\n\n[Fijo P3](https://files.floridalottery.com/exptkt/p3.pdf) · [Corrido P4](https://files.floridalottery.com/exptkt/p4.pdf)";
+      await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
     } catch (e) {
-      console.error("PDF map error:", e);
-      result = "No pude cargar los PDF. Prueba más tarde.";
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
     }
-  } else if (data === "p3_fecha") {
+    return;
+  } else if (data === "volver") {
+    await ctx.answerCallbackQuery();
+    result = "👋 Elige juego y luego el período:";
+    try {
+      await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
+  } else if (data === "fijo_fecha" || data === "corrido_fecha" || data === "ambos_fecha") {
     await ctx.answerCallbackQuery();
     const userId = ctx.from?.id;
+    const game: GameMenu = data === "fijo_fecha" ? "fijo" : data === "corrido_fecha" ? "corrido" : "ambos";
     if (userId) {
-      waitingCustomDate.add(userId);
-      result =
-        "📅 *Fecha específica*\n\nEscribe la fecha en formato *MM/DD/AA* (ej: 02/25/26).\n\nUsa /cancel para cancelar.";
+      waitingCustomDateGame.set(userId, game);
+      const label = game === "fijo" ? "Fijo (P3)" : game === "corrido" ? "Corrido (P4)" : "Fijo y Corrido";
+      result = `📅 *Escoger fecha — ${label}*\n\nEscribe la fecha en *MM/DD/AA* (ej: 02/25/26).\n\nUsa /cancel para cancelar.`;
     } else {
       result = "No se pudo iniciar.";
+    }
+    keyboard = buildMainKeyboard();
+    try {
+      await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
+  }
+
+  const match = data.match(/^(fijo|corrido|ambos)_(hoy|ayer|semana)$/);
+  if (match) {
+    const [, game, scope] = match as [string, GameMenu, "hoy" | "ayer" | "semana"];
+    const label = game === "fijo" ? "Fijo" : game === "corrido" ? "Corrido" : "Fijo y Corrido";
+    await ctx.answerCallbackQuery({ text: `Cargando ${label}…` });
+    try {
+      const [map3, map4] = await Promise.all([getP3Map(), getP4Map()]);
+      if (scope === "hoy") {
+        const key = getTodayFloridaMMDDYY();
+        const d3 = map3[key] ?? {};
+        const d4 = map4[key] ?? {};
+        result = buildResultOneDay(key, d3, d4, game, "Hoy");
+      } else if (scope === "ayer") {
+        const key = getYesterdayFloridaMMDDYY();
+        const d3 = map3[key] ?? {};
+        const d4 = map4[key] ?? {};
+        result = buildResultOneDay(key, d3, d4, game, "Ayer");
+      } else {
+        const dates = getThisWeekFloridaMMDDYY();
+        result = buildResultWeek(map3, map4, dates, game);
+      }
+      keyboard = buildMainKeyboard();
+    } catch (e) {
+      console.error("PDF map error:", e);
+      result = "No pude cargar los PDF. Prueba más tarde.";
     }
   } else {
     result = "Opción no reconocida. Usa /start para ver el menú.";
   }
 
-  const needsAnswer = !isAsync;
   try {
-    if (needsAnswer) await ctx.answerCallbackQuery().catch(() => {});
-    await ctx.editMessageText(result, {
-      parse_mode: "Markdown",
-      reply_markup: buildMainKeyboard(),
-    });
+    if (!asyncData) await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
   } catch (err) {
-    if (needsAnswer) await ctx.answerCallbackQuery({ text: "Listo ✓" }).catch(() => {});
+    if (!asyncData) await ctx.answerCallbackQuery({ text: "Listo ✓" }).catch(() => {});
     const msg = (err as Error).message ?? "";
     if (!msg.includes("message is not modified")) console.error("Error en callback_query:", err);
   }
 });
 
+function buildResultOneDay(
+  key: string,
+  d3: { m?: number[]; e?: number[] },
+  d4: { m?: number[]; e?: number[] },
+  game: GameMenu,
+  title: string
+): string {
+  const links = "\n\n[Fijo P3](https://files.floridalottery.com/exptkt/p3.pdf) · [Corrido P4](https://files.floridalottery.com/exptkt/p4.pdf)";
+  if (game === "fijo") {
+    return `☀️🌙 *${title}* (Fijo) ${key}\n\n` + formatDrawsForMessage(key, d3) + links;
+  }
+  if (game === "corrido") {
+    return `☀️🌙 *${title}* (Corrido) ${key}\n\n` + formatDrawsForMessage(key, d4) + links;
+  }
+  return (
+    `☀️🌙 *${title}* ${key}\n\n*Fijo*\n` + formatDrawsForMessage(key, d3) +
+    "\n\n*Corrido*\n" + formatDrawsForMessage(key, d4) + links
+  );
+}
+
+function buildResultWeek(
+  map3: Record<string, { m?: number[]; e?: number[] }>,
+  map4: Record<string, { m?: number[]; e?: number[] }>,
+  dates: string[],
+  game: GameMenu
+): string {
+  const links = "\n\n[Fijo P3](https://files.floridalottery.com/exptkt/p3.pdf) · [Corrido P4](https://files.floridalottery.com/exptkt/p4.pdf)";
+  let body = "📆 *Esta semana*";
+  if (game === "fijo") body += " — Fijo (P3)";
+  else if (game === "corrido") body += " — Corrido (P4)";
+  body += "\n\n";
+  for (const key of dates) {
+    const d3 = map3[key];
+    const d4 = map4[key];
+    if (game === "fijo" && d3 && (d3.m || d3.e)) {
+      body += `*${key}*\n` + formatDrawsForMessage(key, d3).replace(/^\*[^*]+\*\n/, "") + "\n\n";
+    } else if (game === "corrido" && d4 && (d4.m || d4.e)) {
+      body += `*${key}*\n` + formatDrawsForMessage(key, d4).replace(/^\*[^*]+\*\n/, "") + "\n\n";
+    } else if (game === "ambos" && ((d3 && (d3.m || d3.e)) || (d4 && (d4.m || d4.e)))) {
+      body += `*${key}*\n`;
+      if (d3 && (d3.m || d3.e)) body += "Fijo: " + formatDrawsForMessage(key, d3).replace(/^\*[^*]+\*\n/, "") + "\n";
+      if (d4 && (d4.m || d4.e)) body += "Corrido: " + formatDrawsForMessage(key, d4).replace(/^\*[^*]+\*\n/, "") + "\n";
+      body += "\n";
+    }
+  }
+  return (body.trim() || "_Sin datos para estos días._") + links;
+}
+
 bot.command("cancel", async (ctx) => {
   const userId = ctx.from?.id;
-  if (userId) waitingCustomDate.delete(userId);
+  if (userId) waitingCustomDateGame.delete(userId);
   await ctx.reply("Cancelado.", { reply_markup: buildMainKeyboard() });
 });
 
 bot.on("message:text", async (ctx) => {
   const userId = ctx.from?.id;
-  if (!userId || !waitingCustomDate.has(userId)) return;
-  waitingCustomDate.delete(userId);
+  const game = userId ? waitingCustomDateGame.get(userId) : undefined;
+  if (!userId || game === undefined) return;
+  waitingCustomDateGame.delete(userId);
   const text = ctx.message.text.trim();
   const key = parseUserDateToMMDDYY(text);
   if (!key) {
@@ -160,9 +244,7 @@ bot.on("message:text", async (ctx) => {
     const [map3, map4] = await Promise.all([getP3Map(), getP4Map()]);
     const d3 = map3[key] ?? {};
     const d4 = map4[key] ?? {};
-    const msg =
-      "📅 *" + key + "*\n\n*Fijo*\n" + formatDrawsForMessage(key, d3) +
-      "\n\n*Corrido*\n" + formatDrawsForMessage(key, d4) +
+    const msg = buildResultOneDay(key, d3, d4, game, "Fecha") +
       "\n\n[Fijo P3](https://files.floridalottery.com/exptkt/p3.pdf) · [Corrido P4](https://files.floridalottery.com/exptkt/p4.pdf)";
     await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: buildMainKeyboard() });
   } catch (e) {
