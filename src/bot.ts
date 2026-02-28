@@ -181,6 +181,13 @@ bot.on("callback_query:data", async (ctx) => {
       console.error("Group stats error:", e);
       result = "No pude cargar el historial P3. Prueba más tarde.";
     }
+    try {
+      await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
+    } catch (err) {
+      const msg = (err as Error).message ?? "";
+      if (!msg.includes("message is not modified")) console.error("Error en callback_query:", err);
+    }
+    return;
   } else if (data === "fijo_fecha" || data === "corrido_fecha" || data === "ambos_fecha") {
     await ctx.answerCallbackQuery();
     const userId = ctx.from?.id;
