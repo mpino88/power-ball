@@ -32,10 +32,9 @@ type SheetRow = { userId: string; nombre: string; telefono: string; menus: strin
 
 function useGoogleSheet(): boolean {
   const id = process.env.GOOGLE_SHEET_ID;
-  const json = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const key = process.env.GOOGLE_PRIVATE_KEY;
-  return Boolean(id && (json || (email && key)));
+  if (!id) return false;
+  const auth = getSheetAuth();
+  return auth !== null;
 }
 
 /** Para logs: indica si estamos usando Sheet o archivo. */
@@ -146,7 +145,10 @@ function loadFromFile(): UsersConfig {
 async function saveToSheet(): Promise<void> {
   const sheetId = process.env.GOOGLE_SHEET_ID!;
   const auth = getSheetAuth();
-  if (!auth) return;
+  if (!auth) {
+    console.error("[user-config] Google Sheet: no se guardó — credenciales no disponibles (revisa GOOGLE_SERVICE_ACCOUNT_JSON o EMAIL+PRIVATE_KEY).");
+    return;
+  }
   try {
     const doc = new GoogleSpreadsheet(sheetId, auth);
     await doc.loadInfo();
@@ -174,13 +176,20 @@ async function saveToSheet(): Promise<void> {
       };
     });
     if (rows.length > 0) {
+      if (sheet.title.includes(":")) {
+        const msg = "[user-config] Google Sheet: renombra la hoja y quita el carácter ':' del título (la API de Google falla si el nombre tiene ':').";
+        console.error(msg);
+        throw new Error(msg);
+      }
       await sheet.addRows(rows);
       console.log("[user-config] Google Sheet: guardados", rows.length, "usuarios.");
     } else {
       console.log("[user-config] Google Sheet: 0 usuarios, solo cabecera.");
     }
   } catch (e) {
-    console.error("[user-config] Error al guardar en Google Sheet:", e);
+    const err = e as Error;
+    console.error("[user-config] Error al guardar en Google Sheet:", err?.message ?? e);
+    if (err?.message?.includes(":")) console.error("[user-config] Si el error menciona 'colon', renombra la hoja y quita los ':' del título.");
     throw e;
   }
 }
@@ -279,6 +288,17 @@ export async function toggleExtraMenu(userId: number, menuId: string): Promise<b
   }
   await persist();
   return !has;
+}
+
+/** Quita un menú de todos los usuarios (p. ej. al eliminar el menú). */
+export async function removeMenuFromAllUsers(menuId: string): Promise<void> {
+  let changed = false;
+  for (const key of Object.keys(config.menus)) {
+    const before = config.menus[key].length;
+    config.menus[key] = config.menus[key].filter((m) => m !== menuId);
+    if (config.menus[key].length !== before) changed = true;
+  }
+  if (changed) await persist();
 }
 
 export function isOwner(userId: number): boolean {

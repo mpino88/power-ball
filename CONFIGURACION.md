@@ -109,6 +109,10 @@ Sigue estos pasos en orden. Al final tendrás el bot funcionando con Telegram y 
 
 5. Al agregar o quitar acceso, en logs debería salir: `[user-config] Google Sheet: guardados N usuarios.` Si sale `Error al guardar en Google Sheet:` revisa permisos y credenciales.
 
+6. Si al arrancar ves *"Usando archivo"* en lugar de *"Usando Google Sheet"*, las credenciales no son válidas o no están definidas: el bot guarda solo en `data/bot-users.json` (y en Render ese archivo se pierde en cada deploy). Revisa `GOOGLE_SHEET_ID` y `GOOGLE_SERVICE_ACCOUNT_JSON`.
+
+7. **Nombre de la hoja:** El nombre de la primera hoja del documento no debe contener el carácter `:` (dos puntos). Si lo tiene, la API de Google puede fallar al escribir; renombra la hoja en Google Sheets (por ejemplo a "Usuarios").
+
 ---
 
 ## Resumen: qué info necesitas tener lista

@@ -28,11 +28,16 @@ const registry = new Map<string, ExtraMenuEntry>();
  * El callback que verá el usuario será "menu_<id>".
  */
 export function registerExtraMenu(id: string, label: string, handler: ExtraMenuHandler): void {
-  if (registry.has(id)) {
-    console.warn("[menu-registry] Menú ya registrado:", id);
-    return;
-  }
   registry.set(id, { label, handler });
+}
+
+export function unregisterExtraMenu(id: string): boolean {
+  return registry.delete(id);
+}
+
+export function updateExtraMenuLabel(id: string, label: string): void {
+  const entry = registry.get(id);
+  if (entry) entry.label = label;
 }
 
 export function getExtraMenuIds(): string[] {

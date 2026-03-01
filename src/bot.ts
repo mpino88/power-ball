@@ -21,14 +21,32 @@ import {
   setUserInfo,
   isOwner,
   initUserConfig,
+  removeMenuFromAllUsers,
 } from "./user-config.js";
 import {
   registerExtraMenu,
+  unregisterExtraMenu,
+  updateExtraMenuLabel,
   getExtraMenuIds,
   getExtraMenuLabel,
   getHandler,
   EXTRA_MENU_CALLBACK_PREFIX,
 } from "./menu-registry.js";
+import {
+  initCustomMenus,
+  getCustomMenus,
+  isCustomMenu,
+  addCustomMenu,
+  updateCustomMenu,
+  removeCustomMenu,
+} from "./custom-menus.js";
+import {
+  buildGroupStatsMessage as buildGroupStatsMessageFromStats,
+  buildIndividualTop10Message as buildIndividualTop10MessageFromStats,
+} from "./stats-p3.js";
+
+/** Menús integrados en código; no se pueden eliminar desde el bot. */
+const BUILTIN_MENU_IDS = new Set(["est_grupos", "est_individuales"]);
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
@@ -91,9 +109,18 @@ let hotThresholdDays = 5;
 
 function buildEstadisticasKeyboard(threshold: number = hotThresholdDays): InlineKeyboard {
   return new InlineKeyboard()
-    .text("📊 Ver estadísticas", "stats_grupos")
+    .text("☀️ Mediodía (M)", "stats_grupos_M")
+    .text("🌙 Noche (E)", "stats_grupos_E")
     .row()
     .text(`🔢 Días diferencia: ${threshold}`, "stats_set_days")
+    .row()
+    .text("◀️ Volver", "volver");
+}
+
+function buildIndividualPeriodKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("☀️ Mediodía (M)", "stats_individual_M")
+    .text("🌙 Noche (E)", "stats_individual_E")
     .row()
     .text("◀️ Volver", "volver");
 }
@@ -109,12 +136,27 @@ function buildDiasDiferenciaKeyboard(): InlineKeyboard {
     .text("◀️ Volver", "volver");
 }
 
+/** Handler para menús creados por el dueño que aún no tienen lógica en código. */
+function placeholderMenuHandler(ctx: { answerCallbackQuery: () => Promise<unknown>; editMessageText: (text: string, opts?: object) => Promise<unknown>; from?: { id: number } }): Promise<void> {
+  return (async () => {
+    await ctx.answerCallbackQuery();
+    try {
+      await ctx.editMessageText("🚧 Esta función está en desarrollo.", {
+        parse_mode: "Markdown",
+        reply_markup: buildMainKeyboard(ctx.from?.id),
+      });
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+  })();
+}
+
 /** Registro de menús extra (asignables por usuario). Agregar aquí nuevos menús y su handler. */
 function registerExtraMenus(): void {
   registerExtraMenu("est_grupos", "📊 Est. grupos", async (ctx) => {
     await ctx.answerCallbackQuery();
     const result =
-      "📊 *Estadísticas por grupos* (Fijo P3)\n\nUsa los 2 últimos dígitos de cada sorteo (M y E). Grupos: terminales (0-9), iniciales (0-9), dobles.\n\n🔥 Hot = (Máx.hist − Máx.actual) ≤ Días diferencia.";
+      "📊 *Estadísticas por grupos* (Fijo P3)\n\nElige *Mediodía (M)* o *Noche (E)*. Grupos: terminales (0-9), iniciales (0-9), dobles.\n\n🔥 Hot = (Máx.hist − Máx.actual) ≤ Días diferencia.";
     try {
       await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: buildEstadisticasKeyboard() });
     } catch (e) {
@@ -122,21 +164,12 @@ function registerExtraMenus(): void {
     }
   });
   registerExtraMenu("est_individuales", "📈 Est. individuales", async (ctx) => {
-    await ctx.answerCallbackQuery({ text: "Calculando…" });
-    let result: string;
-    let keyboard = buildMainKeyboard(ctx.from?.id);
+    await ctx.answerCallbackQuery();
+    const result = "📈 *Top 10 más Hot* (números 00-99)\n\nElige *Mediodía (M)* o *Noche (E)* para ver las estadísticas.";
     try {
-      const map3 = await getP3Map();
-      result = buildIndividualTop10Message(map3, hotThresholdDays);
+      await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: buildIndividualPeriodKeyboard() });
     } catch (e) {
-      console.error("Individual stats error:", e);
-      result = "No pude cargar el historial P3. Prueba más tarde.";
-    }
-    try {
-      await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
-    } catch (err) {
-      const msg = (err as Error).message ?? "";
-      if (!msg.includes("message is not modified")) console.error("Error en callback_query:", err);
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
     }
   });
 }
@@ -197,6 +230,13 @@ const waitingCustomDateGame = new Map<number, GameMenu>();
 type AddingStep = { step: 1; userId?: number } | { step: 2; userId: number; name?: string } | { step: 3; userId: number; name: string; phone?: string };
 const addingUserFlow = new Map<number, AddingStep>();
 
+/** Flujo crear menú: step 1 = esperando id, step 2 = esperando label. */
+const creatingMenuFlow = new Map<number, { step: 1 } | { step: 2; id: string }>();
+/** Flujo editar menú: esperando nuevo label. */
+const editingMenuFlow = new Map<number, { menuId: string }>();
+/** Flujo eliminar menú: esperando confirmación (ya mostramos Sí/No en teclado). */
+const deletingMenuFlow = new Map<number, { menuId: string }>();
+
 function buildSecurityKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
     .text("👥 Listar usuarios con acceso", "admin_list")
@@ -206,7 +246,24 @@ function buildSecurityKeyboard(): InlineKeyboard {
     .row()
     .text("📋 Menús por usuario", "admin_menus")
     .row()
+    .text("⚙️ Gestionar menús", "admin_menus_manage")
+    .row()
     .text("◀️ Volver al menú principal", "security_main");
+}
+
+/** Teclado del submenú Gestionar menús (listar, crear, editar, eliminar) + acceso a asignar a usuarios. */
+function buildManageMenusKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("📋 Asignar menús a usuarios", "admin_menus")
+    .row()
+    .text("📋 Listar menús", "admin_menus_list")
+    .row()
+    .text("➕ Crear menú", "admin_menus_create")
+    .text("✏️ Editar menú", "admin_menus_edit")
+    .row()
+    .text("🗑 Eliminar menú", "admin_menus_delete")
+    .row()
+    .text("◀️ Volver a Seguridad", "security_open");
 }
 
 /** Una línea de texto con ID, nombre y teléfono del usuario (para listas en Seguridad). */
@@ -243,7 +300,10 @@ bot.on("callback_query:data", async (ctx) => {
   let keyboard: InlineKeyboard = buildMainKeyboard(ctx.from?.id);
   const asyncData =
     /^(fijo|corrido|ambos)_(hoy|ayer|semana)$/.test(data) ||
-    data === "stats_grupos" ||
+    data === "stats_grupos_M" ||
+    data === "stats_grupos_E" ||
+    data === "stats_individual_M" ||
+    data === "stats_individual_E" ||
     (data.startsWith(EXTRA_MENU_CALLBACK_PREFIX) && !!getHandler(data.slice(EXTRA_MENU_CALLBACK_PREFIX.length)));
 
   if (data === "help") {
@@ -363,8 +423,98 @@ bot.on("callback_query:data", async (ctx) => {
       }
     } else if (data === "admin_back") {
       addingUserFlow.delete(ctx.from!.id);
+      creatingMenuFlow.delete(ctx.from!.id);
+      editingMenuFlow.delete(ctx.from!.id);
+      deletingMenuFlow.delete(ctx.from!.id);
       result = "🔒 *Seguridad* — Gestiona quién puede usar el bot y sus menús.";
       keyboard = buildSecurityKeyboard();
+    } else if (data === "admin_menus_manage") {
+      result = "⚙️ *Gestionar menús*\n\nLista, crea, edita o elimina menús extra (los que luego asignas a usuarios).";
+      keyboard = buildManageMenusKeyboard();
+    } else if (data === "admin_menus_list") {
+      const ids = getExtraMenuIds();
+      const builtIn = ids.filter((id) => BUILTIN_MENU_IDS.has(id));
+      const custom = ids.filter((id) => isCustomMenu(id));
+      const lines = [
+        ...builtIn.map((id) => `• ${getExtraMenuLabel(id) ?? id} (\`${id}\`) — _integrado_`),
+        ...custom.map((id) => `• ${getExtraMenuLabel(id) ?? id} (\`${id}\`)`),
+      ];
+      result = "📋 *Menús extra*\n\n" + (lines.length ? lines.join("\n") : "_Ninguno_");
+      keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar menús", "admin_menus_manage");
+    } else if (data === "admin_menus_create") {
+      creatingMenuFlow.set(ctx.from!.id, { step: 1 });
+      result = "➕ *Crear menú* (paso 1/2)\n\nEnvía el *id* del menú (solo letras, números y _; ej: \`fechas_calor\`).\n\n/cancel para cancelar.";
+      keyboard = new InlineKeyboard().text("◀️ Cancelar", "admin_menus_manage");
+    } else if (data === "admin_menus_edit") {
+      const custom = getCustomMenus();
+      if (custom.length === 0) {
+        result = "✏️ *Editar menú*\n\n_No hay menús creados por ti._ Solo se pueden editar los que hayas creado desde aquí.";
+        keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar menús", "admin_menus_manage");
+      } else {
+        result = "✏️ *Editar menú*\n\nElige el menú a editar:";
+        keyboard = new InlineKeyboard();
+        for (const m of custom) {
+          keyboard.text(`✏️ ${m.label}`, `admin_menus_edit_pick_${m.id}`).row();
+        }
+        keyboard.text("◀️ Volver a Gestionar menús", "admin_menus_manage");
+      }
+    } else if (data.startsWith("admin_menus_edit_pick_")) {
+      const menuId = data.replace("admin_menus_edit_pick_", "");
+      if (!isCustomMenu(menuId)) {
+        result = "Error: menú no encontrado.";
+        keyboard = buildManageMenusKeyboard();
+      } else {
+        editingMenuFlow.set(ctx.from!.id, { menuId });
+        const label = getExtraMenuLabel(menuId) ?? menuId;
+        result = `✏️ *Editar menú* \`${menuId}\`\n\nEnvía el *nuevo texto* del botón (ahora: ${label}).\n\n/cancel para cancelar.`;
+        keyboard = new InlineKeyboard().text("◀️ Cancelar", "admin_menus_manage");
+      }
+    } else if (data === "admin_menus_delete") {
+      const custom = getCustomMenus();
+      if (custom.length === 0) {
+        result = "🗑 *Eliminar menú*\n\n_No hay menús creados por ti._ Solo se pueden eliminar los que hayas creado desde aquí.";
+        keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar menús", "admin_menus_manage");
+      } else {
+        result = "🗑 *Eliminar menú*\n\nElige el menú a eliminar (se quitará de todos los usuarios):";
+        keyboard = new InlineKeyboard();
+        for (const m of custom) {
+          keyboard.text(`🗑 ${m.label}`, `admin_menus_delete_pick_${m.id}`).row();
+        }
+        keyboard.text("◀️ Volver a Gestionar menús", "admin_menus_manage");
+      }
+    } else if (data.startsWith("admin_menus_delete_pick_")) {
+      const menuId = data.replace("admin_menus_delete_pick_", "");
+      if (!isCustomMenu(menuId)) {
+        result = "Error: menú no encontrado.";
+        keyboard = buildManageMenusKeyboard();
+      } else {
+        deletingMenuFlow.set(ctx.from!.id, { menuId });
+        const label = getExtraMenuLabel(menuId) ?? menuId;
+        result = `🗑 ¿Eliminar el menú *${label}* (\`${menuId}\`)?\n\nSe quitará de todos los usuarios que lo tengan asignado.`;
+        keyboard = new InlineKeyboard()
+          .text("✅ Sí, eliminar", `admin_menus_delete_confirm_${menuId}`)
+          .text("❌ No", "admin_menus_delete_cancel")
+          .row()
+          .text("◀️ Volver a Gestionar menús", "admin_menus_manage");
+      }
+    } else if (data.startsWith("admin_menus_delete_confirm_")) {
+      const menuId = data.replace("admin_menus_delete_confirm_", "");
+      deletingMenuFlow.delete(ctx.from!.id);
+      if (!isCustomMenu(menuId)) {
+        result = "Error: menú no encontrado.";
+        keyboard = buildManageMenusKeyboard();
+      } else {
+        removeCustomMenu(menuId);
+        unregisterExtraMenu(menuId);
+        await removeMenuFromAllUsers(menuId);
+        const label = getExtraMenuLabel(menuId) ?? menuId;
+        result = `✅ Menú *${label}* (\`${menuId}\`) eliminado.`;
+        keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar menús", "admin_menus_manage");
+      }
+    } else if (data === "admin_menus_delete_cancel") {
+      deletingMenuFlow.delete(ctx.from!.id);
+      result = "⚙️ *Gestionar menús*\n\nLista, crea, edita o elimina menús extra.";
+      keyboard = buildManageMenusKeyboard();
     } else {
       result = "🔒 *Seguridad* — Gestiona quién puede usar el bot y sus menús.";
       keyboard = buildSecurityKeyboard();
@@ -436,7 +586,7 @@ bot.on("callback_query:data", async (ctx) => {
     const n = parseInt(data.replace("stats_days_", ""), 10);
     if (n >= 1 && n <= 30) hotThresholdDays = n;
     await ctx.answerCallbackQuery({ text: `Días diferencia = ${hotThresholdDays}` });
-    result = "📊 *Estadísticas por grupos* (Fijo P3)\n\nUsa los 2 últimos dígitos de cada sorteo (M y E). Grupos: terminales (0-9), iniciales (0-9), dobles.\n\n🔥 Hot = (Máx.hist − Máx.actual) ≤ Días diferencia.";
+    result = "📊 *Estadísticas por grupos* (Fijo P3)\n\nElige *Mediodía (M)* o *Noche (E)*. Grupos: terminales (0-9), iniciales (0-9), dobles.\n\n🔥 Hot = (Máx.hist − Máx.actual) ≤ Días diferencia.";
     keyboard = buildEstadisticasKeyboard();
     try {
       await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
@@ -444,14 +594,33 @@ bot.on("callback_query:data", async (ctx) => {
       if (!(e as Error).message?.includes("message is not modified")) console.error(e);
     }
     return;
-  } else if (data === "stats_grupos") {
+  } else if (data === "stats_grupos_M" || data === "stats_grupos_E") {
+    const period = data === "stats_grupos_M" ? "M" : "E";
     await ctx.answerCallbackQuery({ text: "Calculando estadísticas…" });
     try {
       const map3 = await getP3Map();
-      result = buildGroupStatsMessage(map3, hotThresholdDays);
+      result = buildGroupStatsMessageFromStats(map3, hotThresholdDays, period);
       keyboard = buildMainKeyboard(ctx.from?.id);
     } catch (e) {
       console.error("Group stats error:", e);
+      result = "No pude cargar el historial P3. Prueba más tarde.";
+    }
+    try {
+      await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
+    } catch (err) {
+      const msg = (err as Error).message ?? "";
+      if (!msg.includes("message is not modified")) console.error("Error en callback_query:", err);
+    }
+    return;
+  } else if (data === "stats_individual_M" || data === "stats_individual_E") {
+    const period = data === "stats_individual_M" ? "M" : "E";
+    await ctx.answerCallbackQuery({ text: "Calculando…" });
+    try {
+      const map3 = await getP3Map();
+      result = buildIndividualTop10MessageFromStats(map3, hotThresholdDays, period);
+      keyboard = buildMainKeyboard(ctx.from?.id);
+    } catch (e) {
+      console.error("Individual stats error:", e);
       result = "No pude cargar el historial P3. Prueba más tarde.";
     }
     try {
@@ -572,6 +741,9 @@ bot.command("cancel", async (ctx) => {
   if (userId) {
     waitingCustomDateGame.delete(userId);
     addingUserFlow.delete(userId);
+    creatingMenuFlow.delete(userId);
+    editingMenuFlow.delete(userId);
+    deletingMenuFlow.delete(userId);
   }
   await ctx.reply("Cancelado.", { reply_markup: buildMainKeyboard(ctx.from?.id) });
 });
@@ -621,6 +793,65 @@ bot.on("message:text", async (ctx) => {
         return;
       }
     }
+
+    const creating = creatingMenuFlow.get(userId);
+    if (creating) {
+      if (creating.step === 1) {
+        const id = text.trim().replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "");
+        if (!id) {
+          await ctx.reply("Escribe un id (letras, números y _; ej: fechas_calor).");
+          return;
+        }
+        if (getExtraMenuIds().includes(id)) {
+          await ctx.reply("Ese id ya existe. Elige otro.");
+          return;
+        }
+        creatingMenuFlow.set(userId, { step: 2, id });
+        await ctx.reply("➕ *Crear menú* (paso 2/2)\n\nEnvía el *texto del botón* (ej: 📅 Fechas Calor).", {
+          parse_mode: "Markdown",
+          reply_markup: new InlineKeyboard().text("◀️ Cancelar", "admin_menus_manage"),
+        });
+        return;
+      }
+      if (creating.step === 2) {
+        const label = text.trim() || creating.id;
+        creatingMenuFlow.delete(userId);
+        if (!addCustomMenu(creating.id, label)) {
+          await ctx.reply("No se pudo crear (id duplicado).", { reply_markup: buildManageMenusKeyboard() });
+          return;
+        }
+        registerExtraMenu(creating.id, label, (ctx) => placeholderMenuHandler(ctx));
+        const kb = new InlineKeyboard()
+          .text("📋 Asignar a usuarios", "admin_menus")
+          .row()
+          .text("◀️ Volver a Gestionar menús", "admin_menus_manage");
+        await ctx.reply(`✅ Menú creado: *${label}* (\`${creating.id}\`). Toca *Asignar a usuarios* para dar acceso a quien quieras.`, {
+          parse_mode: "Markdown",
+          reply_markup: kb,
+        });
+        return;
+      }
+    }
+
+    const editing = editingMenuFlow.get(userId);
+    if (editing) {
+      const newLabel = text.trim();
+      if (!newLabel) {
+        await ctx.reply("Envía el nuevo texto del botón.");
+        return;
+      }
+      editingMenuFlow.delete(userId);
+      if (!updateCustomMenu(editing.menuId, newLabel)) {
+        await ctx.reply("Error al actualizar.", { reply_markup: buildManageMenusKeyboard() });
+        return;
+      }
+      updateExtraMenuLabel(editing.menuId, newLabel);
+      await ctx.reply(`✅ Menú actualizado: *${newLabel}* (\`${editing.menuId}\`).`, {
+        parse_mode: "Markdown",
+        reply_markup: buildManageMenusKeyboard(),
+      });
+      return;
+    }
   }
 
   const game = userId ? waitingCustomDateGame.get(userId) : undefined;
@@ -646,213 +877,6 @@ bot.on("message:text", async (ctx) => {
     });
   }
 });
-
-// --- Estadísticas por grupos (P3: dos últimos dígitos) ---
-
-/** Convierte MM/DD/YY a Date (año 20xx si yy < 50, sino 19xx). */
-function mmddyyToDate(key: string): Date | null {
-  const m = key.match(/^(\d{2})\/(\d{2})\/(\d{2})$/);
-  if (!m) return null;
-  const mm = parseInt(m[1], 10);
-  const dd = parseInt(m[2], 10);
-  let yy = parseInt(m[3], 10);
-  yy = yy >= 50 ? 1900 + yy : 2000 + yy;
-  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
-  const d = new Date(yy, mm - 1, dd);
-  if (d.getDate() !== dd || d.getMonth() !== mm - 1) return null;
-  return d;
-}
-
-/** Ordena claves MM/DD/YY de más antiguo a más reciente. */
-function sortDateKeys(keys: string[]): string[] {
-  return [...keys].sort((a, b) => {
-    const da = mmddyyToDate(a)?.getTime() ?? 0;
-    const db = mmddyyToDate(b)?.getTime() ?? 0;
-    return da - db;
-  });
-}
-
-/** De un sorteo P3 [x,y,z] devuelve el número de 2 cifras yz (0-99). */
-function twoDigitFromP3(draw: number[]): number {
-  if (draw.length < 3) return 0;
-  return draw[1]! * 10 + draw[2]!;
-}
-
-/** Números dobles: 00, 11, 22, ..., 99. */
-const DOUBLES_SET = new Set([0, 11, 22, 33, 44, 55, 66, 77, 88, 99]);
-
-interface GroupGap {
-  maxGapDays: number;
-  currentGapDays: number | null;
-}
-
-type Track = { counter: number; maxHistorical: number; everAppeared: boolean };
-
-const toGap = (t: Track): GroupGap => ({
-  maxGapDays: t.maxHistorical,
-  currentGapDays: t.everAppeared ? t.counter : null,
-});
-
-/**
- * Un solo recorrido del historial: calcula estadísticas de grupos (terminales, iniciales, dobles)
- * y de números individuales (0-99) en una pasada. Misma lógica de contadores para ambos.
- */
-function computeStatsCombined(map: DateDrawsMap): {
-  groups: { terminales: GroupGap[]; iniciales: GroupGap[]; dobles: GroupGap };
-  individual: (GroupGap)[];
-} {
-  const sortedDates = sortDateKeys(Object.keys(map));
-  const emptyGap = (): GroupGap[] => Array.from({ length: 10 }, () => ({ maxGapDays: 0, currentGapDays: null }));
-  if (sortedDates.length === 0) {
-    return {
-      groups: { terminales: emptyGap(), iniciales: emptyGap(), dobles: { maxGapDays: 0, currentGapDays: null } },
-      individual: Array.from({ length: 100 }, () => ({ maxGapDays: 0, currentGapDays: null })),
-    };
-  }
-
-  const dayDiff = (aStr: string, bStr: string): number => {
-    const da = mmddyyToDate(aStr)?.getTime();
-    const db = mmddyyToDate(bStr)?.getTime();
-    if (da == null || db == null) return 0;
-    return Math.round((db - da) / 864e5);
-  };
-
-  const initTrack = (): Track => ({ counter: 0, maxHistorical: 0, everAppeared: false });
-  const terminales = Array.from({ length: 10 }, () => initTrack());
-  const iniciales = Array.from({ length: 10 }, () => initTrack());
-  const doblesTrack = initTrack();
-  const individualTracks = Array.from({ length: 100 }, () => initTrack());
-
-  let prevDateStr: string | null = null;
-
-  for (const dateStr of sortedDates) {
-    const draws = map[dateStr];
-    const numbersThisDay = new Set<number>();
-    const groupsThisDay = new Set<string>();
-    for (const draw of [draws?.m, draws?.e]) {
-      if (!draw || draw.length < 3) continue;
-      const n = twoDigitFromP3(draw);
-      numbersThisDay.add(n);
-      groupsThisDay.add(`T${n % 10}`);
-      groupsThisDay.add(`I${Math.floor(n / 10)}`);
-      if (DOUBLES_SET.has(n)) groupsThisDay.add("D");
-    }
-
-    const daysSincePrev = prevDateStr !== null ? dayDiff(prevDateStr, dateStr) : 0;
-
-    const tick = (t: Track, appeared: boolean) => {
-      if (appeared) {
-        if (t.counter > t.maxHistorical) t.maxHistorical = t.counter;
-        t.counter = 0;
-        t.everAppeared = true;
-      } else {
-        t.counter += daysSincePrev;
-      }
-    };
-
-    for (let k = 0; k < 10; k++) tick(terminales[k]!, groupsThisDay.has(`T${k}`));
-    for (let k = 0; k < 10; k++) tick(iniciales[k]!, groupsThisDay.has(`I${k}`));
-    tick(doblesTrack, groupsThisDay.has("D"));
-    for (let n = 0; n < 100; n++) tick(individualTracks[n]!, numbersThisDay.has(n));
-
-    prevDateStr = dateStr;
-  }
-
-  return {
-    groups: {
-      terminales: terminales.map(toGap),
-      iniciales: iniciales.map(toGap),
-      dobles: toGap(doblesTrack),
-    },
-    individual: individualTracks.map(toGap),
-  };
-}
-
-/** Top 10 más Hot: menor (Máx.hist − Máx.actual) entre los que han aparecido. */
-function getTop10HottestIndividual(stats: (GroupGap)[]): { num: number; maxGapDays: number; currentGapDays: number }[] {
-  const withCur: { num: number; maxGapDays: number; currentGapDays: number }[] = [];
-  for (let n = 0; n < 100; n++) {
-    const s = stats[n]!;
-    if (s.currentGapDays !== null) withCur.push({ num: n, maxGapDays: s.maxGapDays, currentGapDays: s.currentGapDays });
-  }
-  withCur.sort((a, b) => a.maxGapDays - a.currentGapDays - (b.maxGapDays - b.currentGapDays));
-  return withCur.slice(0, 10);
-}
-
-function buildIndividualTop10Message(map: DateDrawsMap, diasDiferencia: number): string {
-  const { individual: stats } = computeStatsCombined(map);
-  const top10 = getTop10HottestIndividual(stats);
-  const W_NUM = 6;
-  const W_MAX = 10;
-  const W_ACT = 10;
-  const W_HOT = 8;
-  const fmt = (num: number, maxH: number, cur: number) => {
-    const diff = maxH - cur;
-    const hotStr = diff <= diasDiferencia ? "🔥 Hot" : String(diff);
-    return (
-      String(num).padStart(2, "0").padEnd(W_NUM) +
-      String(maxH).padStart(W_MAX) +
-      String(cur).padStart(W_ACT) +
-      hotStr.padStart(W_HOT)
-    );
-  };
-  const sep = "─".repeat(W_NUM + W_MAX + W_ACT + W_HOT);
-  const header = "Número".padEnd(W_NUM) + "Máx.hist".padStart(W_MAX) + "Máx.actual".padStart(W_ACT) + "Hot/diff".padStart(W_HOT);
-  const lines: string[] = [
-    `📈 *Top 10 más Hot* (números 00-99, 2 últimos dígitos P3)\n`,
-    "```",
-    header,
-    sep,
-    ...top10.map(({ num, maxGapDays, currentGapDays }) => fmt(num, maxGapDays, currentGapDays)),
-    "```",
-  ];
-  return lines.join("\n");
-}
-
-function buildGroupStatsMessage(map: DateDrawsMap, diasDiferencia: number = 5): string {
-  const { groups: stats } = computeStatsCombined(map);
-  const W_NAME = 12;
-  const W_MAX = 10;
-  const W_ACT = 10;
-  const W_HOT = 8;
-  const isHot = (maxH: number, cur: number | null) =>
-    cur !== null && maxH - cur <= diasDiferencia;
-  const fmt = (name: string, maxH: number, cur: number | null) => {
-    const curStr = cur !== null ? String(cur) : "—";
-    const hotStr = isHot(maxH, cur) ? "🔥 Hot" : cur !== null ? String(maxH - cur) : "—";
-    return (
-      name.padEnd(W_NAME) +
-      String(maxH).padStart(W_MAX) +
-      curStr.padStart(W_ACT) +
-      hotStr.padStart(W_HOT)
-    );
-  };
-  const sep = "─".repeat(W_NAME + W_MAX + W_ACT + W_HOT);
-  const header =
-    "Grupo".padEnd(W_NAME) +
-    "Máx.hist".padStart(W_MAX) +
-    "Máx.actual".padStart(W_ACT) +
-    "Hot/diff".padStart(W_HOT);
-  const lines: string[] = [
-    `📊 *Estadísticas por grupos* (Fijo P3, 2 últimos dígitos) · Hot si (Máx.hist−Máx.actual) ≤ ${diasDiferencia}\n`,
-    "```",
-    header,
-    sep,
-  ];
-  for (let k = 0; k < 10; k++) {
-    const t = stats.terminales[k]!;
-    lines.push(fmt(`Terminal ${k}`, t.maxGapDays, t.currentGapDays));
-  }
-  lines.push(sep);
-  for (let k = 0; k < 10; k++) {
-    const t = stats.iniciales[k]!;
-    lines.push(fmt(`Inicial ${k}`, t.maxGapDays, t.currentGapDays));
-  }
-  lines.push(sep);
-  lines.push(fmt("Dobles", stats.dobles.maxGapDays, stats.dobles.currentGapDays));
-  lines.push("```");
-  return lines.join("\n");
-}
 
 /** PDF oficial Florida Lottery — Winning Numbers History (E: Evening, M: Midday). */
 const P3_PDF_URL = "https://files.floridalottery.com/exptkt/p3.pdf";
@@ -1144,6 +1168,9 @@ async function main(): Promise<void> {
 
   await initUserConfig();
   registerExtraMenus();
+  for (const m of initCustomMenus()) {
+    registerExtraMenu(m.id, m.label, (ctx) => placeholderMenuHandler(ctx));
+  }
   await bot.init();
 
   await bot.api.setMyCommands([
