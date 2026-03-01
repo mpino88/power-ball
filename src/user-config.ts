@@ -31,10 +31,16 @@ const SHEET_HEADERS = ["userId", "nombre", "telefono", "menus"] as const;
 type SheetRow = { userId: string; nombre: string; telefono: string; menus: string };
 
 function useGoogleSheet(): boolean {
-  const id = process.env.GOOGLE_SHEET_ID;
+  const id = process.env.GOOGLE_SHEET_ID?.trim();
   if (!id) return false;
   const auth = getSheetAuth();
   return auth !== null;
+}
+
+/** ID de la Sheet (recortado). Usar en loadFromSheet/saveToSheet. */
+function getSheetId(): string | null {
+  const id = process.env.GOOGLE_SHEET_ID?.trim();
+  return id || null;
 }
 
 /** Para logs: indica si estamos usando Sheet o archivo. */
@@ -44,8 +50,8 @@ export function getStorageBackend(): "sheet" | "file" {
 
 /** Razón por la que no se usa Google Sheet (para mostrar al usuario). Null si sí se usa Sheet. */
 export function getSheetUnavailableReason(): string | null {
-  const id = process.env.GOOGLE_SHEET_ID;
-  if (!id || String(id).trim() === "") return "Falta GOOGLE_SHEET_ID en el entorno.";
+  const id = process.env.GOOGLE_SHEET_ID?.trim();
+  if (!id) return "Falta GOOGLE_SHEET_ID en el entorno.";
   const json = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const key = process.env.GOOGLE_PRIVATE_KEY;
@@ -62,6 +68,20 @@ export function getSheetUnavailableReason(): string | null {
   }
   if (email && key) return null;
   return "Falta GOOGLE_SERVICE_ACCOUNT_JSON (o EMAIL + PRIVATE_KEY) en el entorno.";
+}
+
+/** Email de la cuenta de servicio (para mensajes de error 404). */
+function getSheetClientEmail(): string | null {
+  const json = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  if (json) {
+    try {
+      const cred = JSON.parse(json) as { client_email?: string };
+      return cred.client_email ?? null;
+    } catch {
+      return null;
+    }
+  }
+  return process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL ?? null;
 }
 
 /** Resultado de persist(): para mostrar en la respuesta al agregar acceso. */
@@ -104,7 +124,8 @@ function getSheetAuth(): JWT | null {
 }
 
 async function loadFromSheet(): Promise<UsersConfig> {
-  const sheetId = process.env.GOOGLE_SHEET_ID!;
+  const sheetId = getSheetId();
+  if (!sheetId) return { ...defaultConfig };
   const auth = getSheetAuth();
   if (!auth) {
     console.warn("[user-config] Google Sheet: sin credenciales (GOOGLE_SERVICE_ACCOUNT_JSON o EMAIL+PRIVATE_KEY). Usando archivo.");
@@ -174,11 +195,13 @@ function loadFromFile(): UsersConfig {
 }
 
 async function saveToSheet(): Promise<void> {
-  const sheetId = process.env.GOOGLE_SHEET_ID!;
+  const sheetId = getSheetId();
+  if (!sheetId) {
+    throw new Error("GOOGLE_SHEET_ID no definido o vacío.");
+  }
   const auth = getSheetAuth();
   if (!auth) {
-    console.error("[user-config] Google Sheet: no se guardó — credenciales no disponibles (revisa GOOGLE_SERVICE_ACCOUNT_JSON o EMAIL+PRIVATE_KEY).");
-    return;
+    throw new Error("Credenciales no disponibles. Revisa GOOGLE_SERVICE_ACCOUNT_JSON o EMAIL+PRIVATE_KEY.");
   }
   console.log("[user-config] Google Sheet: guardando", config.allowed.length, "usuarios…");
   try {
@@ -186,8 +209,7 @@ async function saveToSheet(): Promise<void> {
     await doc.loadInfo();
     const sheet = doc.sheetsByIndex[0];
     if (!sheet) {
-      console.error("[user-config] Google Sheet: no hay hojas en el documento.");
-      return;
+      throw new Error("El documento no tiene hojas. Añade al menos una hoja.");
     }
     try {
       await sheet.loadHeaderRow(1);
@@ -220,8 +242,23 @@ async function saveToSheet(): Promise<void> {
     }
   } catch (e) {
     const err = e as Error;
-    console.error("[user-config] Error al guardar en Google Sheet:", err?.message ?? e);
-    if (err?.message?.includes(":")) console.error("[user-config] Si el error menciona 'colon', renombra la hoja y quita los ':' del título.");
+    const msg = err?.message ?? String(e);
+    console.error("[user-config] Error al guardar en Google Sheet:", msg);
+    if (msg.includes("404") || msg.includes("not found")) {
+      const email = getSheetClientEmail();
+      const hint = email
+        ? ` Comprueba que GOOGLE_SHEET_ID sea correcto y que la hoja esté compartida con ${email} como Editor.`
+        : " Comprueba GOOGLE_SHEET_ID y que la hoja esté compartida con el client_email de tu cuenta de servicio (Editor).";
+      throw new Error("Hoja no encontrada (404)." + hint);
+    }
+    if (msg.includes("403") || msg.includes("Forbidden") || msg.includes("Permission denied")) {
+      const email = getSheetClientEmail();
+      const hint = email
+        ? ` Comparte la hoja con ${email} como Editor.`
+        : " Comparte la hoja con el client_email de tu cuenta de servicio (Editor).";
+      throw new Error("Sin permiso para escribir (403)." + hint);
+    }
+    if (msg.includes(":")) console.error("[user-config] Si el error menciona 'colon', renombra la hoja y quita los ':' del título.");
     throw e;
   }
 }
@@ -262,7 +299,7 @@ async function persist(): Promise<PersistResult> {
 
 /** Carga la config desde Sheet o archivo. Llamar al arranque del bot. */
 export async function initUserConfig(): Promise<void> {
-  const sheetId = process.env.GOOGLE_SHEET_ID;
+  const sheetId = getSheetId();
   const hasAuth = getSheetAuth() !== null;
   if (sheetId && !hasAuth) {
     console.warn(
