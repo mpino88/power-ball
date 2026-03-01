@@ -508,7 +508,8 @@ export async function handleSecurityCallback(
         lines.join("\n\n");
       keyboard = new InlineKeyboard();
       for (const u of requested) {
-        const label = u.name ? `✅ ${u.userId} — ${u.plan} (${u.name})` : `✅ Aprobar ${u.userId} (${u.plan})`;
+        const displayName = (u.name && u.name.trim()) ? u.name.trim() : null;
+        const label = displayName ? `✅ ${u.userId} — ${u.plan} (${displayName})` : `✅ Aprobar ${u.userId} (${u.plan})`;
         keyboard.text(label, `admin_plans_approve_${u.userId}`).row();
       }
       keyboard.text("🔄 Actualizar lista", "admin_plans_requests_refresh").row().text("◀️ Volver a Gestionar planes", "admin_plans_manage");
