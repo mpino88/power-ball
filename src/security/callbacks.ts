@@ -26,12 +26,15 @@ import {
 import {
   getExtraMenuIds,
   getExtraMenuLabel,
+  getExtraMenuStatus,
   unregisterExtraMenu,
   updateExtraMenuLabel,
 } from "../menu-registry.js";
 import {
   getCustomMenus,
+  getCustomMenusCreatedBy,
   isCustomMenu,
+  canDeleteCustomMenu,
   addCustomMenu,
   updateCustomMenu,
   removeCustomMenu,
@@ -46,7 +49,7 @@ import {
 } from "../plans.js";
 import {
   buildSecurityKeyboard,
-  buildManageMenusKeyboard,
+  buildManageEstrategiasKeyboard,
   buildManagePlansKeyboard,
   buildUserMenusKeyboard,
   buildPlanMenusKeyboard,
@@ -231,102 +234,79 @@ export async function handleSecurityCallback(
     clearAllFlows(ctx.from.id);
     result = "🔒 *Seguridad* — Gestiona quién puede usar el bot y sus menús.";
     keyboard = buildSecurityKeyboard();
-  } else if (data === "admin_menus_manage") {
+  } else if (data === "admin_estrategias_manage") {
     creatingMenuFlow.delete(ctx.from.id);
-    editingMenuFlow.delete(ctx.from.id);
     deletingMenuFlow.delete(ctx.from.id);
     result =
-      "⚙️ *Gestionar menús*\n\nLista, crea, edita o elimina menús extra (los que luego asignas a usuarios).";
-    keyboard = buildManageMenusKeyboard();
-  } else if (data === "admin_menus_list") {
+      "⚙️ *Gestionar Estrategias*\n\nLista, crea o elimina estrategias. Asigna estrategias a usuarios desde aquí.";
+    keyboard = buildManageEstrategiasKeyboard();
+  } else if (data === "admin_estrategias_list") {
     const ids = getExtraMenuIds();
     const builtIn = ids.filter((id) => BUILTIN_MENU_IDS.has(id));
     const custom = ids.filter((id) => isCustomMenu(id));
+    const statusLabel = (id: string) => (getExtraMenuStatus(id) === "implemented" ? "✅ implementada" : "⏳ _pendiente_");
     const lines = [
-      ...builtIn.map((id) => `• ${getExtraMenuLabel(id) ?? id} (\`${id}\`) — _integrado_`),
-      ...custom.map((id) => `• ${getExtraMenuLabel(id) ?? id} (\`${id}\`)`),
+      ...builtIn.map((id) => `• ${getExtraMenuLabel(id) ?? id} (\`${id}\`) — _integrado_ — ${statusLabel(id)}`),
+      ...custom.map((id) => `• ${getExtraMenuLabel(id) ?? id} (\`${id}\`) — ${statusLabel(id)}`),
     ];
-    result = "📋 *Menús extra*\n\n" + (lines.length ? lines.join("\n") : "_Ninguno_");
-    keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar menús", "admin_menus_manage");
-  } else if (data === "admin_menus_create") {
+    result =
+      "📋 *Listar estrategias*\n\n" +
+      (lines.length ? lines.join("\n") + "\n\n_✅ implementada_ = con función asignada · _⏳ pendiente_ = sin función (mensaje por defecto)." : "_Ninguna_");
+    keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar Estrategias", "admin_estrategias_manage");
+  } else if (data === "admin_estrategias_create") {
     creatingMenuFlow.set(ctx.from.id, { step: 1 });
     result =
-      "➕ *Crear menú* (paso 1/2)\n\nEnvía el *título* del menú (texto del botón). Ej: 📅 Fechas Calor.\n\n" +
-      "El _id_ se generará automáticamente (minúsculas, snake_case, sin acentos).";
-    keyboard = new InlineKeyboard().text("◀️ Cancelar", "admin_menus_manage");
-  } else if (data === "admin_menus_edit") {
+      "➕ *Crear estrategia* (paso 1/2)\n\nEnvía el *título* (texto del botón). Ej: 📅 Fechas Calor.\n\n" +
+      "El id se generará automáticamente (minúsculas, snake\\_case, sin acentos).";
+    keyboard = new InlineKeyboard().text("◀️ Cancelar", "admin_estrategias_manage");
+  } else if (data === "admin_estrategias_delete") {
     const custom = getCustomMenus();
     if (custom.length === 0) {
       result =
-        "✏️ *Editar menú*\n\n_No hay menús creados por ti._ Solo se pueden editar los que hayas creado desde aquí.";
-      keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar menús", "admin_menus_manage");
-    } else {
-      result = "✏️ *Editar menú*\n\nElige el menú a editar:";
-      keyboard = new InlineKeyboard();
-      for (const m of custom) {
-        keyboard.text(`✏️ ${m.label}`, `admin_menus_edit_pick_${m.id}`).row();
-      }
-      keyboard.text("◀️ Volver a Gestionar menús", "admin_menus_manage");
-    }
-  } else if (data.startsWith("admin_menus_edit_pick_")) {
-    const menuId = data.replace("admin_menus_edit_pick_", "");
-    if (!isCustomMenu(menuId)) {
-      result = "Error: menú no encontrado.";
-      keyboard = buildManageMenusKeyboard();
-    } else {
-      editingMenuFlow.set(ctx.from.id, { menuId });
-      const label = getExtraMenuLabel(menuId) ?? menuId;
-      result = `✏️ *Editar menú* \`${menuId}\`\n\nEnvía el *nuevo texto* del botón (ahora: ${label}).\n\n/cancel para cancelar.`;
-      keyboard = new InlineKeyboard().text("◀️ Cancelar", "admin_menus_manage");
-    }
-  } else if (data === "admin_menus_delete") {
-    const custom = getCustomMenus();
-    if (custom.length === 0) {
-      result =
-        "🗑 *Eliminar menú*\n\n_No hay menús creados por ti._ Solo se pueden eliminar los que hayas creado desde aquí.";
-      keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar menús", "admin_menus_manage");
+        "🗑 *Eliminar estrategia*\n\n_No hay estrategias creadas._ Solo se pueden eliminar las personalizadas.";
+      keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar Estrategias", "admin_estrategias_manage");
     } else {
       result =
-        "🗑 *Eliminar menú*\n\nElige el menú a eliminar (se quitará de todos los usuarios):";
+        "🗑 *Eliminar estrategia*\n\nElige la estrategia a eliminar (se quitará de todos los usuarios):";
       keyboard = new InlineKeyboard();
       for (const m of custom) {
-        keyboard.text(`🗑 ${m.label}`, `admin_menus_delete_pick_${m.id}`).row();
+        keyboard.text(`🗑 ${m.label}`, `admin_estrategias_delete_pick_${m.id}`).row();
       }
-      keyboard.text("◀️ Volver a Gestionar menús", "admin_menus_manage");
+      keyboard.text("◀️ Volver a Gestionar Estrategias", "admin_estrategias_manage");
     }
-  } else if (data.startsWith("admin_menus_delete_pick_")) {
-    const menuId = data.replace("admin_menus_delete_pick_", "");
+  } else if (data.startsWith("admin_estrategias_delete_pick_")) {
+    const menuId = data.replace("admin_estrategias_delete_pick_", "");
     if (!isCustomMenu(menuId)) {
-      result = "Error: menú no encontrado.";
-      keyboard = buildManageMenusKeyboard();
+      result = "Error: estrategia no encontrada.";
+      keyboard = buildManageEstrategiasKeyboard();
     } else {
       deletingMenuFlow.set(ctx.from.id, { menuId });
       const label = getExtraMenuLabel(menuId) ?? menuId;
-      result = `🗑 ¿Eliminar el menú *${label}* (\`${menuId}\`)?\n\nSe quitará de todos los usuarios que lo tengan asignado.`;
+      result = `🗑 ¿Eliminar la estrategia *${escapeMd(label)}* (\`${menuId}\`)?\n\nSe quitará de todos los usuarios que la tengan asignada.`;
       keyboard = new InlineKeyboard()
-        .text("✅ Sí, eliminar", `admin_menus_delete_confirm_${menuId}`)
-        .text("❌ No", "admin_menus_delete_cancel")
+        .text("✅ Sí, eliminar", `admin_estrategias_delete_confirm_${menuId}`)
+        .text("❌ No", "admin_estrategias_delete_cancel")
         .row()
-        .text("◀️ Volver a Gestionar menús", "admin_menus_manage");
+        .text("◀️ Volver a Gestionar Estrategias", "admin_estrategias_manage");
     }
-  } else if (data.startsWith("admin_menus_delete_confirm_")) {
-    const menuId = data.replace("admin_menus_delete_confirm_", "");
+  } else if (data.startsWith("admin_estrategias_delete_confirm_")) {
+    const menuId = data.replace("admin_estrategias_delete_confirm_", "");
     deletingMenuFlow.delete(ctx.from.id);
     if (!isCustomMenu(menuId)) {
-      result = "Error: menú no encontrado.";
-      keyboard = buildManageMenusKeyboard();
+      result = "Error: estrategia no encontrada.";
+      keyboard = buildManageEstrategiasKeyboard();
     } else {
       removeCustomMenu(menuId);
       unregisterExtraMenu(menuId);
       await removeMenuFromAllUsers(menuId);
       const label = getExtraMenuLabel(menuId) ?? menuId;
-      result = `✅ Menú *${label}* (\`${menuId}\`) eliminado.`;
-      keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar menús", "admin_menus_manage");
+      result = `✅ Estrategia *${escapeMd(label)}* (\`${menuId}\`) eliminada.`;
+      keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar Estrategias", "admin_estrategias_manage");
     }
-  } else if (data === "admin_menus_delete_cancel") {
+  } else if (data === "admin_estrategias_delete_cancel") {
     deletingMenuFlow.delete(ctx.from.id);
-    result = "⚙️ *Gestionar menús*\n\nLista, crea, edita o elimina menús extra.";
-    keyboard = buildManageMenusKeyboard();
+    result = "⚙️ *Gestionar Estrategias*\n\nLista, crea o elimina estrategias.";
+    keyboard = buildManageEstrategiasKeyboard();
   } else if (data === "admin_plans_manage") {
     result =
       "💰 *Gestionar planes*\n\nLos planes se muestran a usuarios sin acceso. Lista, añade, edita o elimina planes (título, descripción, precio).";
@@ -557,4 +537,131 @@ export async function handleSecurityCallback(
   }
 
   return { result, keyboard };
+}
+
+export interface EstrategiasUserCallbackDeps {
+  getExtraMenuIds: () => string[];
+  getExtraMenuLabel: (id: string) => string | undefined;
+  getExtraMenus: (userId: number) => string[];
+  getOwnerId: () => number | null;
+  buildMainKeyboard: (userId: number | undefined) => InlineKeyboard;
+}
+
+/** Gestionar estrategias para cualquier usuario (listar, crear, eliminar propias). */
+export async function handleEstrategiasUserCallback(
+  ctx: Context,
+  data: string,
+  deps: EstrategiasUserCallbackDeps
+): Promise<{ result: string; keyboard: InlineKeyboard } | null> {
+  const userId = ctx.from?.id;
+  if (userId === undefined) return null;
+
+  let result: string;
+  let keyboard: InlineKeyboard;
+
+  if (data === "estrategias_manage") {
+    creatingMenuFlow.delete(userId);
+    deletingMenuFlow.delete(userId);
+    result = "⚙️ *Gestionar estrategias*\n\nLista, crea o elimina tus estrategias. Las que crees se te asignan automáticamente.";
+    keyboard = new InlineKeyboard()
+      .text("📋 Listar estrategias", "estrategias_list")
+      .row()
+      .text("➕ Crear estrategia", "estrategias_create")
+      .text("🗑 Eliminar estrategia", "estrategias_delete")
+      .row()
+      .text("◀️ Volver", "volver");
+    return { result, keyboard };
+  }
+
+  if (data === "estrategias_list") {
+    const assignedIds = deps.getExtraMenus(userId);
+    const createdByMe = getCustomMenusCreatedBy(userId);
+    const allIds = getExtraMenuIds();
+    const assignedSet = new Set(assignedIds);
+    const createdSet = new Set(createdByMe.map((m) => m.id));
+    const lines: string[] = [];
+    for (const id of allIds) {
+      if (!assignedSet.has(id) && !createdSet.has(id)) continue;
+      const label = deps.getExtraMenuLabel(id) ?? id;
+      const suffix = BUILTIN_MENU_IDS.has(id) ? " — _integrado_" : createdSet.has(id) ? " — _creada por ti_" : "";
+      lines.push(`• ${escapeMd(label)} (\`${id}\`)${suffix}`);
+    }
+    result = "📋 *Tus estrategias*\n\n" + (lines.length ? lines.join("\n") : "_Ninguna asignada ni creada por ti._");
+    keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar", "estrategias_manage");
+    return { result, keyboard };
+  }
+
+  if (data === "estrategias_create") {
+    creatingMenuFlow.set(userId, { step: 1, createdBy: userId });
+    result =
+      "➕ *Crear estrategia* (paso 1/2)\n\nEnvía el *título* (texto del botón). Ej: 📅 Fechas Calor.\n\nSe te asignará automáticamente.";
+    keyboard = new InlineKeyboard().text("◀️ Cancelar", "estrategias_manage");
+    return { result, keyboard };
+  }
+
+  if (data === "estrategias_delete") {
+    const mine = getCustomMenusCreatedBy(userId);
+    if (mine.length === 0) {
+      result = "🗑 *Eliminar estrategia*\n\n_No has creado ninguna estrategia._ Solo puedes eliminar las que tú creaste.";
+      keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar", "estrategias_manage");
+      return { result, keyboard };
+    }
+    result = "🗑 *Eliminar estrategia*\n\nElige una de tus estrategias a eliminar:";
+    keyboard = new InlineKeyboard();
+    for (const m of mine) {
+      keyboard.text(`🗑 ${m.label}`, `estrategias_delete_pick_${m.id}`).row();
+    }
+    keyboard.text("◀️ Volver a Gestionar", "estrategias_manage");
+    return { result, keyboard };
+  }
+
+  if (data.startsWith("estrategias_delete_pick_")) {
+    const menuId = data.replace("estrategias_delete_pick_", "");
+    if (!canDeleteCustomMenu(menuId, userId, false)) {
+      result = "No puedes eliminar esta estrategia.";
+      keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar", "estrategias_manage");
+      return { result, keyboard };
+    }
+    deletingMenuFlow.set(userId, { menuId });
+    const label = deps.getExtraMenuLabel(menuId) ?? menuId;
+    result = `🗑 ¿Eliminar la estrategia *${escapeMd(label)}* (\`${menuId}\`)?`;
+    keyboard = new InlineKeyboard()
+      .text("✅ Sí, eliminar", `estrategias_delete_confirm_${menuId}`)
+      .text("❌ No", "estrategias_delete_cancel")
+      .row()
+      .text("◀️ Volver a Gestionar", "estrategias_manage");
+    return { result, keyboard };
+  }
+
+  if (data.startsWith("estrategias_delete_confirm_")) {
+    const menuId = data.replace("estrategias_delete_confirm_", "");
+    deletingMenuFlow.delete(userId);
+    if (!canDeleteCustomMenu(menuId, userId, false)) {
+      result = "No puedes eliminar esta estrategia.";
+      keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar", "estrategias_manage");
+      return { result, keyboard };
+    }
+    removeCustomMenu(menuId);
+    unregisterExtraMenu(menuId);
+    await removeMenuFromAllUsers(menuId);
+    const label = deps.getExtraMenuLabel(menuId) ?? menuId;
+    result = `✅ Estrategia *${escapeMd(label)}* eliminada.`;
+    keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar", "estrategias_manage");
+    return { result, keyboard };
+  }
+
+  if (data === "estrategias_delete_cancel") {
+    deletingMenuFlow.delete(userId);
+    result = "⚙️ *Gestionar estrategias*";
+    keyboard = new InlineKeyboard()
+      .text("📋 Listar estrategias", "estrategias_list")
+      .row()
+      .text("➕ Crear estrategia", "estrategias_create")
+      .text("🗑 Eliminar estrategia", "estrategias_delete")
+      .row()
+      .text("◀️ Volver", "volver");
+    return { result, keyboard };
+  }
+
+  return null;
 }

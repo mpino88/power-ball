@@ -14,9 +14,9 @@ export function buildSecurityKeyboard(): InlineKeyboard {
     .text("➕ Agregar acceso", "admin_add")
     .text("➖ Quitar acceso", "admin_remove")
     .row()
-    .text("📋 Menús por usuario", "admin_menus")
+    .text("📋 Asignar estrategias a usuarios", "admin_menus")
     .row()
-    .text("⚙️ Gestionar menús", "admin_menus_manage")
+    .text("⚙️ Gestionar Estrategias", "admin_estrategias_manage")
     .row()
     .text("💰 Gestionar planes", "admin_plans_manage")
     .row()
@@ -63,18 +63,28 @@ export function buildPlanMenusKeyboard(
   return kb;
 }
 
-export function buildManageMenusKeyboard(): InlineKeyboard {
+/** Teclado Gestionar Estrategias (dueño): listar, crear, eliminar, asignar a usuarios. */
+export function buildManageEstrategiasKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
-    .text("📋 Asignar menús a usuarios", "admin_menus")
+    .text("📋 Listar estrategias", "admin_estrategias_list")
     .row()
-    .text("📋 Listar menús", "admin_menus_list")
+    .text("➕ Crear estrategia", "admin_estrategias_create")
+    .text("🗑 Eliminar estrategia", "admin_estrategias_delete")
     .row()
-    .text("➕ Crear menú", "admin_menus_create")
-    .text("✏️ Editar menú", "admin_menus_edit")
-    .row()
-    .text("🗑 Eliminar menú", "admin_menus_delete")
+    .text("📋 Asignar estrategias a usuarios", "admin_menus")
     .row()
     .text("◀️ Volver a Seguridad", "security_open");
+}
+
+/** Teclado Gestionar Estrategias (usuario): listar, crear, eliminar (sin asignar). */
+export function buildManageEstrategiasKeyboardUser(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("📋 Listar estrategias", "estrategias_list")
+    .row()
+    .text("➕ Crear estrategia", "estrategias_create")
+    .text("🗑 Eliminar estrategia", "estrategias_delete")
+    .row()
+    .text("◀️ Volver", "volver");
 }
 
 export function buildUserMenusKeyboard(

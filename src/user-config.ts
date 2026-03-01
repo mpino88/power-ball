@@ -428,6 +428,101 @@ export async function initUserConfig(): Promise<void> {
   }
 }
 
+/** Fila de la 2ª pestaña (Estrategias): id, titulo, descripcion, createdBy. */
+export interface StrategyRow {
+  id: string;
+  titulo: string;
+  descripcion?: string;
+  createdBy?: number;
+}
+
+const STRATEGIES_SHEET_TITLE = "Estrategias";
+const STRATEGIES_HEADERS = ["id", "titulo", "descripcion", "createdBy"] as const;
+
+/** Carga estrategias desde la 2ª pestaña de la hoja de cálculo. Si no hay Sheet o la pestaña no existe, la crea y devuelve []. */
+export async function loadStrategiesFromSheet(): Promise<StrategyRow[]> {
+  const sheetId = getSheetId();
+  if (!sheetId) return [];
+  const auth = getSheetAuth();
+  if (!auth) return [];
+  try {
+    const doc = new GoogleSpreadsheet(sheetId, auth);
+    await doc.loadInfo();
+    let sheet = doc.sheetsByIndex[1];
+    if (!sheet) {
+      await doc.addSheet({
+        title: STRATEGIES_SHEET_TITLE,
+        headerValues: [...STRATEGIES_HEADERS],
+      });
+      console.log("[user-config] Hoja de cálculo: pestaña «Estrategias» creada (2ª pestaña).");
+      return [];
+    }
+    try {
+      await sheet.loadHeaderRow(1);
+    } catch {
+      await sheet.setHeaderRow([...STRATEGIES_HEADERS], 1);
+      return [];
+    }
+    const rows = await sheet.getRows({ offset: 0, limit: 5000 });
+    const headers = sheet.headerValues;
+    const result: StrategyRow[] = [];
+    for (const row of rows) {
+      const obj = row.toObject() as Record<string, unknown>;
+      const values = headers.map((h) => (h ? String(obj[h] ?? "").trim() : ""));
+      const id = values[0] ?? "";
+      const titulo = values[1] ?? "";
+      if (!id) continue;
+      const desc = values[2] ?? "";
+      const createdByStr = values[3] ?? "";
+      const createdBy = createdByStr ? parseInt(createdByStr, 10) : undefined;
+      result.push({
+        id,
+        titulo: titulo || id,
+        descripcion: desc || undefined,
+        createdBy: Number.isNaN(createdBy as number) ? undefined : (createdBy as number),
+      });
+    }
+    console.log("[user-config] Estrategias: cargadas", result.length, "desde 2ª pestaña.");
+    return result;
+  } catch (e) {
+    console.error("[user-config] Error al cargar estrategias desde Sheet:", (e as Error)?.message ?? e);
+    return [];
+  }
+}
+
+/** Guarda estrategias en la 2ª pestaña (id, titulo, descripcion, createdBy). Crea la pestaña si no existe. */
+export async function saveStrategiesToSheet(items: StrategyRow[]): Promise<void> {
+  const sheetId = getSheetId();
+  if (!sheetId) return;
+  const auth = getSheetAuth();
+  if (!auth) return;
+  try {
+    const doc = new GoogleSpreadsheet(sheetId, auth);
+    await doc.loadInfo();
+    let sheet = doc.sheetsByIndex[1];
+    if (!sheet) {
+      sheet = await doc.addSheet({
+        title: STRATEGIES_SHEET_TITLE,
+        headerValues: [...STRATEGIES_HEADERS],
+      });
+    }
+    await sheet.setHeaderRow([...STRATEGIES_HEADERS], 1);
+    await sheet.clearRows();
+    if (items.length > 0) {
+      const rows = items.map((r) => ({
+        id: r.id,
+        titulo: r.titulo,
+        descripcion: r.descripcion ?? "",
+        createdBy: r.createdBy !== undefined && r.createdBy !== null ? String(r.createdBy) : "",
+      }));
+      await sheet.addRows(rows);
+    }
+    console.log("[user-config] Estrategias: guardadas", items.length, "en 2ª pestaña.");
+  } catch (e) {
+    console.error("[user-config] Error al guardar estrategias en Sheet:", (e as Error)?.message ?? e);
+  }
+}
+
 /** Recarga la config desde el Sheet (o archivo) y reemplaza la en memoria. Útil para ver datos actualizados (p. ej. solicitudes pendientes). */
 export async function reloadConfigFromStorage(): Promise<void> {
   if (useGoogleSheet()) {

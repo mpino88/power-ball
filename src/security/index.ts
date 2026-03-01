@@ -4,13 +4,14 @@
 
 export { createRestrictMiddleware } from "./middleware.js";
 export type { RestrictMiddlewareOptions, BuildMainKeyboard } from "./middleware.js";
-export { handleSecurityCallback } from "./callbacks.js";
-export type { SecurityCallbackDeps } from "./callbacks.js";
+export { handleSecurityCallback, handleEstrategiasUserCallback } from "./callbacks.js";
+export type { SecurityCallbackDeps, EstrategiasUserCallbackDeps } from "./callbacks.js";
 export { handleSecurityMessage } from "./messageHandler.js";
 export type { SecurityMessageDeps } from "./messageHandler.js";
 export {
   buildSecurityKeyboard,
-  buildManageMenusKeyboard,
+  buildManageEstrategiasKeyboard,
+  buildManageEstrategiasKeyboardUser,
   buildManagePlansKeyboard,
   buildUserMenusKeyboard,
   formatUserLine,

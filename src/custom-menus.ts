@@ -11,15 +11,35 @@ const FILE_PATH = path.join(DATA_DIR, "extra-menus.json");
 
 export interface CustomMenu {
   id: string;
-  /** Título del menú (texto del botón). */
+  /** Título (texto del botón). */
   label: string;
-  /** Descripción del menú/estrategia. */
+  /** Descripción: qué hace la estrategia. */
   description?: string;
   /** Por defecto "pendiente"; "implemented" cuando tiene funcionalidad asignada. */
   status?: "pendiente" | "implemented";
+  /** undefined o 0 = creada por dueño; número = userId del usuario que la creó (se auto-asigna). */
+  createdBy?: number;
 }
 
 let customMenus: CustomMenu[] = [];
+
+/** Cuando está definido, save() persiste en la 2ª pestaña del Sheet en lugar del archivo JSON. */
+let strategySheetPersist: ((items: CustomMenu[]) => Promise<void>) | null = null;
+
+export function setStrategySheetPersist(fn: ((items: CustomMenu[]) => Promise<void>) | null): void {
+  strategySheetPersist = fn;
+}
+
+/** Inicializa desde filas de la hoja (id, titulo, descripcion, createdBy). No guarda en archivo. */
+export function initCustomMenusFromSheet(rows: { id: string; titulo: string; descripcion?: string; createdBy?: number }[]): void {
+  customMenus = rows.map((r) => ({
+    id: r.id,
+    label: r.titulo,
+    description: r.descripcion?.trim() || undefined,
+    status: "pendiente" as const,
+    createdBy: r.createdBy === 0 ? undefined : r.createdBy,
+  }));
+}
 
 function load(): CustomMenu[] {
   try {
@@ -38,6 +58,10 @@ function load(): CustomMenu[] {
 }
 
 function save(): void {
+  if (strategySheetPersist) {
+    void strategySheetPersist([...customMenus]);
+    return;
+  }
   try {
     if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
     writeFileSync(FILE_PATH, JSON.stringify({ menus: customMenus }, null, 2), "utf8");
@@ -59,7 +83,12 @@ export function isCustomMenu(id: string): boolean {
   return customMenus.some((m) => m.id === id);
 }
 
-export function addCustomMenu(id: string, label: string, description?: string): boolean {
+export function addCustomMenu(
+  id: string,
+  label: string,
+  description?: string,
+  createdBy?: number
+): boolean {
   const normId = id.trim().replace(/\s+/g, "_");
   if (!normId) return false;
   if (customMenus.some((m) => m.id === normId)) return false;
@@ -68,6 +97,7 @@ export function addCustomMenu(id: string, label: string, description?: string): 
     label: label.trim() || normId,
     description: description?.trim() || undefined,
     status: "pendiente",
+    createdBy: createdBy === 0 ? undefined : createdBy,
   });
   save();
   return true;
@@ -94,4 +124,14 @@ export function removeCustomMenu(id: string): boolean {
     return true;
   }
   return false;
+}
+/** Estrategias creadas por este usuario (para listar/eliminar propias). */
+export function getCustomMenusCreatedBy(userId: number): CustomMenu[] {
+  return customMenus.filter((m) => m.createdBy === userId);
+}
+/** true si la estrategia la creó este usuario (puede eliminarla). */
+export function canDeleteCustomMenu(menuId: string, userId: number, isOwner: boolean): boolean {
+  if (isOwner) return true;
+  const m = customMenus.find((x) => x.id === menuId);
+  return m?.createdBy === userId;
 }

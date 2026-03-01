@@ -63,6 +63,7 @@ export function buildEstrategiasKeyboard(userId: number | undefined, deps: MainK
     const label = deps.getExtraMenuLabel(id);
     if (label) kb.text(label, EXTRA_MENU_CALLBACK_PREFIX + id).row();
   }
+  kb.row().text("⚙️ Gestionar estrategias", "estrategias_manage");
   kb.text("◀️ Volver", "volver");
   return kb;
 }

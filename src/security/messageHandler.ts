@@ -12,10 +12,14 @@ import {
   type PersistResult,
 } from "../user-config.js";
 import { getExtraMenuIds } from "../menu-registry.js";
-import { addCustomMenu, updateCustomMenu } from "../custom-menus.js";
-import { updateExtraMenuLabel } from "../menu-registry.js";
+import { addCustomMenu } from "../custom-menus.js";
 import { addPlan, updatePlan, titleToPlanId, getPlans } from "../plans.js";
-import { buildSecurityKeyboard, buildManageMenusKeyboard, buildManagePlansKeyboard } from "./keyboards.js";
+import {
+  buildSecurityKeyboard,
+  buildManageEstrategiasKeyboard,
+  buildManageEstrategiasKeyboardUser,
+  buildManagePlansKeyboard,
+} from "./keyboards.js";
 import { labelToMenuId } from "./menuIdFromLabel.js";
 import {
   addingUserFlow,
@@ -30,7 +34,8 @@ import {
 export interface SecurityMessageDeps {
   isOwner: (userId: number) => boolean;
   buildMainKeyboard: (userId: number | undefined) => InlineKeyboard;
-  onMenuCreated: (id: string, label: string, description?: string) => void;
+  /** createdBy = userId cuando la crea un usuario (se auto-asigna). */
+  onMenuCreated: (id: string, label: string, description?: string, createdBy?: number) => void;
 }
 
 /**
@@ -42,9 +47,69 @@ export async function handleSecurityMessage(
   deps: SecurityMessageDeps
 ): Promise<boolean> {
   const userId = ctx.from?.id;
-  if (userId === undefined || !deps.isOwner(userId)) return false;
+  if (userId === undefined) return false;
 
   const text = (ctx.message && "text" in ctx.message ? ctx.message.text : undefined)?.trim() ?? "";
+
+  const creating = creatingMenuFlow.get(userId);
+  if (creating) {
+    if (creating.step === 1) {
+      const label = text.trim();
+      if (!label) {
+        const cancelData = creating.createdBy != null ? "estrategias_manage" : "admin_estrategias_manage";
+        await ctx.reply("Escribe el *título* del botón. Ej: 📅 Fechas Calor.", {
+          parse_mode: "Markdown",
+          reply_markup: new InlineKeyboard().text("◀️ Cancelar", cancelData),
+        });
+        return true;
+      }
+      const id = labelToMenuId(label);
+      if (!id) {
+        await ctx.reply("El texto no genera un id válido. Usa letras o números (ej: Fechas Calor).");
+        return true;
+      }
+      if (getExtraMenuIds().includes(id)) {
+        const backKb = creating.createdBy != null ? buildManageEstrategiasKeyboardUser() : buildManageEstrategiasKeyboard();
+        await ctx.reply(
+          `Ya existe una estrategia con ese texto (id: \`${id}\`). Elige otro título.`,
+          { parse_mode: "Markdown", reply_markup: backKb }
+        );
+        return true;
+      }
+      creatingMenuFlow.set(userId, { step: 2, label, createdBy: creating.createdBy });
+      const cancelData = creating.createdBy != null ? "estrategias_manage" : "admin_estrategias_manage";
+      await ctx.reply("➕ *Crear estrategia* (paso 2/2)\n\nEnvía la *descripción* (qué hace la estrategia). Opcional: envía *-* para omitir.", {
+        parse_mode: "Markdown",
+        reply_markup: new InlineKeyboard().text("◀️ Cancelar", cancelData),
+      });
+      return true;
+    }
+    const description = text.trim() === "-" || text.trim() === "" ? undefined : text.trim();
+    const label = creating.label;
+    const id = labelToMenuId(label)!;
+    const createdBy = creating.createdBy;
+    creatingMenuFlow.delete(userId);
+    if (!addCustomMenu(id, label, description, createdBy)) {
+      const backKb = createdBy != null ? buildManageEstrategiasKeyboardUser() : buildManageEstrategiasKeyboard();
+      await ctx.reply("No se pudo crear (id duplicado).", { reply_markup: backKb });
+      return true;
+    }
+    deps.onMenuCreated(id, label, description, createdBy);
+    const kb = new InlineKeyboard();
+    if (createdBy == null) {
+      kb.text("📋 Asignar a usuarios", "admin_menus").row();
+      kb.text("◀️ Volver a Gestionar Estrategias", "admin_estrategias_manage");
+    } else {
+      kb.text("◀️ Volver a Gestionar estrategias", "estrategias_manage");
+    }
+    await ctx.reply(
+      `✅ Estrategia creada: *${label}* (\`${id}\`).${createdBy != null ? " Se te ha asignado automáticamente." : ""}\n\nEstado: _pendiente de implementación_ hasta que se asocie una función.`,
+      { parse_mode: "Markdown", reply_markup: kb }
+    );
+    return true;
+  }
+
+  if (!deps.isOwner(userId)) return false;
 
   const assigningPlan = assigningPlanFlow.get(userId);
   if (assigningPlan?.step === 1) {
@@ -143,79 +208,6 @@ export async function handleSecurityMessage(
       );
       return true;
     }
-  }
-
-  const creating = creatingMenuFlow.get(userId);
-  if (creating) {
-    if (creating.step === 1) {
-      const label = text.trim();
-      if (!label) {
-        await ctx.reply("Escribe el *título* del menú (texto del botón). Ej: 📅 Fechas Calor.", {
-          parse_mode: "Markdown",
-          reply_markup: new InlineKeyboard().text("◀️ Cancelar", "admin_menus_manage"),
-        });
-        return true;
-      }
-      const id = labelToMenuId(label);
-      if (!id) {
-        await ctx.reply("El texto no genera un id válido. Usa letras o números (ej: Fechas Calor).");
-        return true;
-      }
-      if (getExtraMenuIds().includes(id)) {
-        await ctx.reply(
-          `Ya existe un menú con ese texto (id: \`${id}\`). Elige otro texto para el botón.`,
-          { parse_mode: "Markdown", reply_markup: buildManageMenusKeyboard() }
-        );
-        return true;
-      }
-      creatingMenuFlow.set(userId, { step: 2, label });
-      await ctx.reply("➕ *Nuevo menú* (paso 2/2)\n\nEnvía la *descripción* del menú o estrategia (opcional). Envía *-** para omitir.", {
-        parse_mode: "Markdown",
-        reply_markup: new InlineKeyboard().text("◀️ Cancelar", "admin_menus_manage"),
-      });
-      return true;
-    }
-    // step 2: description
-    const description = text.trim() === "-" || text.trim() === "" ? undefined : text.trim();
-    const label = creating.label;
-    const id = labelToMenuId(label)!;
-    creatingMenuFlow.delete(userId);
-    if (!addCustomMenu(id, label, description)) {
-      await ctx.reply("No se pudo crear (id duplicado).", {
-        reply_markup: buildManageMenusKeyboard(),
-      });
-      return true;
-    }
-    deps.onMenuCreated(id, label, description);
-    const kb = new InlineKeyboard()
-      .text("📋 Asignar a usuarios", "admin_menus")
-      .row()
-      .text("◀️ Volver a Gestionar menús", "admin_menus_manage");
-    await ctx.reply(
-      `✅ Menú creado: *${label}* (\`${id}\`).\n\nEstado: _pendiente de implementación_. Asigna la funcionalidad en el código y marca como implementado cuando esté listo. Toca *Asignar a usuarios* para dar acceso.`,
-      { parse_mode: "Markdown", reply_markup: kb }
-    );
-    return true;
-  }
-
-  const editing = editingMenuFlow.get(userId);
-  if (editing) {
-    const newLabel = text.trim();
-    if (!newLabel) {
-      await ctx.reply("Envía el nuevo texto del botón.");
-      return true;
-    }
-    editingMenuFlow.delete(userId);
-    if (!updateCustomMenu(editing.menuId, { label: newLabel })) {
-      await ctx.reply("Error al actualizar.", { reply_markup: buildManageMenusKeyboard() });
-      return true;
-    }
-    updateExtraMenuLabel(editing.menuId, newLabel);
-    await ctx.reply(`✅ Menú actualizado: *${newLabel}* (\`${editing.menuId}\`).`, {
-      parse_mode: "Markdown",
-      reply_markup: buildManageMenusKeyboard(),
-    });
-    return true;
   }
 
   const creatingPlan = creatingPlanFlow.get(userId);

@@ -15,6 +15,10 @@ import {
   addPlanRequest,
   requestPlanChange,
   setSheetMenuLabelResolver,
+  toggleExtraMenu,
+  getStorageBackend,
+  loadStrategiesFromSheet,
+  saveStrategiesToSheet,
 } from "./user-config.js";
 import {
   registerExtraMenu,
@@ -25,7 +29,12 @@ import {
   getExtraMenuIds,
   EXTRA_MENU_CALLBACK_PREFIX,
 } from "./menu-registry.js";
-import { initCustomMenus } from "./custom-menus.js";
+import {
+  initCustomMenus,
+  initCustomMenusFromSheet,
+  setStrategySheetPersist,
+  getCustomMenus,
+} from "./custom-menus.js";
 import { initPlans, getPlans, getPlanById } from "./plans.js";
 import {
   buildGroupStatsMessage as buildGroupStatsMessageFromStats,
@@ -39,6 +48,7 @@ import {
 import {
   createRestrictMiddleware,
   handleSecurityCallback,
+  handleEstrategiasUserCallback,
   handleSecurityMessage,
   buildSecurityKeyboard,
   buildManagePlansKeyboard,
@@ -250,7 +260,7 @@ bot.on("callback_query:data", async (ctx) => {
 
   if (data === ESTRATEGIAS_OPEN_CALLBACK) {
     await ctx.answerCallbackQuery();
-    const result = "➕ *Estrategias*\n\nElige una estrategia:";
+    const result = "➕ *Estrategias*\n\nElige una estrategia o gestiona las tuyas:";
     const keyboard = buildEstrategiasKeyboard(ctx.from?.id, mainKbDeps);
     try {
       await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
@@ -258,6 +268,28 @@ bot.on("callback_query:data", async (ctx) => {
       if (!(e as Error).message?.includes("message is not modified")) console.error(e);
     }
     return;
+  }
+
+  if (ctx.from && isAllowed(ctx.from.id) && (data === "estrategias_manage" || data === "estrategias_list" || data === "estrategias_create" || data === "estrategias_delete" || data.startsWith("estrategias_delete_"))) {
+    const estrategiasOut = await handleEstrategiasUserCallback(ctx, data, {
+      getExtraMenuIds,
+      getExtraMenuLabel,
+      getExtraMenus,
+      getOwnerId,
+      buildMainKeyboard: buildMainKb,
+    });
+    if (estrategiasOut) {
+      await ctx.answerCallbackQuery();
+      try {
+        await ctx.editMessageText(estrategiasOut.result, {
+          parse_mode: "Markdown",
+          reply_markup: estrategiasOut.keyboard,
+        });
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
   }
 
   if (data === "cambiar_plan_open" && ctx.from && isAllowed(ctx.from.id) && !isOwner(ctx.from.id)) {
@@ -420,11 +452,12 @@ bot.on("message:text", async (ctx) => {
   const securityHandled = await handleSecurityMessage(ctx, {
     isOwner,
     buildMainKeyboard: buildMainKb,
-    onMenuCreated: (id, label, description) => {
+    onMenuCreated: (id, label, description, createdBy) => {
       registerExtraMenu(id, label, (c) => placeholderMenuHandler(c), {
         description,
         isPlaceholder: true,
       });
+      if (createdBy != null) void toggleExtraMenu(createdBy, id);
     },
   });
   if (securityHandled) return;
@@ -695,14 +728,30 @@ async function main(): Promise<void> {
   }
 
   registerExtraMenus();
-  for (const m of initCustomMenus()) {
+  setSheetMenuLabelResolver(getExtraMenuLabel);
+  await initUserConfig();
+  if (getStorageBackend() === "sheet") {
+    const rows = await loadStrategiesFromSheet();
+    initCustomMenusFromSheet(rows);
+    setStrategySheetPersist((menus) =>
+      saveStrategiesToSheet(
+        menus.map((m) => ({
+          id: m.id,
+          titulo: m.label,
+          descripcion: m.description ?? "",
+          createdBy: m.createdBy ?? 0,
+        }))
+      )
+    );
+  } else {
+    initCustomMenus();
+  }
+  for (const m of getCustomMenus()) {
     registerExtraMenu(m.id, m.label, (ctx) => placeholderMenuHandler(ctx), {
       description: m.description,
       isPlaceholder: true,
     });
   }
-  setSheetMenuLabelResolver(getExtraMenuLabel);
-  await initUserConfig();
   initPlans();
   await bot.init();
 
