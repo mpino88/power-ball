@@ -562,12 +562,14 @@ export async function loadPlansFromSheet(): Promise<PlanRow[]> {
     const rows = await sheet.getRows({ offset: 0, limit: 500 });
     const headers = sheet.headerValues;
     const result: PlanRow[] = [];
+    const seenIds = new Set<string>();
     for (const row of rows) {
       const obj = row.toObject() as Record<string, unknown>;
       const values = headers.map((h) => (h ? String(obj[h] ?? "").trim() : ""));
       const id = values[0] ?? "";
       const title = values[1] ?? "";
-      if (!id) continue;
+      if (!id || seenIds.has(id)) continue;
+      seenIds.add(id);
       result.push({
         id,
         title: title || id,
