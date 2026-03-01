@@ -68,9 +68,10 @@ export async function handleSecurityMessage(
     if (flow.step === 3) {
       const phone = text.trim();
       addingUserFlow.delete(userId);
+      let resultAdd: PersistResult;
       let resultSave: PersistResult;
       try {
-        await addAllowed(flow.userId);
+        resultAdd = await addAllowed(flow.userId);
         resultSave = await setUserInfo(flow.userId, { name: flow.name, phone: phone || undefined });
       } catch (e) {
         console.error("[security] Error al guardar usuario (Sheet/archivo):", e);
@@ -81,9 +82,18 @@ export async function handleSecurityMessage(
         return true;
       }
       const backendLabel = resultSave.backend === "sheet" ? "Google Sheet" : "archivo (data/bot-users.json)";
-      const logLine = resultSave.ok
-        ? `\n\n📁 _Guardado en: ${backendLabel} (${resultSave.count} usuarios)_`
-        : `\n\n❌ _Error al guardar en ${backendLabel}: ${resultSave.error ?? "desconocido"}_`;
+      const addFailed = !resultAdd.ok;
+      const saveFailed = !resultSave.ok;
+      const anyFailed = addFailed || saveFailed;
+      let logLine: string;
+      if (!anyFailed) {
+        logLine = `\n\n📁 _Guardado en: ${backendLabel} (${resultSave.count} usuarios)_`;
+      } else {
+        const errors: string[] = [];
+        if (addFailed && resultAdd.error) errors.push(`1º guardado: ${resultAdd.error}`);
+        if (saveFailed && resultSave.error) errors.push(`2º guardado: ${resultSave.error}`);
+        logLine = `\n\n❌ _Error al guardar en ${backendLabel}: ${errors.join("; ") || "desconocido"}_`;
+      }
       await ctx.reply(
         `✅ Usuario agregado.\n\nID: \`${flow.userId}\`\nNombre: ${flow.name}\nTeléfono: ${phone || "—"}${logLine}`,
         { parse_mode: "Markdown", reply_markup: buildSecurityKeyboard() }
