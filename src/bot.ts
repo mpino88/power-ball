@@ -782,8 +782,8 @@ async function main(): Promise<void> {
       )
     );
     const planRows = await loadPlansFromSheet();
-    setPlanSheetPersist((items) => savePlansToSheet(items));
     if (planRows.length > 0) {
+      setPlanSheetPersist((items) => savePlansToSheet(items));
       initPlansFromSheet(planRows);
     } else {
       initPlans();
@@ -795,6 +795,7 @@ async function main(): Promise<void> {
         menuIds: (p.menuIds ?? []).join(","),
       }));
       await savePlansToSheet(plansToSave);
+      setPlanSheetPersist((items) => savePlansToSheet(items));
     }
   } else {
     initCustomMenus();
