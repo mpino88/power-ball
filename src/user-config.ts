@@ -523,6 +523,101 @@ export async function saveStrategiesToSheet(items: StrategyRow[]): Promise<void>
   }
 }
 
+/** Fila de la 3ª pestaña (Planes): id, title, description, price, menuIds (IDs separados por coma). */
+export interface PlanRow {
+  id: string;
+  title: string;
+  description: string;
+  price: string;
+  menuIds: string;
+}
+
+const PLANS_SHEET_TITLE = "Planes";
+const PLANS_HEADERS = ["id", "title", "description", "price", "menuIds"] as const;
+
+/** Carga planes desde la 3ª pestaña. Si no existe, la crea y devuelve []. */
+export async function loadPlansFromSheet(): Promise<PlanRow[]> {
+  const sheetId = getSheetId();
+  if (!sheetId) return [];
+  const auth = getSheetAuth();
+  if (!auth) return [];
+  try {
+    const doc = new GoogleSpreadsheet(sheetId, auth);
+    await doc.loadInfo();
+    let sheet = doc.sheetsByIndex[2];
+    if (!sheet) {
+      await doc.addSheet({
+        title: PLANS_SHEET_TITLE,
+        headerValues: [...PLANS_HEADERS],
+      });
+      console.log("[user-config] Hoja de cálculo: pestaña «Planes» creada (3ª pestaña).");
+      return [];
+    }
+    try {
+      await sheet.loadHeaderRow(1);
+    } catch {
+      await sheet.setHeaderRow([...PLANS_HEADERS], 1);
+      return [];
+    }
+    const rows = await sheet.getRows({ offset: 0, limit: 500 });
+    const headers = sheet.headerValues;
+    const result: PlanRow[] = [];
+    for (const row of rows) {
+      const obj = row.toObject() as Record<string, unknown>;
+      const values = headers.map((h) => (h ? String(obj[h] ?? "").trim() : ""));
+      const id = values[0] ?? "";
+      const title = values[1] ?? "";
+      if (!id) continue;
+      result.push({
+        id,
+        title: title || id,
+        description: values[2] ?? "",
+        price: values[3] ?? "",
+        menuIds: values[4] ?? "",
+      });
+    }
+    console.log("[user-config] Planes: cargados", result.length, "desde 3ª pestaña.");
+    return result;
+  } catch (e) {
+    console.error("[user-config] Error al cargar planes desde Sheet:", (e as Error)?.message ?? e);
+    return [];
+  }
+}
+
+/** Guarda planes en la 3ª pestaña (id, title, description, price, menuIds). */
+export async function savePlansToSheet(items: PlanRow[]): Promise<void> {
+  const sheetId = getSheetId();
+  if (!sheetId) return;
+  const auth = getSheetAuth();
+  if (!auth) return;
+  try {
+    const doc = new GoogleSpreadsheet(sheetId, auth);
+    await doc.loadInfo();
+    let sheet = doc.sheetsByIndex[2];
+    if (!sheet) {
+      sheet = await doc.addSheet({
+        title: PLANS_SHEET_TITLE,
+        headerValues: [...PLANS_HEADERS],
+      });
+    }
+    await sheet.setHeaderRow([...PLANS_HEADERS], 1);
+    await sheet.clearRows();
+    if (items.length > 0) {
+      const rows = items.map((r) => ({
+        id: r.id,
+        title: r.title,
+        description: r.description ?? "",
+        price: r.price ?? "",
+        menuIds: r.menuIds ?? "",
+      }));
+      await sheet.addRows(rows);
+    }
+    console.log("[user-config] Planes: guardados", items.length, "en 3ª pestaña.");
+  } catch (e) {
+    console.error("[user-config] Error al guardar planes en Sheet:", (e as Error)?.message ?? e);
+  }
+}
+
 /** Recarga la config desde el Sheet (o archivo) y reemplaza la en memoria. Útil para ver datos actualizados (p. ej. solicitudes pendientes). */
 export async function reloadConfigFromStorage(): Promise<void> {
   if (useGoogleSheet()) {

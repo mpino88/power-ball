@@ -92,7 +92,8 @@ function parseDrawDateToMMDDYY(dateText: string): string | null {
 
 /**
  * Extrae de la página los datos para "Hoy": fecha (draw-date--pick3/pick4) y números (game-numbers).
- * Primer bloque de números = Mediodía (M), segundo = Noche (E).
+ * Usa la estructura: ul.game-numbers.game-numbers--pick3/pick4 con li.game-numbers__number span (sin Fireball).
+ * Primer bloque = Mediodía (M), segundo = Noche (E).
  */
 async function scrapeTodayFromPage(
   url: string,
@@ -109,18 +110,23 @@ async function scrapeTodayFromPage(
     const page = await browser.newPage();
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: SCRAPE_TIMEOUT_MS });
     const raw = await page.evaluate(
-      (args: { dateClass: string; numbersClass: string }) => {
+      (args: { dateClass: string; numbersClass: string; numDigits: number }) => {
         const dateEl = document.querySelector(`.${args.dateClass}`);
         const dateText = dateEl?.textContent?.trim() ?? "";
-        const numberEls = document.querySelectorAll(`.game-numbers.${args.numbersClass}`);
-        const numberTexts: string[] = [];
-        numberEls.forEach((el) => {
-          const text = el.textContent?.trim() ?? "";
-          numberTexts.push(text);
+        const uls = document.querySelectorAll(`ul.game-numbers.${args.numbersClass}`);
+        const numberArrays: number[][] = [];
+        uls.forEach((ul) => {
+          const items = ul.querySelectorAll("li.game-numbers__number span");
+          const digits: number[] = [];
+          items.forEach((span) => {
+            const t = span.textContent?.trim();
+            if (t && /^\d$/.test(t)) digits.push(Number(t));
+          });
+          if (digits.length === args.numDigits) numberArrays.push(digits);
         });
-        return { dateText, numberTexts };
+        return { dateText, numberArrays };
       },
-      { dateClass, numbersClass }
+      { dateClass, numbersClass, numDigits }
     );
     const key = parseDrawDateToMMDDYY(raw.dateText) ?? "";
     const todayFlorida = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
@@ -129,17 +135,8 @@ async function scrapeTodayFromPage(
     const isToday = key === todayKey;
 
     const result: TodayScrapeResult = { isToday, key: key || todayKey };
-    const digitRe = /\d/g;
-    const first = raw.numberTexts[0];
-    const second = raw.numberTexts[1];
-    if (first) {
-      const digits = first.match(digitRe)?.slice(0, numDigits).map(Number);
-      if (digits && digits.length === numDigits) result.m = digits;
-    }
-    if (second) {
-      const digits = second.match(digitRe)?.slice(0, numDigits).map(Number);
-      if (digits && digits.length === numDigits) result.e = digits;
-    }
+    if (raw.numberArrays[0]?.length === numDigits) result.m = raw.numberArrays[0];
+    if (raw.numberArrays[1]?.length === numDigits) result.e = raw.numberArrays[1];
     return result;
   } finally {
     await browser.close();

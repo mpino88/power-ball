@@ -20,6 +20,33 @@ export interface Plan {
 
 let plans: Plan[] = [];
 
+/** Cuando está definido, save() persiste en la 3ª pestaña del Sheet en lugar del archivo JSON. */
+let planSheetPersist: ((items: { id: string; title: string; description: string; price: string; menuIds: string }[]) => Promise<void>) | null = null;
+
+export function setPlanSheetPersist(
+  fn: ((items: { id: string; title: string; description: string; price: string; menuIds: string }[]) => Promise<void>) | null
+): void {
+  planSheetPersist = fn;
+}
+
+/** Inicializa desde filas de la hoja (3ª pestaña). menuIds en cada fila es string separado por coma. */
+export function initPlansFromSheet(
+  rows: { id: string; title: string; description: string; price: string; menuIds: string }[]
+): void {
+  plans = rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    description: r.description ?? "",
+    price: r.price ?? "",
+    menuIds: r.menuIds
+      ? r.menuIds
+          .split(",")
+          .map((m) => m.trim())
+          .filter((m) => m.length > 0)
+      : [],
+  }));
+}
+
 function load(): Plan[] {
   try {
     if (existsSync(FILE_PATH)) {
@@ -47,6 +74,17 @@ function load(): Plan[] {
 }
 
 function save(): void {
+  if (planSheetPersist) {
+    const items = plans.map((p) => ({
+      id: p.id,
+      title: p.title,
+      description: p.description ?? "",
+      price: p.price ?? "",
+      menuIds: Array.isArray(p.menuIds) ? p.menuIds.join(",") : "",
+    }));
+    void planSheetPersist(items);
+    return;
+  }
   try {
     if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
     writeFileSync(FILE_PATH, JSON.stringify({ plans }, null, 2), "utf8");

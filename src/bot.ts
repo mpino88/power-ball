@@ -19,6 +19,8 @@ import {
   getStorageBackend,
   loadStrategiesFromSheet,
   saveStrategiesToSheet,
+  loadPlansFromSheet,
+  savePlansToSheet,
 } from "./user-config.js";
 import {
   registerExtraMenu,
@@ -35,7 +37,7 @@ import {
   setStrategySheetPersist,
   getCustomMenus,
 } from "./custom-menus.js";
-import { initPlans, getPlans, getPlanById } from "./plans.js";
+import { initPlans, initPlansFromSheet, setPlanSheetPersist, getPlans, getPlanById } from "./plans.js";
 import {
   buildGroupStatsMessage as buildGroupStatsMessageFromStats,
   buildIndividualTop10Message as buildIndividualTop10MessageFromStats,
@@ -65,6 +67,14 @@ import {
   ESTRATEGIAS_OPEN_CALLBACK,
   type GameMenu,
 } from "./menus/index.js";
+import {
+  buildStrategyContextKeyboard,
+  getStrategyContextMessage,
+  parseStrategyContextCallback,
+  runStrategy,
+  hasStrategyRunner,
+} from "./strategies/index.js";
+import { STRATEGY_CONTEXT_CALLBACK_PREFIX } from "./strategies/types.js";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
@@ -371,6 +381,34 @@ bot.on("callback_query:data", async (ctx) => {
       if (!msg.includes("message is not modified")) console.error("Error en callback_query:", err);
     }
     return;
+  }
+
+  if (data.startsWith(STRATEGY_CONTEXT_CALLBACK_PREFIX)) {
+    const parsed = parseStrategyContextCallback(data);
+    if (parsed && hasStrategyRunner(parsed.menuId)) {
+      await ctx.answerCallbackQuery({ text: "Calculando…" });
+      try {
+        const msg = await runStrategy(parsed.menuId, parsed.context, {
+          getP3Map,
+          getP4Map,
+        });
+        await ctx.editMessageText(msg, {
+          parse_mode: "Markdown",
+          reply_markup: new InlineKeyboard().text("◀️ Volver", "volver"),
+        });
+      } catch (err) {
+        console.error("Error runStrategy:", err);
+        await ctx.answerCallbackQuery({ text: "Error al calcular" }).catch(() => {});
+        try {
+          await ctx.editMessageText("❌ Error al ejecutar la estrategia. Vuelve a intentarlo.", {
+            reply_markup: buildMainKb(ctx.from?.id),
+          });
+        } catch (e) {
+          if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+        }
+      }
+      return;
+    }
   }
 
   if (data.startsWith(EXTRA_MENU_CALLBACK_PREFIX)) {
@@ -743,16 +781,52 @@ async function main(): Promise<void> {
         }))
       )
     );
+    const planRows = await loadPlansFromSheet();
+    setPlanSheetPersist((items) => savePlansToSheet(items));
+    if (planRows.length > 0) {
+      initPlansFromSheet(planRows);
+    } else {
+      initPlans();
+      const plansToSave = getPlans().map((p) => ({
+        id: p.id,
+        title: p.title,
+        description: p.description ?? "",
+        price: p.price ?? "",
+        menuIds: (p.menuIds ?? []).join(","),
+      }));
+      await savePlansToSheet(plansToSave);
+    }
   } else {
     initCustomMenus();
   }
   for (const m of getCustomMenus()) {
-    registerExtraMenu(m.id, m.label, (ctx) => placeholderMenuHandler(ctx), {
-      description: m.description,
-      isPlaceholder: true,
-    });
+    if (hasStrategyRunner(m.id)) {
+      registerExtraMenu(
+        m.id,
+        m.label,
+        async (ctx) => {
+          await ctx.answerCallbackQuery();
+          const label = getExtraMenuLabel(m.id) ?? m.label;
+          const text = getStrategyContextMessage(m.id, label);
+          const keyboard = buildStrategyContextKeyboard(m.id);
+          try {
+            await ctx.editMessageText(text, { parse_mode: "Markdown", reply_markup: keyboard });
+          } catch (e) {
+            if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+          }
+        },
+        { description: m.description, isPlaceholder: false }
+      );
+    } else {
+      registerExtraMenu(m.id, m.label, (ctx) => placeholderMenuHandler(ctx), {
+        description: m.description,
+        isPlaceholder: true,
+      });
+    }
   }
-  initPlans();
+  if (getStorageBackend() !== "sheet") {
+    initPlans();
+  }
   await bot.init();
 
   /* Precarga única: lectura de los PDF y extracción de los mapas de fechas. El resto se calcula on demand. */
