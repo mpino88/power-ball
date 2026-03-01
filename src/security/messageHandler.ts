@@ -5,7 +5,7 @@
 
 import type { Context } from "grammy";
 import { InlineKeyboard } from "grammy";
-import { addAllowed, setUserInfo } from "../user-config.js";
+import { addAllowed, setUserInfo, type PersistResult } from "../user-config.js";
 import { getExtraMenuIds } from "../menu-registry.js";
 import { addCustomMenu, updateCustomMenu } from "../custom-menus.js";
 import { updateExtraMenuLabel } from "../menu-registry.js";
@@ -68,19 +68,24 @@ export async function handleSecurityMessage(
     if (flow.step === 3) {
       const phone = text.trim();
       addingUserFlow.delete(userId);
+      let resultSave: PersistResult;
       try {
         await addAllowed(flow.userId);
-        await setUserInfo(flow.userId, { name: flow.name, phone: phone || undefined });
+        resultSave = await setUserInfo(flow.userId, { name: flow.name, phone: phone || undefined });
       } catch (e) {
         console.error("[security] Error al guardar usuario (Sheet/archivo):", e);
         await ctx.reply(
-          "❌ Usuario agregado en memoria pero *falló al guardar* (Google Sheet o archivo). Revisa logs y credenciales.",
+          "❌ Usuario agregado en memoria pero *falló al guardar* (error inesperado). Revisa logs.",
           { parse_mode: "Markdown", reply_markup: buildSecurityKeyboard() }
         );
         return true;
       }
+      const backendLabel = resultSave.backend === "sheet" ? "Google Sheet" : "archivo (data/bot-users.json)";
+      const logLine = resultSave.ok
+        ? `\n\n📁 _Guardado en: ${backendLabel} (${resultSave.count} usuarios)_`
+        : `\n\n❌ _Error al guardar en ${backendLabel}: ${resultSave.error ?? "desconocido"}_`;
       await ctx.reply(
-        `✅ Usuario agregado.\n\nID: \`${flow.userId}\`\nNombre: ${flow.name}\nTeléfono: ${phone || "—"}`,
+        `✅ Usuario agregado.\n\nID: \`${flow.userId}\`\nNombre: ${flow.name}\nTeléfono: ${phone || "—"}${logLine}`,
         { parse_mode: "Markdown", reply_markup: buildSecurityKeyboard() }
       );
       return true;

@@ -42,6 +42,14 @@ export function getStorageBackend(): "sheet" | "file" {
   return useGoogleSheet() ? "sheet" : "file";
 }
 
+/** Resultado de persist(): para mostrar en la respuesta al agregar acceso. */
+export interface PersistResult {
+  backend: "sheet" | "file";
+  ok: boolean;
+  count: number;
+  error?: string;
+}
+
 function getSheetAuth(): JWT | null {
   const json = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
@@ -205,19 +213,28 @@ function saveToFile(): void {
   }
 }
 
-async function persist(): Promise<void> {
+async function persist(): Promise<PersistResult> {
   const backend = getStorageBackend();
   const count = config.allowed.length;
   console.log("[user-config] persist: backend=" + backend + ", usuarios=" + count);
   if (backend === "sheet") {
     try {
       await saveToSheet();
+      return { backend: "sheet", ok: true, count };
     } catch (e) {
+      const err = e as Error;
+      const msg = err?.message ?? String(e);
       console.error("[user-config] persist: fallo al guardar en Google Sheet.", e);
-      throw e;
+      return { backend: "sheet", ok: false, count, error: msg };
     }
   } else {
-    saveToFile();
+    try {
+      saveToFile();
+      return { backend: "file", ok: true, count };
+    } catch (e) {
+      const err = e as Error;
+      return { backend: "file", ok: false, count, error: err?.message ?? String(e) };
+    }
   }
 }
 
@@ -277,31 +294,32 @@ export function getPhone(userId: number): string | undefined {
   return config.userInfo[String(userId)]?.phone;
 }
 
-export async function setUserInfo(userId: number, info: UserInfo): Promise<void> {
+export async function setUserInfo(userId: number, info: UserInfo): Promise<PersistResult> {
   const key = String(userId);
   config.userInfo[key] = { ...config.userInfo[key], ...info };
-  await persist();
+  return persist();
 }
 
-export async function addAllowed(userId: number): Promise<void> {
+export async function addAllowed(userId: number): Promise<PersistResult> {
   if (!config.allowed.includes(userId)) {
     config.allowed.push(userId);
-    await persist();
+    return persist();
   }
+  return { backend: getStorageBackend(), ok: true, count: config.allowed.length };
 }
 
-export async function removeAllowed(userId: number): Promise<void> {
+export async function removeAllowed(userId: number): Promise<PersistResult> {
   config.allowed = config.allowed.filter((id) => id !== userId);
   const key = String(userId);
   delete config.userInfo[key];
   delete config.menus[key];
-  await persist();
+  return persist();
 }
 
-export async function setExtraMenus(userId: number, menuIds: string[]): Promise<void> {
+export async function setExtraMenus(userId: number, menuIds: string[]): Promise<PersistResult> {
   const key = String(userId);
   config.menus[key] = [...menuIds];
-  await persist();
+  return persist();
 }
 
 export async function toggleExtraMenu(userId: number, menuId: string): Promise<boolean> {
