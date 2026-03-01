@@ -21,10 +21,14 @@ import {
   setUserInfo,
   isOwner,
   initUserConfig,
-  EXTRA_MENU_IDS,
-  EXTRA_MENU_LABELS,
-  type ExtraMenuId,
 } from "./user-config.js";
+import {
+  registerExtraMenu,
+  getExtraMenuIds,
+  getExtraMenuLabel,
+  getHandler,
+  EXTRA_MENU_CALLBACK_PREFIX,
+} from "./menu-registry.js";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
@@ -41,7 +45,7 @@ const HELP_TEXT =
 
 type GameMenu = "fijo" | "corrido" | "ambos";
 
-/** Menú según usuario: siempre Fijo, Corrido, Ambos, Ayuda. Est. grupos/individuales: todos si no hay dueño; si hay dueño, él los ve siempre y a otros solo si los asigna. */
+/** Menú: default (Fijo, Corrido, Ambos) + menús extra asignados (registry) + Ayuda. Dueño ve todos los extra y Seguridad. */
 function buildMainKeyboard(userId: number | undefined): InlineKeyboard {
   const kb = new InlineKeyboard()
     .text("🎯 Fijo (P3)", "menu_fijo")
@@ -49,20 +53,17 @@ function buildMainKeyboard(userId: number | undefined): InlineKeyboard {
     .row()
     .text("☀️🌙 Ambos (Fijo + Corrido)", "menu_ambos");
   const ownerId = getOwnerId();
-  if (ownerId === null) {
-    kb.row().text(EXTRA_MENU_LABELS.est_grupos, "menu_estadisticas").text(EXTRA_MENU_LABELS.est_individuales, "stats_individual");
-  } else if (userId !== undefined) {
-    if (userId === ownerId) {
-      kb.row().text(EXTRA_MENU_LABELS.est_grupos, "menu_estadisticas").text(EXTRA_MENU_LABELS.est_individuales, "stats_individual");
-    } else {
-      const extra = getExtraMenus(userId);
-      if (extra.length > 0) {
-        kb.row();
-        for (const id of extra) {
-          if (id === "est_grupos") kb.text(EXTRA_MENU_LABELS.est_grupos, "menu_estadisticas");
-          else if (id === "est_individuales") kb.text(EXTRA_MENU_LABELS.est_individuales, "stats_individual");
-        }
-      }
+  const extraIds = getExtraMenuIds();
+  const showExtra = extraIds.filter((id) => {
+    if (ownerId === null) return true;
+    if (userId === ownerId) return true;
+    return getExtraMenus(userId ?? 0).includes(id);
+  });
+  if (showExtra.length > 0) {
+    kb.row();
+    for (const id of showExtra) {
+      const label = getExtraMenuLabel(id);
+      if (label) kb.text(label, EXTRA_MENU_CALLBACK_PREFIX + id);
     }
   }
   kb.row().text("❓ Ayuda", "help");
@@ -106,6 +107,38 @@ function buildDiasDiferenciaKeyboard(): InlineKeyboard {
     .text("10", "stats_days_10")
     .row()
     .text("◀️ Volver", "volver");
+}
+
+/** Registro de menús extra (asignables por usuario). Agregar aquí nuevos menús y su handler. */
+function registerExtraMenus(): void {
+  registerExtraMenu("est_grupos", "📊 Est. grupos", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const result =
+      "📊 *Estadísticas por grupos* (Fijo P3)\n\nUsa los 2 últimos dígitos de cada sorteo (M y E). Grupos: terminales (0-9), iniciales (0-9), dobles.\n\n🔥 Hot = (Máx.hist − Máx.actual) ≤ Días diferencia.";
+    try {
+      await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: buildEstadisticasKeyboard() });
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+  });
+  registerExtraMenu("est_individuales", "📈 Est. individuales", async (ctx) => {
+    await ctx.answerCallbackQuery({ text: "Calculando…" });
+    let result: string;
+    let keyboard = buildMainKeyboard(ctx.from?.id);
+    try {
+      const map3 = await getP3Map();
+      result = buildIndividualTop10Message(map3, hotThresholdDays);
+    } catch (e) {
+      console.error("Individual stats error:", e);
+      result = "No pude cargar el historial P3. Prueba más tarde.";
+    }
+    try {
+      await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
+    } catch (err) {
+      const msg = (err as Error).message ?? "";
+      if (!msg.includes("message is not modified")) console.error("Error en callback_query:", err);
+    }
+  });
 }
 
 const bot = new Bot(BOT_TOKEN);
@@ -176,13 +209,20 @@ function buildSecurityKeyboard(): InlineKeyboard {
     .text("◀️ Volver al menú principal", "security_main");
 }
 
-/** Teclado: una fila por menú con botón ➕ (dar acceso) y ➖ (quitar acceso). */
+/** Una línea de texto con ID, nombre y teléfono del usuario (para listas en Seguridad). */
+function formatUserLine(uid: number): string {
+  const name = getUsername(uid) || "—";
+  const phone = getPhone(uid);
+  return `• \`${uid}\` — ${name} — ${phone ? "📞 " + phone : "—"}`;
+}
+
+/** Teclado: una fila por menú extra (registry) con ➕ y ➖. */
 function buildUserMenusKeyboard(uid: number): InlineKeyboard {
   const kb = new InlineKeyboard();
-  for (const menuId of EXTRA_MENU_IDS) {
+  for (const menuId of getExtraMenuIds()) {
     kb
-      .text("➕", `admin_menu_add_${uid}_${menuId}`)
-      .text("➖", `admin_menu_remove_${uid}_${menuId}`)
+      .text("➕", `admin_menu_add_${uid}|${menuId}`)
+      .text("➖", `admin_menu_remove_${uid}|${menuId}`)
       .row();
   }
   kb.text("◀️ Volver a Seguridad", "security_open");
@@ -202,7 +242,9 @@ bot.on("callback_query:data", async (ctx) => {
   let result: string;
   let keyboard: InlineKeyboard = buildMainKeyboard(ctx.from?.id);
   const asyncData =
-    /^(fijo|corrido|ambos)_(hoy|ayer|semana)$/.test(data) || data === "stats_grupos" || data === "stats_individual";
+    /^(fijo|corrido|ambos)_(hoy|ayer|semana)$/.test(data) ||
+    data === "stats_grupos" ||
+    (data.startsWith(EXTRA_MENU_CALLBACK_PREFIX) && !!getHandler(data.slice(EXTRA_MENU_CALLBACK_PREFIX.length)));
 
   if (data === "help") {
     result = "*❓ Ayuda*\n\n" + HELP_TEXT;
@@ -233,13 +275,15 @@ bot.on("callback_query:data", async (ctx) => {
       keyboard = new InlineKeyboard().text("◀️ Cancelar", "security_open");
     } else if (data === "admin_remove") {
       const list = getAllowedUsers();
+      const slice = list.slice(0, 30);
       result =
         list.length === 0
           ? "➖ *Quitar acceso*\n\n_No hay usuarios con acceso_ (solo tú como dueño)."
-          : "➖ *Quitar acceso*\n\nToca ❌ junto al usuario para quitarle el acceso:";
+          : "➖ *Quitar acceso*\n\nToca ❌ para quitar el acceso a ese usuario.\n\n" + slice.map(formatUserLine).join("\n");
       keyboard = new InlineKeyboard();
-      for (const uid of list.slice(0, 30)) {
-        keyboard.text(`❌ ${uid}`, `admin_revoke_${uid}`).row();
+      for (const uid of slice) {
+        const label = getUsername(uid) ? `❌ ${getUsername(uid)}` : `❌ ${uid}`;
+        keyboard.text(label, `admin_revoke_${uid}`).row();
       }
       keyboard.text("◀️ Volver a Seguridad", "security_open");
     } else if (data.startsWith("admin_revoke_")) {
@@ -250,24 +294,29 @@ bot.on("callback_query:data", async (ctx) => {
       } else {
         await removeAllowed(uid);
         const list = getAllowedUsers();
+        const slice = list.slice(0, 30);
         result =
           list.length === 0
             ? `✅ Usuario \`${uid}\` sin acceso. Ya no quedan otros usuarios en la lista.`
-            : `✅ Usuario \`${uid}\` sin acceso. Toca ❌ para quitar a otro:`;
+            : `✅ Usuario \`${uid}\` sin acceso. Toca ❌ para quitar a otro:\n\n` + slice.map(formatUserLine).join("\n");
         keyboard = new InlineKeyboard();
-        for (const id of list.slice(0, 30)) {
-          keyboard.text(`❌ ${id}`, `admin_revoke_${id}`).row();
+        for (const id of slice) {
+          const label = getUsername(id) ? `❌ ${getUsername(id)}` : `❌ ${id}`;
+          keyboard.text(label, `admin_revoke_${id}`).row();
         }
         keyboard.text("◀️ Volver a Seguridad", "security_open");
       }
     } else if (data === "admin_menus") {
       const list = getAllowedUsers();
+      const slice = list.slice(0, 20);
+      result =
+        "📋 *Menús por usuario*\n\nElige un usuario para asignar menús extra:\n\n" + slice.map(formatUserLine).join("\n");
       keyboard = new InlineKeyboard();
-      for (const uid of list.slice(0, 20)) {
-        keyboard.text(`Usuario ${uid}`, `admin_menus_${uid}`).row();
+      for (const uid of slice) {
+        const label = getUsername(uid) ? `${getUsername(uid)} (${uid})` : `Usuario ${uid}`;
+        keyboard.text(label.length > 64 ? `Usuario ${uid}` : label, `admin_menus_${uid}`).row();
       }
       keyboard.text("◀️ Volver a Seguridad", "security_open");
-      result = "📋 *Menús por usuario*\n\nElige un usuario para asignar menús extra (Est. grupos, Est. individuales):";
     } else if (data.startsWith("admin_menus_") && !data.includes("_add_") && !data.includes("_remove_")) {
       const uid = parseInt(data.replace("admin_menus_", ""), 10);
       if (Number.isNaN(uid)) {
@@ -276,38 +325,41 @@ bot.on("callback_query:data", async (ctx) => {
       } else {
         keyboard = buildUserMenusKeyboard(uid);
         const extra = getExtraMenus(uid);
-        const menuList = EXTRA_MENU_IDS.map((id) => `• ${EXTRA_MENU_LABELS[id]}${extra.includes(id) ? " ✓" : ""}`).join("\n");
+        const ids = getExtraMenuIds();
+        const menuList = ids.map((id) => `• ${getExtraMenuLabel(id) ?? id}${extra.includes(id) ? " ✓" : ""}`).join("\n");
         result = `📋 *Menús para usuario* \`${uid}\`\n\nCada fila: ➕ dar acceso, ➖ quitar acceso.\n\n${menuList}`;
       }
     } else if (data.startsWith("admin_menu_add_")) {
       const rest = data.replace("admin_menu_add_", "");
-      const [uidStr, menuId] = rest.split("_");
+      const [uidStr, menuId] = rest.includes("|") ? rest.split("|") : [rest.split("_")[0], rest.split("_").slice(1).join("_")];
       const uid = parseInt(uidStr!, 10);
-      if (Number.isNaN(uid) || !EXTRA_MENU_IDS.includes(menuId as ExtraMenuId)) {
+      const validIds = getExtraMenuIds();
+      if (Number.isNaN(uid) || !validIds.includes(menuId)) {
         result = "Error.";
         keyboard = buildSecurityKeyboard();
       } else {
         const extra = getExtraMenus(uid);
-        if (!extra.includes(menuId as ExtraMenuId)) await toggleExtraMenu(uid, menuId as ExtraMenuId);
+        if (!extra.includes(menuId)) await toggleExtraMenu(uid, menuId);
         keyboard = buildUserMenusKeyboard(uid);
         const extraAfter = getExtraMenus(uid);
-        const menuList = EXTRA_MENU_IDS.map((id) => `• ${EXTRA_MENU_LABELS[id]}${extraAfter.includes(id) ? " ✓" : ""}`).join("\n");
-        result = `📋 *Menús para usuario* \`${uid}\`\n\n✅ Acceso dado: ${EXTRA_MENU_LABELS[menuId as ExtraMenuId]}\n\n${menuList}`;
+        const menuList = validIds.map((id) => `• ${getExtraMenuLabel(id) ?? id}${extraAfter.includes(id) ? " ✓" : ""}`).join("\n");
+        result = `📋 *Menús para usuario* \`${uid}\`\n\n✅ Acceso dado: ${getExtraMenuLabel(menuId) ?? menuId}\n\n${menuList}`;
       }
     } else if (data.startsWith("admin_menu_remove_")) {
       const rest = data.replace("admin_menu_remove_", "");
-      const [uidStr, menuId] = rest.split("_");
+      const [uidStr, menuId] = rest.includes("|") ? rest.split("|") : [rest.split("_")[0], rest.split("_").slice(1).join("_")];
       const uid = parseInt(uidStr!, 10);
-      if (Number.isNaN(uid) || !EXTRA_MENU_IDS.includes(menuId as ExtraMenuId)) {
+      const validIds = getExtraMenuIds();
+      if (Number.isNaN(uid) || !validIds.includes(menuId)) {
         result = "Error.";
         keyboard = buildSecurityKeyboard();
       } else {
         const extra = getExtraMenus(uid);
-        if (extra.includes(menuId as ExtraMenuId)) await toggleExtraMenu(uid, menuId as ExtraMenuId);
+        if (extra.includes(menuId)) await toggleExtraMenu(uid, menuId);
         keyboard = buildUserMenusKeyboard(uid);
         const extraAfter = getExtraMenus(uid);
-        const menuList = EXTRA_MENU_IDS.map((id) => `• ${EXTRA_MENU_LABELS[id]}${extraAfter.includes(id) ? " ✓" : ""}`).join("\n");
-        result = `📋 *Menús para usuario* \`${uid}\`\n\n❌ Acceso quitado: ${EXTRA_MENU_LABELS[menuId as ExtraMenuId]}\n\n${menuList}`;
+        const menuList = validIds.map((id) => `• ${getExtraMenuLabel(id) ?? id}${extraAfter.includes(id) ? " ✓" : ""}`).join("\n");
+        result = `📋 *Menús para usuario* \`${uid}\`\n\n❌ Acceso quitado: ${getExtraMenuLabel(menuId) ?? menuId}\n\n${menuList}`;
       }
     } else if (data === "admin_back") {
       addingUserFlow.delete(ctx.from!.id);
@@ -353,17 +405,15 @@ bot.on("callback_query:data", async (ctx) => {
       if (!(e as Error).message?.includes("message is not modified")) console.error(e);
     }
     return;
-  } else if (data === "menu_estadisticas") {
-    await ctx.answerCallbackQuery();
-    result = "📊 *Estadísticas por grupos* (Fijo P3)\n\nUsa los 2 últimos dígitos de cada sorteo (M y E). Grupos: terminales (0-9), iniciales (0-9), dobles.\n\n🔥 Hot = (Máx.hist − Máx.actual) ≤ Días diferencia.";
-    keyboard = buildEstadisticasKeyboard();
-    try {
-      await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
-    } catch (e) {
-      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+  } else if (data.startsWith(EXTRA_MENU_CALLBACK_PREFIX)) {
+    const menuId = data.slice(EXTRA_MENU_CALLBACK_PREFIX.length);
+    const handler = getHandler(menuId);
+    if (handler) {
+      await handler(ctx);
+      return;
     }
-    return;
-  } else if (data === "volver") {
+  }
+  if (data === "volver") {
     await ctx.answerCallbackQuery();
     result = "👋 Elige juego y luego el período:";
     try {
@@ -392,23 +442,6 @@ bot.on("callback_query:data", async (ctx) => {
       await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
     } catch (e) {
       if (!(e as Error).message?.includes("message is not modified")) console.error(e);
-    }
-    return;
-  } else if (data === "stats_individual") {
-    await ctx.answerCallbackQuery({ text: "Calculando…" });
-    try {
-      const map3 = await getP3Map();
-      result = buildIndividualTop10Message(map3, hotThresholdDays);
-      keyboard = buildMainKeyboard(ctx.from?.id);
-    } catch (e) {
-      console.error("Individual stats error:", e);
-      result = "No pude cargar el historial P3. Prueba más tarde.";
-    }
-    try {
-      await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
-    } catch (err) {
-      const msg = (err as Error).message ?? "";
-      if (!msg.includes("message is not modified")) console.error("Error en callback_query:", err);
     }
     return;
   } else if (data === "stats_grupos") {
@@ -1110,6 +1143,7 @@ async function main(): Promise<void> {
   }
 
   await initUserConfig();
+  registerExtraMenus();
   await bot.init();
 
   await bot.api.setMyCommands([

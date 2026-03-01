@@ -12,14 +12,6 @@ import { JWT } from "google-auth-library";
 const CONFIG_DIR = path.join(process.cwd(), "data");
 const CONFIG_PATH = path.join(CONFIG_DIR, "bot-users.json");
 
-export const EXTRA_MENU_IDS = ["est_grupos", "est_individuales"] as const;
-export type ExtraMenuId = (typeof EXTRA_MENU_IDS)[number];
-
-export const EXTRA_MENU_LABELS: Record<ExtraMenuId, string> = {
-  est_grupos: "📊 Est. grupos",
-  est_individuales: "📈 Est. individuales",
-};
-
 export interface UserInfo {
   name?: string;
   phone?: string;
@@ -27,15 +19,16 @@ export interface UserInfo {
 
 interface UsersConfig {
   allowed: number[];
-  menus: Record<string, ExtraMenuId[]>;
+  /** Por userId: lista de ids de menús extra asignados (est_grupos, est_individuales, o los registrados en menu-registry). */
+  menus: Record<string, string[]>;
   userInfo: Record<string, UserInfo>;
 }
 
 const defaultConfig: UsersConfig = { allowed: [], menus: {}, userInfo: {} };
 let config: UsersConfig = { ...defaultConfig };
 
-const SHEET_HEADERS = ["userId", "nombre", "telefono", "est_grupos", "est_individuales"] as const;
-type SheetRow = { userId: string; nombre: string; telefono: string; est_grupos: string; est_individuales: string };
+const SHEET_HEADERS = ["userId", "nombre", "telefono", "menus"] as const;
+type SheetRow = { userId: string; nombre: string; telefono: string; menus: string };
 
 function useGoogleSheet(): boolean {
   const id = process.env.GOOGLE_SHEET_ID;
@@ -102,20 +95,24 @@ async function loadFromSheet(): Promise<UsersConfig> {
       console.log("[user-config] Google Sheet: cabecera creada (primera vez).");
       return { ...defaultConfig };
     }
-    const rows = await sheet.getRows<SheetRow>({ offset: 0 });
+    const rows = await sheet.getRows<SheetRow & { est_grupos?: string; est_individuales?: string }>({ offset: 0 });
     const allowed: number[] = [];
-    const menus: Record<string, ExtraMenuId[]> = {};
+    const menus: Record<string, string[]> = {};
     const userInfo: Record<string, UserInfo> = {};
     for (const row of rows) {
       const uidStr = String(row.get("userId") ?? "").trim();
       const uid = parseInt(uidStr, 10);
       if (uidStr === "" || Number.isNaN(uid)) continue;
       allowed.push(uid);
-      const g = String(row.get("est_grupos") ?? "").trim();
-      const i = String(row.get("est_individuales") ?? "").trim();
-      const menuIds: ExtraMenuId[] = [];
-      if (g === "1" || g.toLowerCase() === "true") menuIds.push("est_grupos");
-      if (i === "1" || i.toLowerCase() === "true") menuIds.push("est_individuales");
+      let menuIds: string[] = [];
+      const menusStr = String(row.get("menus") ?? "").trim();
+      if (menusStr) menuIds = menusStr.split(",").map((s) => s.trim()).filter(Boolean);
+      else {
+        const g = String(row.get("est_grupos") ?? "").trim();
+        const i = String(row.get("est_individuales") ?? "").trim();
+        if (g === "1" || g.toLowerCase() === "true") menuIds.push("est_grupos");
+        if (i === "1" || i.toLowerCase() === "true") menuIds.push("est_individuales");
+      }
       menus[uidStr] = menuIds;
       const nombre = String(row.get("nombre") ?? "").trim();
       const telefono = String(row.get("telefono") ?? "").trim();
@@ -167,14 +164,13 @@ async function saveToSheet(): Promise<void> {
     await sheet.clearRows();
     const rows: SheetRow[] = config.allowed.map((uid) => {
       const key = String(uid);
-      const extra = config.menus[key] ?? [];
+      const menuIds = config.menus[key] ?? [];
       const info = config.userInfo[key];
       return {
         userId: key,
         nombre: info?.name ?? "",
         telefono: info?.phone ?? "",
-        est_grupos: extra.includes("est_grupos") ? "1" : "0",
-        est_individuales: extra.includes("est_individuales") ? "1" : "0",
+        menus: menuIds.join(","),
       };
     });
     if (rows.length > 0) {
@@ -228,9 +224,9 @@ export function isAllowed(userId: number): boolean {
   return config.allowed.includes(userId);
 }
 
-export function getExtraMenus(userId: number): ExtraMenuId[] {
+export function getExtraMenus(userId: number): string[] {
   const list = config.menus[String(userId)];
-  return Array.isArray(list) ? list.filter((m) => EXTRA_MENU_IDS.includes(m)) : [];
+  return Array.isArray(list) ? [...list] : [];
 }
 
 export function getAllowedUsers(): number[] {
@@ -266,13 +262,13 @@ export async function removeAllowed(userId: number): Promise<void> {
   await persist();
 }
 
-export async function setExtraMenus(userId: number, menuIds: ExtraMenuId[]): Promise<void> {
+export async function setExtraMenus(userId: number, menuIds: string[]): Promise<void> {
   const key = String(userId);
-  config.menus[key] = menuIds.filter((m) => EXTRA_MENU_IDS.includes(m));
+  config.menus[key] = [...menuIds];
   await persist();
 }
 
-export async function toggleExtraMenu(userId: number, menuId: ExtraMenuId): Promise<boolean> {
+export async function toggleExtraMenu(userId: number, menuId: string): Promise<boolean> {
   const key = String(userId);
   const current = config.menus[key] ?? [];
   const has = current.includes(menuId);
