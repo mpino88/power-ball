@@ -42,6 +42,28 @@ export function getStorageBackend(): "sheet" | "file" {
   return useGoogleSheet() ? "sheet" : "file";
 }
 
+/** Razón por la que no se usa Google Sheet (para mostrar al usuario). Null si sí se usa Sheet. */
+export function getSheetUnavailableReason(): string | null {
+  const id = process.env.GOOGLE_SHEET_ID;
+  if (!id || String(id).trim() === "") return "Falta GOOGLE_SHEET_ID en el entorno.";
+  const json = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+  const key = process.env.GOOGLE_PRIVATE_KEY;
+  if (json) {
+    try {
+      const cred = JSON.parse(json) as { client_email?: string; private_key?: string };
+      if (!cred.client_email || !cred.private_key)
+        return "GOOGLE_SERVICE_ACCOUNT_JSON debe incluir client_email y private_key.";
+      return null;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return "GOOGLE_SERVICE_ACCOUNT_JSON inválido (debe ser JSON en una sola línea): " + msg;
+    }
+  }
+  if (email && key) return null;
+  return "Falta GOOGLE_SERVICE_ACCOUNT_JSON (o EMAIL + PRIVATE_KEY) en el entorno.";
+}
+
 /** Resultado de persist(): para mostrar en la respuesta al agregar acceso. */
 export interface PersistResult {
   backend: "sheet" | "file";

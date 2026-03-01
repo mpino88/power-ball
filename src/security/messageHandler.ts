@@ -5,7 +5,12 @@
 
 import type { Context } from "grammy";
 import { InlineKeyboard } from "grammy";
-import { addAllowed, setUserInfo, type PersistResult } from "../user-config.js";
+import {
+  addAllowed,
+  setUserInfo,
+  getSheetUnavailableReason,
+  type PersistResult,
+} from "../user-config.js";
 import { getExtraMenuIds } from "../menu-registry.js";
 import { addCustomMenu, updateCustomMenu } from "../custom-menus.js";
 import { updateExtraMenuLabel } from "../menu-registry.js";
@@ -88,6 +93,10 @@ export async function handleSecurityMessage(
       let logLine: string;
       if (!anyFailed) {
         logLine = `\n\n📁 _Guardado en: ${backendLabel} (${resultSave.count} usuarios)_`;
+        if (resultSave.backend === "file") {
+          const reason = getSheetUnavailableReason();
+          if (reason) logLine += `\n\n⚠️ _Para usar Google Sheet:_ ${reason}`;
+        }
       } else {
         const errors: string[] = [];
         if (addFailed && resultAdd.error) errors.push(`1º guardado: ${resultAdd.error}`);
