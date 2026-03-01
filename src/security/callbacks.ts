@@ -214,6 +214,9 @@ export async function handleSecurityCallback(
     result = "🔒 *Seguridad* — Gestiona quién puede usar el bot y sus menús.";
     keyboard = buildSecurityKeyboard();
   } else if (data === "admin_menus_manage") {
+    creatingMenuFlow.delete(ctx.from.id);
+    editingMenuFlow.delete(ctx.from.id);
+    deletingMenuFlow.delete(ctx.from.id);
     result =
       "⚙️ *Gestionar menús*\n\nLista, crea, edita o elimina menús extra (los que luego asignas a usuarios).";
     keyboard = buildManageMenusKeyboard();
@@ -230,8 +233,8 @@ export async function handleSecurityCallback(
   } else if (data === "admin_menus_create") {
     creatingMenuFlow.set(ctx.from.id, { step: 1 });
     result =
-      "➕ *Crear menú*\n\nEnvía solo el *texto del botón* (ej: 📅 Fechas Calor).\n\n" +
-      "El _id_ se generará automáticamente (minúsculas, snake_case, sin acentos) y se usará después para asignar la funcionalidad del botón.\n\n/cancel para cancelar.";
+      "➕ *Crear menú* (paso 1/2)\n\nEnvía el *título* del menú (texto del botón). Ej: 📅 Fechas Calor.\n\n" +
+      "El _id_ se generará automáticamente (minúsculas, snake_case, sin acentos).";
     keyboard = new InlineKeyboard().text("◀️ Cancelar", "admin_menus_manage");
   } else if (data === "admin_menus_edit") {
     const custom = getCustomMenus();

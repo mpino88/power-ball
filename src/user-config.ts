@@ -39,15 +39,20 @@ let config: UsersConfig = { ...defaultConfig };
 
 /**
  * Estructura del Sheet (y equivalente en bot-users.json):
- * - userId (A): ID de Telegram.
- * - nombre (B), telefono (C): nombre y teléfono (solicitud o usuario aprobado).
- * - menus (D): IDs de menús extra separados por coma (est_grupos, est_individuales, custom). Solo para allowed.
- * - plan (E): nombre del plan (ej. Básico, Pro) si aplica.
- * - plan_status (F): "requested" = solicitud pendiente (no tiene acceso); "approved" o vacío = usuario permitido.
- * Lógica: filas con plan_status === "requested" → requestedPlans (solo lectura/listado/aprobar). Resto → allowed + userInfo + menus.
+ * - userId (A), nombre (B), telefono (C).
+ * - menus (D): IDs de menús extra separados por coma.
+ * - menus_labels (E): texto del botón de cada menú, separados por coma (para mostrar en sheet).
+ * - plan (F), plan_status (G).
+ * Lógica: plan_status === "requested" → requestedPlans; resto → allowed + userInfo + menus.
  */
-const SHEET_HEADERS = ["userId", "nombre", "telefono", "menus", "plan", "plan_status"] as const;
-type SheetRow = { userId: string; nombre: string; telefono: string; menus: string; plan: string; plan_status: string };
+const SHEET_HEADERS = ["userId", "nombre", "telefono", "menus", "menus_labels", "plan", "plan_status"] as const;
+type SheetRow = { userId: string; nombre: string; telefono: string; menus: string; menus_labels: string; plan: string; plan_status: string };
+
+/** Resolver para obtener el texto (label) de un menú por ID. Se asigna desde bot al arranque (getExtraMenuLabel). */
+let sheetMenuLabelResolver: ((menuId: string) => string | undefined) | null = null;
+export function setSheetMenuLabelResolver(fn: (menuId: string) => string | undefined): void {
+  sheetMenuLabelResolver = fn;
+}
 
 function useGoogleSheet(): boolean {
   const id = process.env.GOOGLE_SHEET_ID?.trim();
@@ -278,11 +283,13 @@ async function saveToSheet(): Promise<void> {
       const key = String(uid);
       const menuIds = config.menus[key] ?? [];
       const info = config.userInfo[key];
+      const labels = menuIds.map((id) => sheetMenuLabelResolver?.(id) ?? id);
       return {
         userId: key,
         nombre: info?.name ?? "",
         telefono: info?.phone ?? "",
         menus: menuIds.join(","),
+        menus_labels: labels.join(", "),
         plan: info?.plan ?? "",
         plan_status: info?.plan_status ?? "approved",
       };
@@ -292,6 +299,7 @@ async function saveToSheet(): Promise<void> {
       nombre: req.name ?? "",
       telefono: req.phone ?? "",
       menus: "",
+      menus_labels: "",
       plan: req.plan,
       plan_status: "requested",
     }));

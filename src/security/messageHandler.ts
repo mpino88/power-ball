@@ -30,7 +30,7 @@ import {
 export interface SecurityMessageDeps {
   isOwner: (userId: number) => boolean;
   buildMainKeyboard: (userId: number | undefined) => InlineKeyboard;
-  onMenuCreated: (id: string, label: string) => void;
+  onMenuCreated: (id: string, label: string, description?: string) => void;
 }
 
 /**
@@ -147,37 +147,52 @@ export async function handleSecurityMessage(
 
   const creating = creatingMenuFlow.get(userId);
   if (creating) {
-    const label = text.trim();
-    if (!label) {
-      await ctx.reply("Escribe el texto del botón (ej: 📅 Fechas Calor).");
+    if (creating.step === 1) {
+      const label = text.trim();
+      if (!label) {
+        await ctx.reply("Escribe el *título* del menú (texto del botón). Ej: 📅 Fechas Calor.", {
+          parse_mode: "Markdown",
+          reply_markup: new InlineKeyboard().text("◀️ Cancelar", "admin_menus_manage"),
+        });
+        return true;
+      }
+      const id = labelToMenuId(label);
+      if (!id) {
+        await ctx.reply("El texto no genera un id válido. Usa letras o números (ej: Fechas Calor).");
+        return true;
+      }
+      if (getExtraMenuIds().includes(id)) {
+        await ctx.reply(
+          `Ya existe un menú con ese texto (id: \`${id}\`). Elige otro texto para el botón.`,
+          { parse_mode: "Markdown", reply_markup: buildManageMenusKeyboard() }
+        );
+        return true;
+      }
+      creatingMenuFlow.set(userId, { step: 2, label });
+      await ctx.reply("➕ *Nuevo menú* (paso 2/2)\n\nEnvía la *descripción* del menú o estrategia (opcional). Envía *-** para omitir.", {
+        parse_mode: "Markdown",
+        reply_markup: new InlineKeyboard().text("◀️ Cancelar", "admin_menus_manage"),
+      });
       return true;
     }
-    const id = labelToMenuId(label);
-    if (!id) {
-      await ctx.reply("El texto no genera un id válido. Usa letras o números (ej: Fechas Calor).");
-      return true;
-    }
+    // step 2: description
+    const description = text.trim() === "-" || text.trim() === "" ? undefined : text.trim();
+    const label = creating.label;
+    const id = labelToMenuId(label)!;
     creatingMenuFlow.delete(userId);
-    if (getExtraMenuIds().includes(id)) {
-      await ctx.reply(
-        `Ya existe un menú con ese texto (id: \`${id}\`). Elige otro texto para el botón.`,
-        { parse_mode: "Markdown", reply_markup: buildManageMenusKeyboard() }
-      );
-      return true;
-    }
-    if (!addCustomMenu(id, label)) {
+    if (!addCustomMenu(id, label, description)) {
       await ctx.reply("No se pudo crear (id duplicado).", {
         reply_markup: buildManageMenusKeyboard(),
       });
       return true;
     }
-    deps.onMenuCreated(id, label);
+    deps.onMenuCreated(id, label, description);
     const kb = new InlineKeyboard()
       .text("📋 Asignar a usuarios", "admin_menus")
       .row()
       .text("◀️ Volver a Gestionar menús", "admin_menus_manage");
     await ctx.reply(
-      `✅ Menú creado: *${label}* (\`${id}\`).\n\nEl id \`${id}\` se usa para asignar la funcionalidad del botón. Toca *Asignar a usuarios* para dar acceso.`,
+      `✅ Menú creado: *${label}* (\`${id}\`).\n\nEstado: _pendiente de implementación_. Asigna la funcionalidad en el código y marca como implementado cuando esté listo. Toca *Asignar a usuarios* para dar acceso.`,
       { parse_mode: "Markdown", reply_markup: kb }
     );
     return true;
@@ -191,7 +206,7 @@ export async function handleSecurityMessage(
       return true;
     }
     editingMenuFlow.delete(userId);
-    if (!updateCustomMenu(editing.menuId, newLabel)) {
+    if (!updateCustomMenu(editing.menuId, { label: newLabel })) {
       await ctx.reply("Error al actualizar.", { reply_markup: buildManageMenusKeyboard() });
       return true;
     }

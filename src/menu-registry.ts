@@ -16,9 +16,21 @@ import type { Context } from "grammy";
 
 export type ExtraMenuHandler = (ctx: Context) => Promise<void>;
 
+/** Status: pendiente si no tiene funcionalidad asignada; implemented si tiene handler real. */
+export type ExtraMenuStatus = "pendiente" | "implemented";
+
+export interface RegisterExtraMenuOptions {
+  /** Descripción del menú/estrategia. */
+  description?: string;
+  /** Si es true, el menú se considera pendiente de implementación (sin funcionalidad). */
+  isPlaceholder?: boolean;
+}
+
 interface ExtraMenuEntry {
   label: string;
   handler: ExtraMenuHandler;
+  description?: string;
+  isPlaceholder?: boolean;
 }
 
 const registry = new Map<string, ExtraMenuEntry>();
@@ -26,9 +38,20 @@ const registry = new Map<string, ExtraMenuEntry>();
 /**
  * Registra un menú extra. Llamar al arranque del bot (p. ej. desde bot.ts).
  * El callback que verá el usuario será "menu_<id>".
+ * Si isPlaceholder es true (p. ej. menús custom sin lógica), status será "pendiente".
  */
-export function registerExtraMenu(id: string, label: string, handler: ExtraMenuHandler): void {
-  registry.set(id, { label, handler });
+export function registerExtraMenu(
+  id: string,
+  label: string,
+  handler: ExtraMenuHandler,
+  options?: RegisterExtraMenuOptions
+): void {
+  registry.set(id, {
+    label,
+    handler,
+    description: options?.description,
+    isPlaceholder: options?.isPlaceholder ?? false,
+  });
 }
 
 export function unregisterExtraMenu(id: string): boolean {
@@ -40,12 +63,28 @@ export function updateExtraMenuLabel(id: string, label: string): void {
   if (entry) entry.label = label;
 }
 
+export function updateExtraMenuDescription(id: string, description: string | undefined): void {
+  const entry = registry.get(id);
+  if (entry) entry.description = description;
+}
+
 export function getExtraMenuIds(): string[] {
   return Array.from(registry.keys());
 }
 
 export function getExtraMenuLabel(id: string): string | undefined {
   return registry.get(id)?.label;
+}
+
+export function getExtraMenuDescription(id: string): string | undefined {
+  return registry.get(id)?.description;
+}
+
+/** "pendiente" si el menú no tiene funcionalidad (isPlaceholder); "implemented" si tiene handler real. */
+export function getExtraMenuStatus(id: string): ExtraMenuStatus {
+  const entry = registry.get(id);
+  if (!entry) return "pendiente";
+  return entry.isPlaceholder ? "pendiente" : "implemented";
 }
 
 export function getHandler(id: string): ExtraMenuHandler | undefined {

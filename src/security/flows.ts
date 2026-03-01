@@ -7,8 +7,8 @@ export type AddingStep =
   | { step: 2; userId: number; name?: string }
   | { step: 3; userId: number; name: string; phone?: string };
 
-/** Un solo paso: esperando el texto del botón (el id se deriva en messageHandler). */
-export type CreatingStep = { step: 1 };
+/** Crear menú: paso 1 = texto del botón; paso 2 = descripción. */
+export type CreatingStep = { step: 1 } | { step: 2; label: string };
 
 /** Crear plan: título → descripción → precio → menús. */
 export type CreatingPlanStep =

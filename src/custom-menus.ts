@@ -11,7 +11,12 @@ const FILE_PATH = path.join(DATA_DIR, "extra-menus.json");
 
 export interface CustomMenu {
   id: string;
+  /** Título del menú (texto del botón). */
   label: string;
+  /** Descripción del menú/estrategia. */
+  description?: string;
+  /** Por defecto "pendiente"; "implemented" cuando tiene funcionalidad asignada. */
+  status?: "pendiente" | "implemented";
 }
 
 let customMenus: CustomMenu[] = [];
@@ -22,7 +27,9 @@ function load(): CustomMenu[] {
       const raw = readFileSync(FILE_PATH, "utf8");
       const data = JSON.parse(raw) as { menus?: CustomMenu[] };
       const list = Array.isArray(data.menus) ? data.menus : [];
-      return list.filter((m) => m && typeof m.id === "string" && typeof m.label === "string");
+      return list.filter(
+      (m) => m && typeof m.id === "string" && typeof m.label === "string"
+    ) as CustomMenu[];
     }
   } catch (e) {
     console.error("[custom-menus] Error al cargar:", e);
@@ -52,19 +59,29 @@ export function isCustomMenu(id: string): boolean {
   return customMenus.some((m) => m.id === id);
 }
 
-export function addCustomMenu(id: string, label: string): boolean {
+export function addCustomMenu(id: string, label: string, description?: string): boolean {
   const normId = id.trim().replace(/\s+/g, "_");
   if (!normId) return false;
   if (customMenus.some((m) => m.id === normId)) return false;
-  customMenus.push({ id: normId, label: label.trim() || normId });
+  customMenus.push({
+    id: normId,
+    label: label.trim() || normId,
+    description: description?.trim() || undefined,
+    status: "pendiente",
+  });
   save();
   return true;
 }
 
-export function updateCustomMenu(id: string, label: string): boolean {
+export function updateCustomMenu(
+  id: string,
+  updates: { label?: string; description?: string; status?: "pendiente" | "implemented" }
+): boolean {
   const entry = customMenus.find((m) => m.id === id);
   if (!entry) return false;
-  entry.label = label.trim() || entry.label;
+  if (updates.label !== undefined) entry.label = updates.label.trim() || entry.label;
+  if (updates.description !== undefined) entry.description = updates.description.trim() || undefined;
+  if (updates.status !== undefined) entry.status = updates.status;
   save();
   return true;
 }

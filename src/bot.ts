@@ -14,11 +14,14 @@ import {
   initUserConfig,
   addPlanRequest,
   requestPlanChange,
+  setSheetMenuLabelResolver,
 } from "./user-config.js";
 import {
   registerExtraMenu,
   getHandler,
   getExtraMenuLabel,
+  getExtraMenuDescription,
+  getExtraMenuStatus,
   getExtraMenuIds,
   EXTRA_MENU_CALLBACK_PREFIX,
 } from "./menu-registry.js";
@@ -117,6 +120,10 @@ function buildMainKb(userId: number | undefined) {
   return buildMainKeyboard(userId, mainKbDeps);
 }
 
+/** Mensaje cuando el usuario abre un menú/estrategia sin funcionalidad asignada. */
+const MENU_PENDIENTE_MESSAGE =
+  "⏳ _Esta estrategia está pendiente de implementación por el administrador. Vuelve pronto._";
+
 /** Handler para menús creados por el dueño que aún no tienen lógica en código. */
 async function placeholderMenuHandler(ctx: {
   answerCallbackQuery: () => Promise<unknown>;
@@ -125,7 +132,7 @@ async function placeholderMenuHandler(ctx: {
 }): Promise<void> {
   await ctx.answerCallbackQuery();
   try {
-    await ctx.editMessageText("🚧 Esta función está en desarrollo.", {
+    await ctx.editMessageText(MENU_PENDIENTE_MESSAGE, {
       parse_mode: "Markdown",
       reply_markup: buildMainKb(ctx.from?.id),
     });
@@ -135,32 +142,48 @@ async function placeholderMenuHandler(ctx: {
 }
 
 function registerExtraMenus(): void {
-  registerExtraMenu("est_grupos", "📊 Est. grupos", async (ctx) => {
-    await ctx.answerCallbackQuery();
-    const result =
-      "📊 *Estadísticas por grupos* (Fijo P3)\n\nElige *Mediodía (M)* o *Noche (E)*. Grupos: terminales (0-9), iniciales (0-9), dobles.\n\n🔥 Hot = (Máx.hist − Máx.actual) ≤ Días diferencia.";
-    try {
-      await ctx.editMessageText(result, {
-        parse_mode: "Markdown",
-        reply_markup: buildEstadisticasKeyboard(hotThresholdDays),
-      });
-    } catch (e) {
-      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+  registerExtraMenu(
+    "est_grupos",
+    "📊 Est. grupos",
+    async (ctx) => {
+      await ctx.answerCallbackQuery();
+      const result =
+        "📊 *Estadísticas por grupos* (Fijo P3)\n\nElige *Mediodía (M)* o *Noche (E)*. Grupos: terminales (0-9), iniciales (0-9), dobles.\n\n🔥 Hot = (Máx.hist − Máx.actual) ≤ Días diferencia.";
+      try {
+        await ctx.editMessageText(result, {
+          parse_mode: "Markdown",
+          reply_markup: buildEstadisticasKeyboard(hotThresholdDays),
+        });
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+    },
+    {
+      description: "Estadísticas por grupos (terminales, iniciales, dobles) para Fijo P3.",
+      isPlaceholder: false,
     }
-  });
-  registerExtraMenu("est_individuales", "📈 Est. individuales", async (ctx) => {
-    await ctx.answerCallbackQuery();
-    const result =
-      "📈 *Top 10 más Hot* (números 00-99)\n\nElige *Mediodía (M)* o *Noche (E)*. 🔥 Hot = (Máx.hist − Máx.actual) ≤ Días diferencia.";
-    try {
-      await ctx.editMessageText(result, {
-        parse_mode: "Markdown",
-        reply_markup: buildIndividualPeriodKeyboard(hotThresholdDays),
-      });
-    } catch (e) {
-      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+  );
+  registerExtraMenu(
+    "est_individuales",
+    "📈 Est. individuales",
+    async (ctx) => {
+      await ctx.answerCallbackQuery();
+      const result =
+        "📈 *Top 10 más Hot* (números 00-99)\n\nElige *Mediodía (M)* o *Noche (E)*. 🔥 Hot = (Máx.hist − Máx.actual) ≤ Días diferencia.";
+      try {
+        await ctx.editMessageText(result, {
+          parse_mode: "Markdown",
+          reply_markup: buildIndividualPeriodKeyboard(hotThresholdDays),
+        });
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+    },
+    {
+      description: "Top 10 números más Hot (00-99) para Mediodía o Noche.",
+      isPlaceholder: false,
     }
-  });
+  );
 }
 
 const bot = new Bot(BOT_TOKEN);
@@ -320,6 +343,22 @@ bot.on("callback_query:data", async (ctx) => {
 
   if (data.startsWith(EXTRA_MENU_CALLBACK_PREFIX)) {
     const menuId = data.slice(EXTRA_MENU_CALLBACK_PREFIX.length);
+    if (getExtraMenuStatus(menuId) === "pendiente") {
+      await ctx.answerCallbackQuery();
+      const desc = getExtraMenuDescription(menuId);
+      const text = desc
+        ? `${MENU_PENDIENTE_MESSAGE}\n\n_${desc}_`
+        : MENU_PENDIENTE_MESSAGE;
+      try {
+        await ctx.editMessageText(text, {
+          parse_mode: "Markdown",
+          reply_markup: buildMainKb(ctx.from?.id),
+        });
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
     const handler = getHandler(menuId);
     if (handler) {
       await handler(ctx);
@@ -381,8 +420,11 @@ bot.on("message:text", async (ctx) => {
   const securityHandled = await handleSecurityMessage(ctx, {
     isOwner,
     buildMainKeyboard: buildMainKb,
-    onMenuCreated: (id, label) => {
-      registerExtraMenu(id, label, (c) => placeholderMenuHandler(c));
+    onMenuCreated: (id, label, description) => {
+      registerExtraMenu(id, label, (c) => placeholderMenuHandler(c), {
+        description,
+        isPlaceholder: true,
+      });
     },
   });
   if (securityHandled) return;
@@ -652,12 +694,16 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  await initUserConfig();
-  initPlans();
   registerExtraMenus();
   for (const m of initCustomMenus()) {
-    registerExtraMenu(m.id, m.label, (ctx) => placeholderMenuHandler(ctx));
+    registerExtraMenu(m.id, m.label, (ctx) => placeholderMenuHandler(ctx), {
+      description: m.description,
+      isPlaceholder: true,
+    });
   }
+  setSheetMenuLabelResolver(getExtraMenuLabel);
+  await initUserConfig();
+  initPlans();
   await bot.init();
 
   /* Precarga única: lectura de los PDF y extracción de los mapas de fechas. El resto se calcula on demand. */
