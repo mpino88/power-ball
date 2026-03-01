@@ -63,6 +63,11 @@ import {
 
 const BUILTIN_MENU_IDS = new Set(["est_grupos", "est_individuales"]);
 
+/** Escapa caracteres especiales de Telegram Markdown (legacy) para evitar "can't parse entities". */
+function escapeMd(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/_/g, "\\_").replace(/\*/g, "\\*").replace(/`/g, "\\`").replace(/\[/g, "\\[");
+}
+
 export interface SecurityCallbackDeps {
   buildMainKeyboard: (userId: number | undefined) => InlineKeyboard;
   getExtraMenuIds: () => string[];
@@ -498,13 +503,13 @@ export async function handleSecurityCallback(
     } else {
       const lines = requested.map((u) => {
         const id = String(u.userId);
-        const plan = u.plan || "—";
-        const nombre = (u.name && u.name.trim()) ? u.name.trim() : "—";
-        const telefono = (u.phone && u.phone.trim()) ? u.phone.trim() : "—";
+        const plan = escapeMd(u.plan || "—");
+        const nombre = escapeMd((u.name && u.name.trim()) ? u.name.trim() : "—");
+        const telefono = escapeMd((u.phone && u.phone.trim()) ? u.phone.trim() : "—");
         return `• *ID:* \`${id}\` | *Plan:* ${plan}\n  *Nombre:* ${nombre} | *Teléfono:* ${telefono}`;
       });
       result =
-        "📩 *Solicitudes pendientes* (plan_status = requested)\n\nSe muestran todos los datos cargados del Sheet/archivo:\n\n" +
+        "📩 *Solicitudes pendientes* (plan\\_status = requested)\n\nSe muestran todos los datos cargados del Sheet/archivo:\n\n" +
         lines.join("\n\n");
       keyboard = new InlineKeyboard();
       for (const u of requested) {
