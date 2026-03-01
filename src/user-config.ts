@@ -219,8 +219,9 @@ async function loadFromSheet(): Promise<UsersConfig> {
       const menusStr = getCol(COL_MENUS);
       if (menusStr) menuIds = menusStr.split(",").map((s) => s.trim()).filter(Boolean);
       else {
-        const g = String((row as Record<string, unknown>).est_grupos ?? "").trim();
-        const i = String((row as Record<string, unknown>).est_individuales ?? "").trim();
+        const rowObj = row as unknown as Record<string, unknown>;
+        const g = String(rowObj.est_grupos ?? "").trim();
+        const i = String(rowObj.est_individuales ?? "").trim();
         if (g === "1" || g.toLowerCase() === "true") menuIds.push("est_grupos");
         if (i === "1" || i.toLowerCase() === "true") menuIds.push("est_individuales");
       }
