@@ -57,8 +57,12 @@ export interface MenuHandlersDeps extends MainKeyboardDeps {
 
 const PICK3_WEB_URL = "https://floridalottery.com/games/draw-games/pick-3";
 const PICK4_WEB_URL = "https://floridalottery.com/games/draw-games/pick-4";
-const HOY_CONSULTA_LINKS =
-  `\n\nConsulta: [Pick 3](${PICK3_WEB_URL}) · [Pick 4](${PICK4_WEB_URL})`;
+
+function getHoyConsultaLink(game: GameMenu): string {
+  if (game === "fijo") return `\n\nConsulta: [Pick 3](${PICK3_WEB_URL})`;
+  if (game === "corrido") return `\n\nConsulta: [Pick 4](${PICK4_WEB_URL})`;
+  return `\n\nConsulta: [Pick 3](${PICK3_WEB_URL}) · [Pick 4](${PICK4_WEB_URL})`;
+}
 
 export async function handleMenuCallback(
   ctx: Context,
@@ -176,7 +180,7 @@ export async function handleMenuCallback(
         try {
           const { p3, p4 } = await deps.getCachedScrapeToday();
           if (!p3.isToday || !p4.isToday) {
-            result = "☀️🌙 *Hoy*\n\nNo hay datos disponible aún." + HOY_CONSULTA_LINKS;
+            result = "☀️🌙 *Hoy*\n\nNo hay datos disponible aún." + getHoyConsultaLink(game);
             return { result, keyboard: mainKb() };
           }
           const key = p3.key;
@@ -191,9 +195,9 @@ export async function handleMenuCallback(
             const key = deps.getTodayFloridaMMDDYY();
             const d3 = map3[key] ?? {};
             const d4 = map4[key] ?? {};
-            result = deps.buildResultOneDay(key, d3, d4, game, "Hoy") + HOY_CONSULTA_LINKS;
+            result = deps.buildResultOneDay(key, d3, d4, game, "Hoy") + getHoyConsultaLink(game);
           } catch {
-            result = "☀️🌙 *Hoy*\n\nNo pude obtener los resultados de hoy." + HOY_CONSULTA_LINKS;
+            result = "☀️🌙 *Hoy*\n\nNo pude obtener los resultados de hoy." + getHoyConsultaLink(game);
           }
           return { result, keyboard: mainKb() };
         }
