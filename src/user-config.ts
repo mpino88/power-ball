@@ -476,6 +476,14 @@ export function getPhone(userId: number): string | undefined {
   return config.userInfo[String(userId)]?.phone;
 }
 
+export function getPlan(userId: number): string | undefined {
+  return config.userInfo[String(userId)]?.plan;
+}
+
+export function getPlanStatus(userId: number): string | undefined {
+  return config.userInfo[String(userId)]?.plan_status;
+}
+
 export async function setUserInfo(userId: number, info: UserInfo): Promise<PersistResult> {
   const key = String(userId);
   config.userInfo[key] = { ...config.userInfo[key], ...info };

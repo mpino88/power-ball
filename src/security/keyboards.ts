@@ -9,7 +9,7 @@ import type { getPlanById as GetPlanById } from "../plans.js";
 
 export function buildSecurityKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
-    .text("👥 Listar usuarios con acceso", "admin_list")
+    .text("👥 Listar usuarios", "admin_list")
     .row()
     .text("➕ Agregar acceso", "admin_add")
     .text("➖ Quitar acceso", "admin_remove")

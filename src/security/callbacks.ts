@@ -9,6 +9,9 @@ import {
   getAllowedUsers,
   getUsername,
   getPhone,
+  getPlan,
+  getPlanStatus,
+  getOwnerId,
   addAllowed,
   removeAllowed,
   setUserInfo,
@@ -102,16 +105,26 @@ export async function handleSecurityCallback(
   } else if (data === "admin_list") {
     await reloadConfigFromStorage();
     const list = getAllowedUsers();
-    const lines = list.map((id) => {
-      const name = getUsername(id);
-      const phone = getPhone(id);
-      const extra = [name && `— ${name}`, phone && `📞 ${phone}`].filter(Boolean).join(" ");
-      return extra ? `• \`${id}\` ${extra}` : `• \`${id}\``;
+    const slice = list.slice(0, 30);
+    const lines = slice.map((uid) => {
+      const name = escapeMd((getUsername(uid) || "").trim() || "—");
+      const phone = escapeMd((getPhone(uid) || "").trim() || "—");
+      const plan = escapeMd((getPlan(uid) || "").trim() || "—");
+      const status = escapeMd((getPlanStatus(uid) || "").trim() || "—");
+      return `• *ID:* \`${uid}\` | *Nombre:* ${name} | *Teléfono:* ${phone}\n  *Plan:* ${plan} | *Estado:* ${status}`;
     });
     result =
-      "👥 *Usuarios con acceso* (" + list.length + ")\n\n" +
-      (lines.length ? lines.join("\n") : "_Ninguno_");
-    keyboard = new InlineKeyboard().text("◀️ Volver a Seguridad", "security_open");
+      "👥 *Listar usuarios* (" + list.length + ")\n\n" +
+      "Toda la info del usuario. Usa *Agregar acceso* o *Quitar acceso* para gestionar.\n\n" +
+      (lines.length ? lines.join("\n\n") : "_Ningún usuario con acceso_ (solo tú como dueño).");
+    keyboard = new InlineKeyboard().text("➕ Agregar acceso", "admin_add").row();
+    const ownerId = getOwnerId();
+    for (const uid of slice) {
+      if (ownerId !== null && uid === ownerId) continue;
+      const label = getUsername(uid) ? `➖ Quitar ${getUsername(uid)}` : `➖ Quitar ${uid}`;
+      keyboard.text(label.length > 64 ? `➖ Quitar ${uid}` : label, `admin_revoke_${uid}`).row();
+    }
+    keyboard.text("◀️ Volver a Seguridad", "security_open");
   } else if (data === "admin_add") {
     addingUserFlow.set(ctx.from.id, { step: 1 });
     result =
