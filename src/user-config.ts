@@ -15,20 +15,28 @@ const CONFIG_PATH = path.join(CONFIG_DIR, "bot-users.json");
 export interface UserInfo {
   name?: string;
   phone?: string;
+  plan?: string;
+  plan_status?: string;
+}
+
+/** Usuarios que solicitaron un plan pero aún no están aprobados (no están en allowed). */
+export interface PlanRequest {
+  plan: string;
 }
 
 interface UsersConfig {
   allowed: number[];
-  /** Por userId: lista de ids de menús extra asignados (est_grupos, est_individuales, o los registrados en menu-registry). */
   menus: Record<string, string[]>;
   userInfo: Record<string, UserInfo>;
+  /** userId -> { plan }. Solo usuarios con plan_status "requested" (no están en allowed). */
+  requestedPlans: Record<string, PlanRequest>;
 }
 
-const defaultConfig: UsersConfig = { allowed: [], menus: {}, userInfo: {} };
+const defaultConfig: UsersConfig = { allowed: [], menus: {}, userInfo: {}, requestedPlans: {} };
 let config: UsersConfig = { ...defaultConfig };
 
-const SHEET_HEADERS = ["userId", "nombre", "telefono", "menus"] as const;
-type SheetRow = { userId: string; nombre: string; telefono: string; menus: string };
+const SHEET_HEADERS = ["userId", "nombre", "telefono", "menus", "plan", "plan_status"] as const;
+type SheetRow = { userId: string; nombre: string; telefono: string; menus: string; plan: string; plan_status: string };
 
 function useGoogleSheet(): boolean {
   const id = process.env.GOOGLE_SHEET_ID?.trim();
@@ -92,24 +100,34 @@ export interface PersistResult {
   error?: string;
 }
 
+/** Quita saltos de línea literales (p. ej. al pegar en Render). No toca \\n dentro de strings. */
+function parseSheetJson(json: string): Record<string, unknown> | null {
+  try {
+    return JSON.parse(json) as Record<string, unknown>;
+  } catch {
+    const oneLine = json.replace(/\r\n/g, " ").replace(/\n/g, " ").replace(/\r/g, " ").trim();
+    try {
+      return JSON.parse(oneLine) as Record<string, unknown>;
+    } catch (e) {
+      console.error("[user-config] Error parsing GOOGLE_SERVICE_ACCOUNT_JSON:", e);
+      return null;
+    }
+  }
+}
+
 function getSheetAuth(): JWT | null {
   const json = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const key = process.env.GOOGLE_PRIVATE_KEY;
   if (json) {
-    try {
-      const cred = JSON.parse(json) as { client_email?: string; private_key?: string };
-      if (cred.client_email && cred.private_key) {
-        const privateKey = cred.private_key.replace(/\\n/g, "\n");
-        return new JWT({
-          email: cred.client_email,
-          key: privateKey,
-          scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-        });
-      }
-    } catch (e) {
-      console.error("[user-config] Error parsing GOOGLE_SERVICE_ACCOUNT_JSON:", e);
-      return null;
+    const cred = parseSheetJson(json) as { client_email?: string; private_key?: string } | null;
+    if (cred?.client_email && cred?.private_key) {
+      const privateKey = cred.private_key.replace(/\\n/g, "\n");
+      return new JWT({
+        email: cred.client_email,
+        key: privateKey,
+        scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+      });
     }
   }
   if (email && key) {
@@ -150,10 +168,17 @@ async function loadFromSheet(): Promise<UsersConfig> {
     const allowed: number[] = [];
     const menus: Record<string, string[]> = {};
     const userInfo: Record<string, UserInfo> = {};
+    const requestedPlans: Record<string, PlanRequest> = {};
     for (const row of rows) {
       const uidStr = String(row.get("userId") ?? "").trim();
       const uid = parseInt(uidStr, 10);
       if (uidStr === "" || Number.isNaN(uid)) continue;
+      const planStatus = String(row.get("plan_status") ?? "").trim().toLowerCase();
+      const planName = String(row.get("plan") ?? "").trim();
+      if (planStatus === "requested") {
+        requestedPlans[uidStr] = { plan: planName || "—" };
+        continue;
+      }
       allowed.push(uid);
       let menuIds: string[] = [];
       const menusStr = String(row.get("menus") ?? "").trim();
@@ -167,10 +192,15 @@ async function loadFromSheet(): Promise<UsersConfig> {
       menus[uidStr] = menuIds;
       const nombre = String(row.get("nombre") ?? "").trim();
       const telefono = String(row.get("telefono") ?? "").trim();
-      if (nombre || telefono) userInfo[uidStr] = { name: nombre || undefined, phone: telefono || undefined };
+      userInfo[uidStr] = {
+        name: nombre || undefined,
+        phone: telefono || undefined,
+        plan: planName || undefined,
+        plan_status: planStatus || undefined,
+      };
     }
-    console.log("[user-config] Google Sheet: cargados", allowed.length, "usuarios.");
-    return { allowed, menus, userInfo };
+    console.log("[user-config] Google Sheet: cargados", allowed.length, "usuarios;", Object.keys(requestedPlans).length, "solicitudes pendientes.");
+    return { allowed, menus, userInfo, requestedPlans };
   } catch (e) {
     console.error("[user-config] Error al cargar desde Google Sheet:", e);
     return { ...defaultConfig };
@@ -186,6 +216,7 @@ function loadFromFile(): UsersConfig {
         allowed: Array.isArray(data.allowed) ? data.allowed : [],
         menus: data.menus && typeof data.menus === "object" ? data.menus : {},
         userInfo: data.userInfo && typeof data.userInfo === "object" ? data.userInfo : {},
+        requestedPlans: data.requestedPlans && typeof data.requestedPlans === "object" ? data.requestedPlans : {},
       };
     }
   } catch (e) {
@@ -218,7 +249,7 @@ async function saveToSheet(): Promise<void> {
     }
     await sheet.setHeaderRow([...SHEET_HEADERS], 1);
     await sheet.clearRows();
-    const rows: SheetRow[] = config.allowed.map((uid) => {
+    const allowedRows: SheetRow[] = config.allowed.map((uid) => {
       const key = String(uid);
       const menuIds = config.menus[key] ?? [];
       const info = config.userInfo[key];
@@ -227,8 +258,19 @@ async function saveToSheet(): Promise<void> {
         nombre: info?.name ?? "",
         telefono: info?.phone ?? "",
         menus: menuIds.join(","),
+        plan: info?.plan ?? "",
+        plan_status: info?.plan_status ?? "approved",
       };
     });
+    const requestedRows: SheetRow[] = Object.entries(config.requestedPlans).map(([uid, req]) => ({
+      userId: uid,
+      nombre: "",
+      telefono: "",
+      menus: "",
+      plan: req.plan,
+      plan_status: "requested",
+    }));
+    const rows: SheetRow[] = [...allowedRows, ...requestedRows];
     if (rows.length > 0) {
       if (sheet.title.includes(":")) {
         const msg = "[user-config] Google Sheet: renombra la hoja y quita el carácter ':' del título (la API de Google falla si el nombre tiene ':').";
@@ -247,8 +289,8 @@ async function saveToSheet(): Promise<void> {
     if (msg.includes("404") || msg.includes("not found")) {
       const email = getSheetClientEmail();
       const hint = email
-        ? ` Comprueba que GOOGLE_SHEET_ID sea correcto y que la hoja esté compartida con ${email} como Editor.`
-        : " Comprueba GOOGLE_SHEET_ID y que la hoja esté compartida con el client_email de tu cuenta de servicio (Editor).";
+        ? ` 1) En Render, variable GOOGLE_SHEET_ID = ID de la hoja (ej: 12zXYV7G9Pg3n3_Fu-pMG67z6xGUlSbuY-Yfa94bzrI8), sin espacios. 2) En Google: abre la hoja → Compartir → añade ${email} como Editor.`
+        : " 1) GOOGLE_SHEET_ID = ID de la hoja en Render. 2) Comparte la hoja con el client_email de la cuenta de servicio (Editor).";
       throw new Error("Hoja no encontrada (404)." + hint);
     }
     if (msg.includes("403") || msg.includes("Forbidden") || msg.includes("Permission denied")) {
@@ -266,7 +308,15 @@ async function saveToSheet(): Promise<void> {
 function saveToFile(): void {
   try {
     if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
-    writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), "utf8");
+    writeFileSync(
+      CONFIG_PATH,
+      JSON.stringify(
+        { allowed: config.allowed, menus: config.menus, userInfo: config.userInfo, requestedPlans: config.requestedPlans },
+        null,
+        2
+      ),
+      "utf8"
+    );
   } catch (e) {
     console.error("Error saving user config:", e);
   }
@@ -378,6 +428,35 @@ export async function removeAllowed(userId: number): Promise<PersistResult> {
 export async function setExtraMenus(userId: number, menuIds: string[]): Promise<PersistResult> {
   const key = String(userId);
   config.menus[key] = [...menuIds];
+  return persist();
+}
+
+/** Registra solicitud de plan (columna E=plan, F=requested). Si usa Sheet, añade/actualiza la fila del userId. */
+export async function addPlanRequest(userId: number, planName: string): Promise<PersistResult> {
+  const key = String(userId);
+  config.requestedPlans[key] = { plan: planName };
+  return persist();
+}
+
+/** Lista de usuarios con plan_status "requested" (pendientes de aprobación). */
+export function getRequestedPlanUsers(): { userId: number; plan: string }[] {
+  return Object.entries(config.requestedPlans).map(([uid, req]) => ({
+    userId: parseInt(uid, 10),
+    plan: req.plan,
+  }));
+}
+
+/** Aprueba solicitud: quita de requestedPlans, añade a allowed, asigna menús del plan (si se pasan) y guarda plan/plan_status=approved. */
+export async function approvePlanRequest(userId: number, planMenuIds?: string[]): Promise<PersistResult> {
+  const key = String(userId);
+  const req = config.requestedPlans[key];
+  if (!req) {
+    return { backend: getStorageBackend(), ok: false, count: config.allowed.length, error: "Usuario no está en solicitudes pendientes." };
+  }
+  delete config.requestedPlans[key];
+  if (!config.allowed.includes(userId)) config.allowed.push(userId);
+  config.userInfo[key] = { ...config.userInfo[key], plan: req.plan, plan_status: "approved" };
+  if (Array.isArray(planMenuIds)) config.menus[key] = [...planMenuIds];
   return persist();
 }
 

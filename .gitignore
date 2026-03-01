@@ -5,3 +5,5 @@ dist/
 *.log
 .DS_Store
 data/
+# JSON de cuenta de servicio en una línea (no subir)
+oneline-google-creds.txt

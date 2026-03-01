@@ -15,6 +15,8 @@ import {
   toggleExtraMenu,
   getExtraMenus,
   removeMenuFromAllUsers,
+  getRequestedPlanUsers,
+  approvePlanRequest,
 } from "../user-config.js";
 import {
   getExtraMenuIds,
@@ -30,17 +32,38 @@ import {
   removeCustomMenu,
 } from "../custom-menus.js";
 import {
+  getPlans,
+  getPlanById,
+  getPlanByTitle,
+  removePlan,
+  titleToPlanId,
+  updatePlan,
+} from "../plans.js";
+import {
   buildSecurityKeyboard,
   buildManageMenusKeyboard,
+  buildManagePlansKeyboard,
   buildUserMenusKeyboard,
+  buildPlanMenusKeyboard,
   formatUserLine,
 } from "./keyboards.js";
-import { addingUserFlow, creatingMenuFlow, editingMenuFlow, deletingMenuFlow, clearAllFlows } from "./flows.js";
+import {
+  addingUserFlow,
+  creatingMenuFlow,
+  editingMenuFlow,
+  deletingMenuFlow,
+  creatingPlanFlow,
+  editingPlanFlow,
+  deletingPlanFlow,
+  clearAllFlows,
+} from "./flows.js";
 
 const BUILTIN_MENU_IDS = new Set(["est_grupos", "est_individuales"]);
 
 export interface SecurityCallbackDeps {
   buildMainKeyboard: (userId: number | undefined) => InlineKeyboard;
+  getExtraMenuIds: () => string[];
+  getExtraMenuLabel: (menuId: string) => string | undefined;
 }
 
 export async function handleSecurityCallback(
@@ -278,6 +301,188 @@ export async function handleSecurityCallback(
     deletingMenuFlow.delete(ctx.from.id);
     result = "⚙️ *Gestionar menús*\n\nLista, crea, edita o elimina menús extra.";
     keyboard = buildManageMenusKeyboard();
+  } else if (data === "admin_plans_manage") {
+    result =
+      "💰 *Gestionar planes*\n\nLos planes se muestran a usuarios sin acceso. Lista, añade, edita o elimina planes (título, descripción, precio).";
+    keyboard = buildManagePlansKeyboard();
+  } else if (data === "admin_plans_list") {
+    const list = getPlans();
+    const lines = list.map((p) => {
+      const menus = (p.menuIds?.length ? p.menuIds.join(", ") : "—") || "—";
+      return `• *${p.title}* — ${p.price}\n  _${p.description.slice(0, 50)}${p.description.length > 50 ? "…" : ""}_\n  Menús: \`${menus}\``;
+    });
+    result = "📋 *Planes*\n\n" + (lines.length ? lines.join("\n\n") : "_Ningún plan. Añade uno desde Gestionar planes._");
+    keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar planes", "admin_plans_manage");
+  } else if (data === "admin_plans_add") {
+    creatingPlanFlow.set(ctx.from.id, { step: 1 });
+    result =
+      "➕ *Añadir plan* (paso 1/4)\n\nEnvía el *título* del plan (ej: Plan Básico).\n\n/cancel para cancelar.";
+    keyboard = new InlineKeyboard().text("◀️ Cancelar", "admin_plans_manage");
+  } else if (data === "admin_plans_edit") {
+    const list = getPlans();
+    if (list.length === 0) {
+      result = "✏️ *Editar plan*\n\n_No hay planes._ Añade uno primero.";
+      keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar planes", "admin_plans_manage");
+    } else {
+      result = "✏️ *Editar plan*\n\nElige el plan a editar:";
+      keyboard = new InlineKeyboard();
+      for (const p of list) {
+        keyboard.text(`✏️ ${p.title} (${p.price})`, `admin_plans_edit_pick_${p.id}`).row();
+      }
+      keyboard.text("◀️ Volver a Gestionar planes", "admin_plans_manage");
+    }
+  } else if (data.startsWith("admin_plans_edit_pick_")) {
+    const planId = data.replace("admin_plans_edit_pick_", "");
+    const plan = getPlanById(planId);
+    if (!plan) {
+      result = "Error: plan no encontrado.";
+      keyboard = buildManagePlansKeyboard();
+    } else {
+      editingPlanFlow.set(ctx.from.id, { step: 1, planId });
+      result =
+        `✏️ *Editar plan* — ${plan.title}\n\nEnvía el *nuevo título* (ahora: ${plan.title}).\n\n/cancel para cancelar.`;
+      keyboard = new InlineKeyboard().text("◀️ Cancelar", "admin_plans_manage");
+    }
+  } else if (data === "admin_plans_delete") {
+    const list = getPlans();
+    if (list.length === 0) {
+      result = "🗑 *Eliminar plan*\n\n_No hay planes._";
+      keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar planes", "admin_plans_manage");
+    } else {
+      result = "🗑 *Eliminar plan*\n\nElige el plan a eliminar:";
+      keyboard = new InlineKeyboard();
+      for (const p of list) {
+        keyboard.text(`🗑 ${p.title}`, `admin_plans_delete_pick_${p.id}`).row();
+      }
+      keyboard.text("◀️ Volver a Gestionar planes", "admin_plans_manage");
+    }
+  } else if (data.startsWith("admin_plans_delete_pick_")) {
+    const planId = data.replace("admin_plans_delete_pick_", "");
+    const plan = getPlanById(planId);
+    if (!plan) {
+      result = "Error: plan no encontrado.";
+      keyboard = buildManagePlansKeyboard();
+    } else {
+      deletingPlanFlow.set(ctx.from.id, { planId });
+      result = `🗑 ¿Eliminar el plan *${plan.title}* (${plan.price})?`;
+      keyboard = new InlineKeyboard()
+        .text("✅ Sí, eliminar", `admin_plans_delete_confirm_${planId}`)
+        .text("❌ No", "admin_plans_delete_cancel")
+        .row()
+        .text("◀️ Volver a Gestionar planes", "admin_plans_manage");
+    }
+  } else if (data.startsWith("admin_plans_delete_confirm_")) {
+    const planId = data.replace("admin_plans_delete_confirm_", "");
+    deletingPlanFlow.delete(ctx.from.id);
+    const plan = getPlanById(planId);
+    if (!plan) {
+      result = "Error: plan no encontrado.";
+      keyboard = buildManagePlansKeyboard();
+    } else {
+      removePlan(planId);
+      result = `✅ Plan *${plan.title}* eliminado.`;
+      keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar planes", "admin_plans_manage");
+    }
+  } else if (data === "admin_plans_delete_cancel") {
+    deletingPlanFlow.delete(ctx.from.id);
+    result = "💰 *Gestionar planes*\n\nLista, añade, edita o elimina planes.";
+    keyboard = buildManagePlansKeyboard();
+  } else if (data === "admin_plans_menus") {
+    const list = getPlans();
+    if (list.length === 0) {
+      result = "📋 *Menús por plan*\n\n_No hay planes._ Crea uno primero.";
+      keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar planes", "admin_plans_manage");
+    } else {
+      result = "📋 *Menús por plan*\n\nElige el plan al que quieres asociar o desasociar menús:";
+      keyboard = new InlineKeyboard();
+      for (const p of list) {
+        const menuCount = p.menuIds?.length ?? 0;
+        keyboard.text(`📋 ${p.title} (${menuCount} menús)`, `admin_plans_menus_pick_${p.id}`).row();
+      }
+      keyboard.text("◀️ Volver a Gestionar planes", "admin_plans_manage");
+    }
+  } else if (data.startsWith("admin_plans_menus_pick_")) {
+    const planId = data.replace("admin_plans_menus_pick_", "");
+    const plan = getPlanById(planId);
+    if (!plan) {
+      result = "Plan no encontrado.";
+      keyboard = buildManagePlansKeyboard();
+    } else {
+      result = `📋 *Menús del plan: ${plan.title}*\n\n➕ = añadir menú al plan\n➖ = quitar menú del plan\n\nLos usuarios aprobados con este plan recibirán estos menús.`;
+      keyboard = buildPlanMenusKeyboard(planId, deps.getExtraMenuIds, deps.getExtraMenuLabel, getPlanById);
+    }
+  } else if (data.startsWith("admin_plan_menu_add_")) {
+    const rest = data.slice("admin_plan_menu_add_".length);
+    const [planId, menuId] = rest.split("|");
+    if (planId && menuId) {
+      const plan = getPlanById(planId);
+      if (plan) {
+        const current = plan.menuIds ?? [];
+        if (!current.includes(menuId)) {
+          updatePlan(planId, { menuIds: [...current, menuId] });
+        }
+        result = `📋 *Menús del plan: ${plan.title}*\n\n✅ Menú \`${menuId}\` asociado.`;
+        keyboard = buildPlanMenusKeyboard(planId, deps.getExtraMenuIds, deps.getExtraMenuLabel, getPlanById);
+      } else {
+        result = "Plan no encontrado.";
+        keyboard = buildManagePlansKeyboard();
+      }
+    } else {
+      result = "Error al procesar.";
+      keyboard = buildManagePlansKeyboard();
+    }
+  } else if (data.startsWith("admin_plan_menu_remove_")) {
+    const rest = data.slice("admin_plan_menu_remove_".length);
+    const [planId, menuId] = rest.split("|");
+    if (planId && menuId) {
+      const plan = getPlanById(planId);
+      if (plan) {
+        const current = (plan.menuIds ?? []).filter((m) => m !== menuId);
+        updatePlan(planId, { menuIds: current });
+        result = `📋 *Menús del plan: ${plan.title}*\n\nMenú \`${menuId}\` desasociado.`;
+        keyboard = buildPlanMenusKeyboard(planId, deps.getExtraMenuIds, deps.getExtraMenuLabel, getPlanById);
+      } else {
+        result = "Plan no encontrado.";
+        keyboard = buildManagePlansKeyboard();
+      }
+    } else {
+      result = "Error al procesar.";
+      keyboard = buildManagePlansKeyboard();
+    }
+  } else if (data === "admin_plans_requests") {
+    const requested = getRequestedPlanUsers();
+    if (requested.length === 0) {
+      result = "📩 *Solicitudes pendientes*\n\nNo hay solicitudes con estado _requested_. Los usuarios verán sus menús cuando apruebes su plan.";
+      keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar planes", "admin_plans_manage");
+    } else {
+      result =
+        "📩 *Solicitudes pendientes* (plan_status = requested)\n\nAprueba para dar acceso y asignar menús:\n\n" +
+        requested.map((u) => `• \`${u.userId}\` — ${u.plan}`).join("\n");
+      keyboard = new InlineKeyboard();
+      for (const u of requested) {
+        keyboard.text(`✅ Aprobar ${u.userId} (${u.plan})`, `admin_plans_approve_${u.userId}`).row();
+      }
+      keyboard.text("◀️ Volver a Gestionar planes", "admin_plans_manage");
+    }
+  } else if (data.startsWith("admin_plans_approve_")) {
+    const userIdStr = data.replace("admin_plans_approve_", "");
+    const userId = parseInt(userIdStr, 10);
+    if (Number.isNaN(userId)) {
+      result = "ID de usuario inválido.";
+      keyboard = buildManagePlansKeyboard();
+    } else {
+      const requested = getRequestedPlanUsers().find((u) => u.userId === userId);
+      const plan = requested ? getPlanByTitle(requested.plan) : undefined;
+      const planMenuIds = plan?.menuIds ?? [];
+      const approveResult = await approvePlanRequest(userId, planMenuIds);
+      if (approveResult.ok) {
+        const menuInfo = planMenuIds.length > 0 ? ` Menús del plan: ${planMenuIds.join(", ")}.` : "";
+        result = `✅ Usuario \`${userId}\` aprobado. Ya tiene acceso al bot.${menuInfo} Puedes asignar más menús en *Menús por usuario*.`;
+      } else {
+        result = (approveResult.error ?? "Error al aprobar.") + "\n\nVuelve a Solicitudes pendientes.";
+      }
+      keyboard = buildManagePlansKeyboard();
+    }
   } else {
     result = "🔒 *Seguridad* — Gestiona quién puede usar el bot y sus menús.";
     keyboard = buildSecurityKeyboard();

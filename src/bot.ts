@@ -12,6 +12,7 @@ import {
   getExtraMenus,
   isOwner,
   initUserConfig,
+  addPlanRequest,
 } from "./user-config.js";
 import {
   registerExtraMenu,
@@ -21,6 +22,7 @@ import {
   EXTRA_MENU_CALLBACK_PREFIX,
 } from "./menu-registry.js";
 import { initCustomMenus } from "./custom-menus.js";
+import { initPlans } from "./plans.js";
 import {
   buildGroupStatsMessage as buildGroupStatsMessageFromStats,
   buildIndividualTop10Message as buildIndividualTop10MessageFromStats,
@@ -35,7 +37,10 @@ import {
   handleSecurityCallback,
   handleSecurityMessage,
   buildSecurityKeyboard,
+  buildManagePlansKeyboard,
   clearAllFlows,
+  creatingPlanFlow,
+  editingPlanFlow,
 } from "./security/index.js";
 import {
   buildMainKeyboard,
@@ -163,6 +168,7 @@ bot.use(
     isAllowed,
     requestAccessLink: REQUEST_ACCESS_LINK,
     buildMainKeyboard: buildMainKb,
+    addPlanRequest,
   })
 );
 
@@ -201,7 +207,11 @@ bot.on("callback_query:data", async (ctx) => {
     (data.startsWith(EXTRA_MENU_CALLBACK_PREFIX) && !!getHandler(data.slice(EXTRA_MENU_CALLBACK_PREFIX.length)));
 
   if ((data === "security_open" || data === "security_main" || data.startsWith("admin_")) && ctx.from && isOwner(ctx.from.id)) {
-    const out = await handleSecurityCallback(ctx, data, { buildMainKeyboard: buildMainKb });
+    const out = await handleSecurityCallback(ctx, data, {
+      buildMainKeyboard: buildMainKb,
+      getExtraMenuIds,
+      getExtraMenuLabel,
+    });
     if (out) {
       try {
         await ctx.editMessageText(out.result, { parse_mode: "Markdown", reply_markup: out.keyboard });
@@ -286,7 +296,14 @@ bot.command("cancel", async (ctx) => {
   const userId = ctx.from?.id;
   if (userId) {
     waitingCustomDateGame.delete(userId);
+    const wasInPlanFlow = creatingPlanFlow.has(userId) || editingPlanFlow.has(userId);
     clearAllFlows(userId);
+    if (wasInPlanFlow && isOwner(userId)) {
+      await ctx.reply("Cancelado. Gestionar planes:", {
+        reply_markup: buildManagePlansKeyboard(),
+      });
+      return;
+    }
   }
   await ctx.reply("Cancelado.", { reply_markup: buildMainKb(ctx.from?.id) });
 });
@@ -570,6 +587,7 @@ async function main(): Promise<void> {
   }
 
   await initUserConfig();
+  initPlans();
   registerExtraMenus();
   for (const m of initCustomMenus()) {
     registerExtraMenu(m.id, m.label, (ctx) => placeholderMenuHandler(ctx));

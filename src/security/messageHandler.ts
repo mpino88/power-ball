@@ -14,12 +14,15 @@ import {
 import { getExtraMenuIds } from "../menu-registry.js";
 import { addCustomMenu, updateCustomMenu } from "../custom-menus.js";
 import { updateExtraMenuLabel } from "../menu-registry.js";
-import { buildSecurityKeyboard, buildManageMenusKeyboard } from "./keyboards.js";
+import { addPlan, updatePlan, titleToPlanId } from "../plans.js";
+import { buildSecurityKeyboard, buildManageMenusKeyboard, buildManagePlansKeyboard } from "./keyboards.js";
 import { labelToMenuId } from "./menuIdFromLabel.js";
 import {
   addingUserFlow,
   creatingMenuFlow,
   editingMenuFlow,
+  creatingPlanFlow,
+  editingPlanFlow,
   clearAllFlows,
 } from "./flows.js";
 
@@ -167,6 +170,121 @@ export async function handleSecurityMessage(
       reply_markup: buildManageMenusKeyboard(),
     });
     return true;
+  }
+
+  const creatingPlan = creatingPlanFlow.get(userId);
+  if (creatingPlan) {
+    if (creatingPlan.step === 1) {
+      const title = text.trim();
+      if (!title) {
+        await ctx.reply("Envía el título del plan (ej: Plan Básico).");
+        return true;
+      }
+      creatingPlanFlow.set(userId, { step: 2, title });
+      await ctx.reply("➕ *Añadir plan* (paso 2/4)\n\nEnvía la *descripción* del plan.", {
+        parse_mode: "Markdown",
+        reply_markup: new InlineKeyboard().text("◀️ Cancelar", "admin_plans_manage"),
+      });
+      return true;
+    }
+    if (creatingPlan.step === 2) {
+      const description = text.trim();
+      creatingPlanFlow.set(userId, { step: 3, title: creatingPlan.title, description });
+      await ctx.reply("➕ *Añadir plan* (paso 3/4)\n\nEnvía el *precio* (ej: Gratis, $5/mes, $50/año).", {
+        parse_mode: "Markdown",
+        reply_markup: new InlineKeyboard().text("◀️ Cancelar", "admin_plans_manage"),
+      });
+      return true;
+    }
+    if (creatingPlan.step === 3) {
+      const price = text.trim();
+      creatingPlanFlow.set(userId, { step: 4, title: creatingPlan.title, description: creatingPlan.description, price });
+      await ctx.reply(
+        "➕ *Añadir plan* (paso 4/4)\n\nEnvía los *IDs de menús* incluidos en este plan, separados por coma (ej: `est_grupos,est_individuales`). Quien apruebe este plan tendrá esos menús. Envía *-* para ninguno.",
+        { parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("◀️ Cancelar", "admin_plans_manage") }
+      );
+      return true;
+    }
+    if (creatingPlan.step === 4) {
+      const raw = text.trim();
+      const menuIds = raw === "-" || raw === "" ? [] : raw.split(",").map((s) => s.trim()).filter(Boolean);
+      creatingPlanFlow.delete(userId);
+      const id = titleToPlanId(creatingPlan.title);
+      if (!addPlan(id, creatingPlan.title, creatingPlan.description, creatingPlan.price, menuIds)) {
+        await ctx.reply("No se pudo añadir (id duplicado). Cambia el título.", {
+          reply_markup: buildManagePlansKeyboard(),
+        });
+        return true;
+      }
+      const menuInfo = menuIds.length > 0 ? ` Menús: ${menuIds.join(", ")}.` : "";
+      await ctx.reply(
+        `✅ Plan *${creatingPlan.title}* añadido.\n\nPrecio: ${creatingPlan.price}.${menuInfo}\n\nLos usuarios sin acceso verán este plan; al aprobarlos se les asignarán estos menús.`,
+        { parse_mode: "Markdown", reply_markup: buildManagePlansKeyboard() }
+      );
+      return true;
+    }
+  }
+
+  const editingPlan = editingPlanFlow.get(userId);
+  if (editingPlan) {
+    if (editingPlan.step === 1) {
+      const title = text.trim();
+      if (!title) {
+        await ctx.reply("Envía el nuevo título del plan.");
+        return true;
+      }
+      editingPlanFlow.set(userId, { step: 2, planId: editingPlan.planId, title });
+      await ctx.reply("✏️ *Editar plan* (paso 2/4)\n\nEnvía la *nueva descripción*.", {
+        parse_mode: "Markdown",
+        reply_markup: new InlineKeyboard().text("◀️ Cancelar", "admin_plans_manage"),
+      });
+      return true;
+    }
+    if (editingPlan.step === 2) {
+      const description = text.trim();
+      editingPlanFlow.set(userId, {
+        step: 3,
+        planId: editingPlan.planId,
+        title: editingPlan.title,
+        description,
+      });
+      await ctx.reply("✏️ *Editar plan* (paso 3/4)\n\nEnvía el *nuevo precio*.", {
+        parse_mode: "Markdown",
+        reply_markup: new InlineKeyboard().text("◀️ Cancelar", "admin_plans_manage"),
+      });
+      return true;
+    }
+    if (editingPlan.step === 3) {
+      const price = text.trim();
+      editingPlanFlow.set(userId, {
+        step: 4,
+        planId: editingPlan.planId,
+        title: editingPlan.title,
+        description: editingPlan.description,
+        price,
+      });
+      await ctx.reply(
+        "✏️ *Editar plan* (paso 4/4)\n\nEnvía los *IDs de menús* del plan (separados por coma) o *-* para ninguno.",
+        { parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("◀️ Cancelar", "admin_plans_manage") }
+      );
+      return true;
+    }
+    if (editingPlan.step === 4) {
+      const raw = text.trim();
+      const menuIds = raw === "-" || raw === "" ? [] : raw.split(",").map((s) => s.trim()).filter(Boolean);
+      editingPlanFlow.delete(userId);
+      updatePlan(editingPlan.planId, {
+        title: editingPlan.title,
+        description: editingPlan.description,
+        price: editingPlan.price,
+        menuIds,
+      });
+      await ctx.reply(`✅ Plan actualizado: *${editingPlan.title}* — ${editingPlan.price}`, {
+        parse_mode: "Markdown",
+        reply_markup: buildManagePlansKeyboard(),
+      });
+      return true;
+    }
   }
 
   return false;
