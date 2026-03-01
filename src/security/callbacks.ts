@@ -486,7 +486,7 @@ export async function handleSecurityCallback(
       keyboard = buildManagePlansKeyboard();
     }
   } else if (data === "admin_plans_requests" || data === "admin_plans_requests_refresh") {
-    if (data === "admin_plans_requests_refresh") await reloadConfigFromStorage();
+    await reloadConfigFromStorage();
     const requested = getRequestedPlanUsers();
     if (requested.length === 0) {
       result =
