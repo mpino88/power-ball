@@ -66,8 +66,33 @@ export function titleToPlanId(title: string): string {
     .replace(/^_|_$/g, "") || "plan";
 }
 
+/** Planes por defecto si no existe data/plans.json o está vacío. */
+const DEFAULT_PLANS: Plan[] = [
+  {
+    id: "basico",
+    title: "Plan Básico",
+    description:
+      "Consultas ilimitadas a cualquier fecha: Fijo (P3), Corrido (P4) y Estadísticas por grupo (Mediodía/Noche).",
+    price: "Gratis",
+    menuIds: ["est_grupos"],
+  },
+  {
+    id: "pro",
+    title: "Plan Pro",
+    description:
+      "Todo lo del Básico (consultas Fijo/Corrido + Estadísticas por grupo) más Estadísticas individuales (Top 10 más hot).",
+    price: "Consultar",
+    menuIds: ["est_grupos", "est_individuales"],
+  },
+];
+
 export function initPlans(): Plan[] {
   plans = load();
+  if (plans.length === 0) {
+    plans = DEFAULT_PLANS.map((p) => ({ ...p, menuIds: p.menuIds ? [...p.menuIds] : [] }));
+    save();
+    console.log("[plans] Creados planes por defecto: Básico, Pro.");
+  }
   return [...plans];
 }
 
