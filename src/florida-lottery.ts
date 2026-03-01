@@ -4,11 +4,23 @@
  * Fuentes:
  *   https://floridalottery.com/games/draw-games/pick-3
  *   https://floridalottery.com/games/draw-games/pick-4
+ *
+ * Para "Hoy" se usa la sección game-numbers (pick3/pick4) y draw-date para verificar fecha.
  */
 
 const PICK3_URL = "https://floridalottery.com/games/draw-games/pick-3";
 const PICK4_URL = "https://floridalottery.com/games/draw-games/pick-4";
 const SCRAPE_TIMEOUT_MS = 30_000;
+
+/** Resultado del scraping de "hoy": fecha de la web y sorteos M/E si la fecha coincide con hoy. */
+export interface TodayScrapeResult {
+  /** Si la fecha mostrada en la web coincide con el día de hoy (Florida). */
+  isToday: boolean;
+  /** Fecha en formato MM/DD/YY tal como se muestra o se infiere. */
+  key: string;
+  m?: number[];
+  e?: number[];
+}
 
 export type DrawPeriod = "midday" | "evening";
 
@@ -41,6 +53,113 @@ async function getPageText(url: string): Promise<string> {
   } finally {
     await browser.close();
   }
+}
+
+/** Parsea texto de fecha de la web (ej: "Wed, Feb 25, 2026" o "02/25/26") a MM/DD/YY. */
+function parseDrawDateToMMDDYY(dateText: string): string | null {
+  const t = dateText.trim();
+  if (!t) return null;
+  const slash = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/;
+  const mSlash = t.match(slash);
+  if (mSlash) {
+    const mm = mSlash[1]!.padStart(2, "0");
+    const dd = mSlash[2]!.padStart(2, "0");
+    const yy = mSlash[3]!.length === 2 ? mSlash[3] : mSlash[3]!.slice(-2);
+    return `${mm}/${dd}/${yy}`;
+  }
+  const months: Record<string, string> = {
+    jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
+    jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
+  };
+  const long = /(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2}),?\s*(\d{4})/i;
+  const short = /(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2}),?\s*(\d{4})/i;
+  let match = t.match(long) ?? t.match(short);
+  if (match) {
+    const monthKey = match[1]!.slice(0, 3).toLowerCase();
+    const mm = months[monthKey];
+    if (!mm) return null;
+    const dd = match[2]!.padStart(2, "0");
+    const yy = match[3]!.slice(-2);
+    return `${mm}/${dd}/${yy}`;
+  }
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) return null;
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const yy = String(d.getFullYear()).slice(-2);
+  return `${mm}/${dd}/${yy}`;
+}
+
+/**
+ * Extrae de la página los datos para "Hoy": fecha (draw-date--pick3/pick4) y números (game-numbers).
+ * Primer bloque de números = Mediodía (M), segundo = Noche (E).
+ */
+async function scrapeTodayFromPage(
+  url: string,
+  dateClass: "draw-date--pick3" | "draw-date--pick4",
+  numbersClass: "game-numbers--pick3" | "game-numbers--pick4",
+  numDigits: 3 | 4
+): Promise<TodayScrapeResult> {
+  const playwright = await import("playwright");
+  const browser = await playwright.chromium.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+  });
+  try {
+    const page = await browser.newPage();
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: SCRAPE_TIMEOUT_MS });
+    const raw = await page.evaluate(
+      (args: { dateClass: string; numbersClass: string }) => {
+        const dateEl = document.querySelector(`.${args.dateClass}`);
+        const dateText = dateEl?.textContent?.trim() ?? "";
+        const numberEls = document.querySelectorAll(`.game-numbers.${args.numbersClass}`);
+        const numberTexts: string[] = [];
+        numberEls.forEach((el) => {
+          const text = el.textContent?.trim() ?? "";
+          numberTexts.push(text);
+        });
+        return { dateText, numberTexts };
+      },
+      { dateClass, numbersClass }
+    );
+    const key = parseDrawDateToMMDDYY(raw.dateText) ?? "";
+    const todayFlorida = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+    const [y, m, d] = todayFlorida.split("-");
+    const todayKey = `${m}/${d}/${y!.slice(-2)}`;
+    const isToday = key === todayKey;
+
+    const result: TodayScrapeResult = { isToday, key: key || todayKey };
+    const digitRe = /\d/g;
+    const first = raw.numberTexts[0];
+    const second = raw.numberTexts[1];
+    if (first) {
+      const digits = first.match(digitRe)?.slice(0, numDigits).map(Number);
+      if (digits && digits.length === numDigits) result.m = digits;
+    }
+    if (second) {
+      const digits = second.match(digitRe)?.slice(0, numDigits).map(Number);
+      if (digits && digits.length === numDigits) result.e = digits;
+    }
+    return result;
+  } finally {
+    await browser.close();
+  }
+}
+
+/**
+ * Scrapea Pick 3 "Hoy" desde la web. Compara draw-date--pick3 con el día actual (Florida).
+ * Si la fecha no coincide, isToday será false (mostrar "No hay datos disponible aún").
+ */
+export async function scrapeTodayPick3(): Promise<TodayScrapeResult> {
+  return scrapeTodayFromPage(PICK3_URL, "draw-date--pick3", "game-numbers--pick3", 3);
+}
+
+/**
+ * Scrapea Pick 4 "Hoy" desde la web. Compara draw-date--pick4 con el día actual (Florida).
+ * Si la fecha no coincide, isToday será false (mostrar "No hay datos disponible aún").
+ */
+export async function scrapeTodayPick4(): Promise<TodayScrapeResult> {
+  return scrapeTodayFromPage(PICK4_URL, "draw-date--pick4", "game-numbers--pick4", 4);
 }
 
 /**

@@ -160,10 +160,10 @@ export function buildIndividualTop10Message(
   const W_NUM = 6;
   const W_MAX = 10;
   const W_ACT = 10;
-  const W_HOT = 8;
+  const W_HOT = 14; /* "🔥 Hot (99)" */
   const fmt = (num: number, maxH: number, cur: number) => {
     const diff = maxH - cur;
-    const hotStr = diff <= diasDiferencia ? "🔥 Hot" : String(diff);
+    const hotStr = diff <= diasDiferencia ? `🔥 Hot (${diff})` : String(diff);
     return (
       String(num).padStart(2, "0").padEnd(W_NUM) +
       String(maxH).padStart(W_MAX) +
@@ -194,11 +194,12 @@ export function buildGroupStatsMessage(
   const W_NAME = 12;
   const W_MAX = 10;
   const W_ACT = 10;
-  const W_HOT = 8;
+  const W_HOT = 14; /* "🔥 Hot (99)" */
   const isHot = (maxH: number, cur: number | null) => cur !== null && maxH - cur <= diasDiferencia;
   const fmt = (name: string, maxH: number, cur: number | null) => {
     const curStr = cur !== null ? String(cur) : "—";
-    const hotStr = isHot(maxH, cur) ? "🔥 Hot" : cur !== null ? String(maxH - cur) : "—";
+    const diff = cur !== null ? maxH - cur : null;
+    const hotStr = isHot(maxH, cur) ? `🔥 Hot (${diff})` : diff !== null ? String(diff) : "—";
     return (
       name.padEnd(W_NAME) +
       String(maxH).padStart(W_MAX) +
