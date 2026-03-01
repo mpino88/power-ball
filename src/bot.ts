@@ -377,18 +377,13 @@ bot.on("callback_query:data", async (ctx) => {
         keyboard.text(label.length > 64 ? `Usuario ${uid}` : label, `admin_menus_${uid}`).row();
       }
       keyboard.text("◀️ Volver a Seguridad", "security_open");
-    } else if (data.startsWith("admin_menus_") && !data.includes("_add_") && !data.includes("_remove_")) {
+    } else if (/^admin_menus_\d+$/.test(data)) {
       const uid = parseInt(data.replace("admin_menus_", ""), 10);
-      if (Number.isNaN(uid)) {
-        result = "Error.";
-        keyboard = buildSecurityKeyboard();
-      } else {
-        keyboard = buildUserMenusKeyboard(uid);
-        const extra = getExtraMenus(uid);
-        const ids = getExtraMenuIds();
-        const menuList = ids.map((id) => `• ${getExtraMenuLabel(id) ?? id}${extra.includes(id) ? " ✓" : ""}`).join("\n");
-        result = `📋 *Menús para usuario* \`${uid}\`\n\nCada fila: ➕ dar acceso, ➖ quitar acceso.\n\n${menuList}`;
-      }
+      keyboard = buildUserMenusKeyboard(uid);
+      const extra = getExtraMenus(uid);
+      const ids = getExtraMenuIds();
+      const menuList = ids.map((id) => `• ${getExtraMenuLabel(id) ?? id}${extra.includes(id) ? " ✓" : ""}`).join("\n");
+      result = `📋 *Menús para usuario* \`${uid}\`\n\nCada fila: ➕ dar acceso, ➖ quitar acceso.\n\n${menuList}`;
     } else if (data.startsWith("admin_menu_add_")) {
       const rest = data.replace("admin_menu_add_", "");
       const [uidStr, menuId] = rest.includes("|") ? rest.split("|") : [rest.split("_")[0], rest.split("_").slice(1).join("_")];
