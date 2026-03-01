@@ -68,8 +68,17 @@ export async function handleSecurityMessage(
     if (flow.step === 3) {
       const phone = text.trim();
       addingUserFlow.delete(userId);
-      await addAllowed(flow.userId);
-      await setUserInfo(flow.userId, { name: flow.name, phone: phone || undefined });
+      try {
+        await addAllowed(flow.userId);
+        await setUserInfo(flow.userId, { name: flow.name, phone: phone || undefined });
+      } catch (e) {
+        console.error("[security] Error al guardar usuario (Sheet/archivo):", e);
+        await ctx.reply(
+          "❌ Usuario agregado en memoria pero *falló al guardar* (Google Sheet o archivo). Revisa logs y credenciales.",
+          { parse_mode: "Markdown", reply_markup: buildSecurityKeyboard() }
+        );
+        return true;
+      }
       await ctx.reply(
         `✅ Usuario agregado.\n\nID: \`${flow.userId}\`\nNombre: ${flow.name}\nTeléfono: ${phone || "—"}`,
         { parse_mode: "Markdown", reply_markup: buildSecurityKeyboard() }

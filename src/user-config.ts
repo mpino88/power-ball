@@ -149,6 +149,7 @@ async function saveToSheet(): Promise<void> {
     console.error("[user-config] Google Sheet: no se guardó — credenciales no disponibles (revisa GOOGLE_SERVICE_ACCOUNT_JSON o EMAIL+PRIVATE_KEY).");
     return;
   }
+  console.log("[user-config] Google Sheet: guardando", config.allowed.length, "usuarios…");
   try {
     const doc = new GoogleSpreadsheet(sheetId, auth);
     await doc.loadInfo();
@@ -204,8 +205,16 @@ function saveToFile(): void {
 }
 
 async function persist(): Promise<void> {
-  if (useGoogleSheet()) await saveToSheet();
-  else saveToFile();
+  if (useGoogleSheet()) {
+    try {
+      await saveToSheet();
+    } catch (e) {
+      console.error("[user-config] persist: fallo al guardar en Google Sheet.", e);
+      throw e;
+    }
+  } else {
+    saveToFile();
+  }
 }
 
 /** Carga la config desde Sheet o archivo. Llamar al arranque del bot. */

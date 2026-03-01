@@ -107,7 +107,7 @@ Sigue estos pasos en orden. Al final tendrás el bot funcionando con Telegram y 
 
 4. **Compartir la Sheet:** La hoja debe estar compartida con el **client_email** del JSON (ej: `xxx@xxx.iam.gserviceaccount.com`) con permiso **Editor**. Si no, verás errores 403 en los logs al guardar.
 
-5. Al agregar o quitar acceso, en logs debería salir: `[user-config] Google Sheet: guardados N usuarios.` Si sale `Error al guardar en Google Sheet:` revisa permisos y credenciales.
+5. Al agregar o quitar acceso, en logs deberían salir: `[user-config] Google Sheet: guardando N usuarios…` y luego `[user-config] Google Sheet: guardados N usuarios.` Si sale `Error al guardar en Google Sheet:` o `persist: fallo al guardar`, revisa permisos y que la Sheet esté compartida con el client_email. Si en Telegram ves "falló al guardar", es que el guardado en Sheet (o archivo) lanzó error: mira los logs.
 
 6. Si al arrancar ves *"Usando archivo"* en lugar de *"Usando Google Sheet"*, las credenciales no son válidas o no están definidas: el bot guarda solo en `data/bot-users.json` (y en Render ese archivo se pierde en cada deploy). Revisa `GOOGLE_SHEET_ID` y `GOOGLE_SERVICE_ACCOUNT_JSON`.
 
