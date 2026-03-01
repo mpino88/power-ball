@@ -196,9 +196,10 @@ async function loadFromSheet(): Promise<UsersConfig> {
     const menus: Record<string, string[]> = {};
     const userInfo: Record<string, UserInfo> = {};
     const requestedPlans: Record<string, PlanRequest> = {};
+    const headers = sheet.headerValues;
     for (const row of rows) {
-      const obj = row.toObject();
-      const values = Object.values(obj) as unknown[];
+      const obj = row.toObject() as Record<string, unknown>;
+      const values = headers.map((h) => (h ? String(obj[h] ?? "").trim() : ""));
       const getCol = (i: number) =>
         i >= 0 && i < values.length ? String(values[i] ?? "").trim() : "";
       const uidStr = getCol(COL_USERID);
