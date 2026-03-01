@@ -36,7 +36,7 @@ export interface StrategyDefinition {
 
 export const STRATEGY_CONTEXT_CALLBACK_PREFIX = "strat_";
 
-/** Parsea callback tipo strat_<menuId>_<p3|p4>_<m|e>. menuId puede contener _ (ej. estrategia_test). */
+/** Parsea callback tipo strat_<menuId>_<p3|p4>_<m|e>. menuId puede contener _ (ej. max_per_week_day). */
 export function parseStrategyContextCallback(data: string): { menuId: string; context: StrategyContext } | null {
   if (!data.startsWith(STRATEGY_CONTEXT_CALLBACK_PREFIX)) return null;
   const rest = data.slice(STRATEGY_CONTEXT_CALLBACK_PREFIX.length);

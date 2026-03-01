@@ -5,7 +5,7 @@
 
 import { InlineKeyboard } from "grammy";
 import type { DateDrawsMap, StrategyContext, StrategyDefinition } from "./types.js";
-import { estrategiaTest } from "./estrategia-test.js";
+import { maxPerWeekDay } from "./max-per-week-day.js";
 
 export type { DateDrawsMap, StrategyContext, StrategyDefinition, StrategyMapSource, StrategyPeriod } from "./types.js";
 export { parseStrategyContextCallback, STRATEGY_CONTEXT_CALLBACK_PREFIX } from "./types.js";
@@ -51,4 +51,4 @@ export async function runStrategy(
 }
 
 // —— Registro de estrategias (añadir una línea por cada nueva estrategia) ——
-registerStrategy(estrategiaTest);
+registerStrategy(maxPerWeekDay);

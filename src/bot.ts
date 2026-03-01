@@ -769,7 +769,21 @@ async function main(): Promise<void> {
   setSheetMenuLabelResolver(getExtraMenuLabel);
   await initUserConfig();
   if (getStorageBackend() === "sheet") {
-    const rows = await loadStrategiesFromSheet();
+    let rows = await loadStrategiesFromSheet();
+    const migrated = rows.some((r) => r.id === "estrategia_test");
+    if (migrated) {
+      rows = rows.map((r) =>
+        r.id === "estrategia_test"
+          ? {
+              id: "max_per_week_day",
+              titulo: "Más salidores x dia de la Semana",
+              descripcion: "Números que más han salido x cada dia de la semana",
+              createdBy: r.createdBy,
+            }
+          : r
+      );
+      await saveStrategiesToSheet(rows);
+    }
     initCustomMenusFromSheet(rows);
     setStrategySheetPersist((menus) =>
       saveStrategiesToSheet(

@@ -1,6 +1,6 @@
 # Motor de estrategias
 
-Cada estrategia se asocia al motor por **strategy_id** (ej. `estrategia_test`) y tiene su propia implementación en un archivo.
+Cada estrategia se asocia al motor por **strategy_id** (ej. `max_per_week_day`) y tiene su propia implementación en un archivo.
 
 ## Estructura
 
