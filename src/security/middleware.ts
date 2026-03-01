@@ -5,7 +5,7 @@
 
 import { InlineKeyboard } from "grammy";
 import type { getOwnerId as GetOwnerId, isAllowed as IsAllowed } from "../user-config.js";
-import type { addPlanRequest as AddPlanRequest } from "../user-config.js";
+import { addPlanRequest } from "../user-config.js";
 import { getPlans, getPlanById } from "../plans.js";
 
 export type BuildMainKeyboard = (userId: number | undefined) => InlineKeyboard;
@@ -15,7 +15,7 @@ export interface RestrictMiddlewareOptions {
   isAllowed: typeof IsAllowed;
   requestAccessLink: string;
   buildMainKeyboard: BuildMainKeyboard;
-  addPlanRequest: AddPlanRequest;
+  addPlanRequest: typeof addPlanRequest;
 }
 
 export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
