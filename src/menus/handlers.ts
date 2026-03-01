@@ -32,6 +32,11 @@ export interface MenuHandlersDeps extends MainKeyboardDeps {
     days: number,
     period: "M" | "E"
   ) => string;
+  /** Scrape "Hoy" P3+P4 (cacheado unos minutos). */
+  getCachedScrapeToday: () => Promise<{
+    p3: { isToday: boolean; key: string; m?: number[]; e?: number[] };
+    p4: { isToday: boolean; key: string; m?: number[]; e?: number[] };
+  }>;
   buildResultOneDay: (
     key: string,
     d3: { m?: number[]; e?: number[] },
@@ -48,11 +53,12 @@ export interface MenuHandlersDeps extends MainKeyboardDeps {
   getTodayFloridaMMDDYY: () => string;
   getYesterdayFloridaMMDDYY: () => string;
   getThisWeekFloridaMMDDYY: () => string[];
-  /** Scraping web para "Hoy": Pick 3 (draw-date--pick3, game-numbers--pick3). */
-  scrapeTodayPick3: () => Promise<{ isToday: boolean; key: string; m?: number[]; e?: number[] }>;
-  /** Scraping web para "Hoy": Pick 4 (draw-date--pick4, game-numbers--pick4). */
-  scrapeTodayPick4: () => Promise<{ isToday: boolean; key: string; m?: number[]; e?: number[] }>;
 }
+
+const PICK3_WEB_URL = "https://floridalottery.com/games/draw-games/pick-3";
+const PICK4_WEB_URL = "https://floridalottery.com/games/draw-games/pick-4";
+const HOY_CONSULTA_LINKS =
+  `\n\nConsulta: [Pick 3](${PICK3_WEB_URL}) · [Pick 4](${PICK4_WEB_URL})`;
 
 export async function handleMenuCallback(
   ctx: Context,
@@ -135,7 +141,7 @@ export async function handleMenuCallback(
 
   if (data === "stats_grupos_M" || data === "stats_grupos_E") {
     const period = data === "stats_grupos_M" ? "M" : "E";
-    await ctx.answerCallbackQuery({ text: "Calculando estadísticas…" });
+    await ctx.answerCallbackQuery();
     try {
       const map3 = await deps.getP3Map();
       const result = deps.buildGroupStatsMessage(map3, deps.getHotThresholdDays(), period);
@@ -147,7 +153,7 @@ export async function handleMenuCallback(
   }
   if (data === "stats_individual_M" || data === "stats_individual_E") {
     const period = data === "stats_individual_M" ? "M" : "E";
-    await ctx.answerCallbackQuery({ text: "Calculando…" });
+    await ctx.answerCallbackQuery();
     try {
       const map3 = await deps.getP3Map();
       const result = deps.buildIndividualTop10Message(map3, deps.getHotThresholdDays(), period);
@@ -167,16 +173,30 @@ export async function handleMenuCallback(
     try {
       let result: string;
       if (scope === "hoy") {
-        const [p3, p4] = await Promise.all([deps.scrapeTodayPick3(), deps.scrapeTodayPick4()]);
-        if (!p3.isToday || !p4.isToday) {
-          result = "☀️🌙 *Hoy*\n\nNo hay datos disponible aún.";
+        try {
+          const { p3, p4 } = await deps.getCachedScrapeToday();
+          if (!p3.isToday || !p4.isToday) {
+            result = "☀️🌙 *Hoy*\n\nNo hay datos disponible aún." + HOY_CONSULTA_LINKS;
+            return { result, keyboard: mainKb() };
+          }
+          const key = p3.key;
+          const d3 = { m: p3.m, e: p3.e };
+          const d4 = { m: p4.m, e: p4.e };
+          result = deps.buildResultOneDay(key, d3, d4, game, "Hoy");
+          return { result, keyboard: mainKb() };
+        } catch (scrapeErr) {
+          console.warn("Scrape Hoy no disponible (ej. Playwright no instalado), usando PDF:", scrapeErr);
+          try {
+            const [map3, map4] = await Promise.all([deps.getP3Map(), deps.getP4Map()]);
+            const key = deps.getTodayFloridaMMDDYY();
+            const d3 = map3[key] ?? {};
+            const d4 = map4[key] ?? {};
+            result = deps.buildResultOneDay(key, d3, d4, game, "Hoy") + HOY_CONSULTA_LINKS;
+          } catch {
+            result = "☀️🌙 *Hoy*\n\nNo pude obtener los resultados de hoy." + HOY_CONSULTA_LINKS;
+          }
           return { result, keyboard: mainKb() };
         }
-        const key = p3.key;
-        const d3 = { m: p3.m, e: p3.e };
-        const d4 = { m: p4.m, e: p4.e };
-        result = deps.buildResultOneDay(key, d3, d4, game, "Hoy");
-        return { result, keyboard: mainKb() };
       }
       const [map3, map4] = await Promise.all([deps.getP3Map(), deps.getP4Map()]);
       if (scope === "ayer") {

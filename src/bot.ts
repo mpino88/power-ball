@@ -4,8 +4,6 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import path from "node:path";
-import { pathToFileURL } from "node:url";
 import { Bot, InlineKeyboard } from "grammy";
 import type { Update } from "grammy/types";
 import {
@@ -27,7 +25,11 @@ import {
   buildGroupStatsMessage as buildGroupStatsMessageFromStats,
   buildIndividualTop10Message as buildIndividualTop10MessageFromStats,
 } from "./stats-p3.js";
-import { scrapeTodayPick3, scrapeTodayPick4 } from "./florida-lottery.js";
+import {
+  scrapeTodayPick3,
+  scrapeTodayPick4,
+  type TodayScrapeResult,
+} from "./florida-lottery.js";
 import {
   createRestrictMiddleware,
   handleSecurityCallback,
@@ -57,6 +59,27 @@ const HELP_TEXT =
 
 let hotThresholdDays = 5;
 const waitingCustomDateGame = new Map<number, GameMenu>();
+
+/** Caché del scrape "Hoy" (10 min); solo la fuente PDF se precarga, el resto es on demand. */
+const HOY_CACHE_TTL_MS = 10 * 60 * 1000;
+let cachedScrapeToday: {
+  at: number;
+  p3: TodayScrapeResult;
+  p4: TodayScrapeResult;
+} | null = null;
+
+async function getCachedScrapeToday(): Promise<{
+  p3: TodayScrapeResult;
+  p4: TodayScrapeResult;
+}> {
+  const now = Date.now();
+  if (cachedScrapeToday && now - cachedScrapeToday.at < HOY_CACHE_TTL_MS) {
+    return { p3: cachedScrapeToday.p3, p4: cachedScrapeToday.p4 };
+  }
+  const [p3, p4] = await Promise.all([scrapeTodayPick3(), scrapeTodayPick4()]);
+  cachedScrapeToday = { at: now, p3, p4 };
+  return { p3, p4 };
+}
 
 const mainKbDeps = {
   getOwnerId,
@@ -183,13 +206,12 @@ bot.on("callback_query:data", async (ctx) => {
     getP4Map,
     buildGroupStatsMessage: buildGroupStatsMessageFromStats,
     buildIndividualTop10Message: buildIndividualTop10MessageFromStats,
+    getCachedScrapeToday,
     buildResultOneDay,
     buildResultWeek,
     getTodayFloridaMMDDYY,
     getYesterdayFloridaMMDDYY,
     getThisWeekFloridaMMDDYY,
-    scrapeTodayPick3,
-    scrapeTodayPick4,
   };
 
   const menuOut = await handleMenuCallback(ctx, data, menuDeps);
@@ -461,12 +483,10 @@ function parseP4FullText(text: string): DateDrawsMapP4 {
 async function pdfToText(pdfBuffer: ArrayBuffer): Promise<string> {
   const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const data = new Uint8Array(pdfBuffer);
-  const standardFontsDir = path.join(process.cwd(), "node_modules", "pdfjs-dist", "standard_fonts");
-  const standardFontDataUrl = pathToFileURL(standardFontsDir + path.sep).href;
+  /* Sin standardFontDataUrl para evitar errores en entornos tipo Render donde file:// falla (LiberationSans). */
   const doc = await pdfjsLib.getDocument({
     data,
     disableFontFace: true,
-    standardFontDataUrl,
   }).promise;
   const numPages = doc.numPages;
   const pageTexts: string[] = [];
@@ -538,6 +558,9 @@ async function main(): Promise<void> {
     registerExtraMenu(m.id, m.label, (ctx) => placeholderMenuHandler(ctx));
   }
   await bot.init();
+
+  /* Precarga única: lectura de los PDF y extracción de los mapas de fechas. El resto se calcula on demand. */
+  Promise.all([getP3Map(), getP4Map()]).catch((e) => console.error("Preload PDF:", e));
 
   await bot.api.setMyCommands([
     { command: "start", description: "Iniciar y ver opciones" },
