@@ -482,13 +482,16 @@ export async function handleSecurityCallback(
       result = "Error al procesar.";
       keyboard = buildManagePlansKeyboard();
     }
-  } else if (data === "admin_plans_requests") {
-    await reloadConfigFromStorage();
+  } else if (data === "admin_plans_requests" || data === "admin_plans_requests_refresh") {
+    if (data === "admin_plans_requests_refresh") await reloadConfigFromStorage();
     const requested = getRequestedPlanUsers();
     if (requested.length === 0) {
       result =
         "📩 *Solicitudes pendientes*\n\nNo hay solicitudes. Cuando un usuario sin acceso elija un plan y envíe su teléfono, aparecerán aquí.";
-      keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar planes", "admin_plans_manage");
+      keyboard = new InlineKeyboard()
+        .text("🔄 Actualizar desde Sheet", "admin_plans_requests_refresh")
+        .row()
+        .text("◀️ Volver a Gestionar planes", "admin_plans_manage");
     } else {
       result =
         "📩 *Solicitudes pendientes* (plan_status = requested)\n\nAprueba para dar acceso y asignar menús del plan:\n\n" +
@@ -504,7 +507,7 @@ export async function handleSecurityCallback(
         const label = u.name ? `✅ ${u.userId} — ${u.plan} (${u.name})` : `✅ Aprobar ${u.userId} (${u.plan})`;
         keyboard.text(label, `admin_plans_approve_${u.userId}`).row();
       }
-      keyboard.text("◀️ Volver a Gestionar planes", "admin_plans_manage");
+      keyboard.text("🔄 Actualizar lista", "admin_plans_requests_refresh").row().text("◀️ Volver a Gestionar planes", "admin_plans_manage");
     }
   } else if (data.startsWith("admin_plans_approve_")) {
     const userIdStr = data.replace("admin_plans_approve_", "");
