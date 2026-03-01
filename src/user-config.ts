@@ -22,6 +22,8 @@ export interface UserInfo {
 /** Usuarios que solicitaron un plan pero aún no están aprobados (no están en allowed). */
 export interface PlanRequest {
   plan: string;
+  name?: string;
+  phone?: string;
 }
 
 interface UsersConfig {
@@ -35,6 +37,15 @@ interface UsersConfig {
 const defaultConfig: UsersConfig = { allowed: [], menus: {}, userInfo: {}, requestedPlans: {} };
 let config: UsersConfig = { ...defaultConfig };
 
+/**
+ * Estructura del Sheet (y equivalente en bot-users.json):
+ * - userId (A): ID de Telegram.
+ * - nombre (B), telefono (C): nombre y teléfono (solicitud o usuario aprobado).
+ * - menus (D): IDs de menús extra separados por coma (est_grupos, est_individuales, custom). Solo para allowed.
+ * - plan (E): nombre del plan (ej. Básico, Pro) si aplica.
+ * - plan_status (F): "requested" = solicitud pendiente (no tiene acceso); "approved" o vacío = usuario permitido.
+ * Lógica: filas con plan_status === "requested" → requestedPlans (solo lectura/listado/aprobar). Resto → allowed + userInfo + menus.
+ */
 const SHEET_HEADERS = ["userId", "nombre", "telefono", "menus", "plan", "plan_status"] as const;
 type SheetRow = { userId: string; nombre: string; telefono: string; menus: string; plan: string; plan_status: string };
 
@@ -176,7 +187,9 @@ async function loadFromSheet(): Promise<UsersConfig> {
       const planStatus = String(row.get("plan_status") ?? "").trim().toLowerCase();
       const planName = String(row.get("plan") ?? "").trim();
       if (planStatus === "requested") {
-        requestedPlans[uidStr] = { plan: planName || "—" };
+        const nombre = String(row.get("nombre") ?? "").trim();
+        const telefono = String(row.get("telefono") ?? "").trim();
+        requestedPlans[uidStr] = { plan: planName || "—", name: nombre || undefined, phone: telefono || undefined };
         continue;
       }
       allowed.push(uid);
@@ -212,11 +225,22 @@ function loadFromFile(): UsersConfig {
     if (existsSync(CONFIG_PATH)) {
       const raw = readFileSync(CONFIG_PATH, "utf8");
       const data = JSON.parse(raw) as Partial<UsersConfig>;
+      const requestedRaw = data.requestedPlans && typeof data.requestedPlans === "object" ? data.requestedPlans : {};
+      const requestedPlans: Record<string, PlanRequest> = {};
+      for (const [uid, req] of Object.entries(requestedRaw)) {
+        if (req && typeof req === "object" && typeof (req as PlanRequest).plan === "string") {
+          requestedPlans[uid] = {
+            plan: (req as PlanRequest).plan,
+            name: (req as PlanRequest).name,
+            phone: (req as PlanRequest).phone,
+          };
+        }
+      }
       return {
         allowed: Array.isArray(data.allowed) ? data.allowed : [],
         menus: data.menus && typeof data.menus === "object" ? data.menus : {},
         userInfo: data.userInfo && typeof data.userInfo === "object" ? data.userInfo : {},
-        requestedPlans: data.requestedPlans && typeof data.requestedPlans === "object" ? data.requestedPlans : {},
+        requestedPlans,
       };
     }
   } catch (e) {
@@ -234,7 +258,8 @@ async function saveToSheet(): Promise<void> {
   if (!auth) {
     throw new Error("Credenciales no disponibles. Revisa GOOGLE_SERVICE_ACCOUNT_JSON o EMAIL+PRIVATE_KEY.");
   }
-  console.log("[user-config] Google Sheet: guardando", config.allowed.length, "usuarios…");
+  const requestedCount = Object.keys(config.requestedPlans).length;
+  console.log("[user-config] Google Sheet: guardando", config.allowed.length, "usuarios permitidos,", requestedCount, "solicitudes pendientes.");
   try {
     const doc = new GoogleSpreadsheet(sheetId, auth);
     await doc.loadInfo();
@@ -264,8 +289,8 @@ async function saveToSheet(): Promise<void> {
     });
     const requestedRows: SheetRow[] = Object.entries(config.requestedPlans).map(([uid, req]) => ({
       userId: uid,
-      nombre: "",
-      telefono: "",
+      nombre: req.name ?? "",
+      telefono: req.phone ?? "",
       menus: "",
       plan: req.plan,
       plan_status: "requested",
@@ -278,7 +303,7 @@ async function saveToSheet(): Promise<void> {
         throw new Error(msg);
       }
       await sheet.addRows(rows);
-      console.log("[user-config] Google Sheet: guardados", rows.length, "usuarios.");
+      console.log("[user-config] Google Sheet: guardadas", rows.length, "filas (allowed + requested).");
     } else {
       console.log("[user-config] Google Sheet: 0 usuarios, solo cabecera.");
     }
@@ -372,6 +397,19 @@ export async function initUserConfig(): Promise<void> {
   }
 }
 
+/** Recarga la config desde el Sheet (o archivo) y reemplaza la en memoria. Útil para ver datos actualizados (p. ej. solicitudes pendientes). */
+export async function reloadConfigFromStorage(): Promise<void> {
+  if (useGoogleSheet()) {
+    try {
+      config = await loadFromSheet();
+    } catch (e) {
+      console.error("[user-config] reloadConfigFromStorage: error al recargar desde Sheet:", (e as Error)?.message ?? e);
+    }
+  } else {
+    config = loadFromFile();
+  }
+}
+
 export function getOwnerId(): number | null {
   const id = process.env.BOT_OWNER_ID;
   if (!id) return null;
@@ -431,19 +469,57 @@ export async function setExtraMenus(userId: number, menuIds: string[]): Promise<
   return persist();
 }
 
-/** Registra solicitud de plan (columna E=plan, F=requested). Si usa Sheet, añade/actualiza la fila del userId. */
-export async function addPlanRequest(userId: number, planName: string): Promise<PersistResult> {
+/** Registra solicitud de plan (columnas plan, plan_status=requested, nombre, telefono). */
+export async function addPlanRequest(
+  userId: number,
+  planName: string,
+  opts?: { name?: string; phone?: string }
+): Promise<PersistResult> {
   const key = String(userId);
-  config.requestedPlans[key] = { plan: planName };
+  const existing = config.requestedPlans[key];
+  config.requestedPlans[key] = {
+    plan: planName,
+    name: opts?.name ?? existing?.name,
+    phone: opts?.phone ?? existing?.phone,
+  };
   return persist();
 }
 
 /** Lista de usuarios con plan_status "requested" (pendientes de aprobación). */
-export function getRequestedPlanUsers(): { userId: number; plan: string }[] {
+export function getRequestedPlanUsers(): { userId: number; plan: string; name?: string; phone?: string }[] {
   return Object.entries(config.requestedPlans).map(([uid, req]) => ({
     userId: parseInt(uid, 10),
     plan: req.plan,
+    name: req.name,
+    phone: req.phone,
   }));
+}
+
+/** Asigna un plan directamente a un usuario (por el dueño). Le da acceso, plan/plan_status=approved y menús del plan. Si estaba en requestedPlans se quita. */
+export async function assignPlanToUser(
+  targetUserId: number,
+  planName: string,
+  planMenuIds: string[]
+): Promise<PersistResult> {
+  const key = String(targetUserId);
+  if (!config.allowed.includes(targetUserId)) config.allowed.push(targetUserId);
+  delete config.requestedPlans[key];
+  config.userInfo[key] = { ...config.userInfo[key], plan: planName, plan_status: "approved" };
+  config.menus[key] = [...planMenuIds];
+  return persist();
+}
+
+/** Usuario con acceso solicita cambio de plan: se quita de allowed, se añade a requestedPlans (plan nuevo, nombre/teléfono actuales) y se persiste. Deja de tener acceso hasta que lo aprueben. */
+export async function requestPlanChange(userId: number, planName: string): Promise<PersistResult> {
+  const key = String(userId);
+  const info = config.userInfo[key];
+  config.allowed = config.allowed.filter((id) => id !== userId);
+  config.requestedPlans[key] = {
+    plan: planName,
+    name: info?.name,
+    phone: info?.phone,
+  };
+  return persist();
 }
 
 /** Aprueba solicitud: quita de requestedPlans, añade a allowed, asigna menús del plan (si se pasan) y guarda plan/plan_status=approved. */
@@ -455,7 +531,13 @@ export async function approvePlanRequest(userId: number, planMenuIds?: string[])
   }
   delete config.requestedPlans[key];
   if (!config.allowed.includes(userId)) config.allowed.push(userId);
-  config.userInfo[key] = { ...config.userInfo[key], plan: req.plan, plan_status: "approved" };
+  config.userInfo[key] = {
+    ...config.userInfo[key],
+    name: req.name ?? config.userInfo[key]?.name,
+    phone: req.phone ?? config.userInfo[key]?.phone,
+    plan: req.plan,
+    plan_status: "approved",
+  };
   if (Array.isArray(planMenuIds)) config.menus[key] = [...planMenuIds];
   return persist();
 }

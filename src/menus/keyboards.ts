@@ -18,6 +18,9 @@ export interface MainKeyboardDeps {
   getExtraMenuLabel: typeof GetExtraMenuLabel;
 }
 
+/** Callback al pulsar "➕ Estrategias": abre el submenú de estrategias. */
+export const ESTRATEGIAS_OPEN_CALLBACK = "estrategias_open";
+
 export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboardDeps): InlineKeyboard {
   const kb = new InlineKeyboard()
     .text("🎯 Fijo (P3)", "menu_fijo")
@@ -32,18 +35,35 @@ export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboard
     return deps.getExtraMenus(userId ?? 0).includes(id);
   });
   if (showExtra.length > 0) {
-    kb.row();
-    for (const id of showExtra) {
-      const label = deps.getExtraMenuLabel(id);
-      if (label) kb.text(label, EXTRA_MENU_CALLBACK_PREFIX + id);
-    }
+    kb.row().text("➕ Estrategias", ESTRATEGIAS_OPEN_CALLBACK);
   }
   if (ownerId === null || userId !== ownerId) {
     kb.row().text("❓ Ayuda", "help");
+    if (ownerId !== null && userId !== ownerId) {
+      kb.row().text("📋 Cambiar plan", "cambiar_plan_open");
+    }
   }
   if (ownerId !== null && userId === ownerId) {
     kb.row().text("🔒 Seguridad", "security_open");
   }
+  return kb;
+}
+
+/** Teclado del submenú "➕ Estrategias": lista de menús extra (y custom) para este usuario + Volver. */
+export function buildEstrategiasKeyboard(userId: number | undefined, deps: MainKeyboardDeps): InlineKeyboard {
+  const ownerId = deps.getOwnerId();
+  const extraIds = deps.getExtraMenuIds();
+  const showExtra = extraIds.filter((id) => {
+    if (ownerId === null) return true;
+    if (userId === ownerId) return true;
+    return deps.getExtraMenus(userId ?? 0).includes(id);
+  });
+  const kb = new InlineKeyboard();
+  for (const id of showExtra) {
+    const label = deps.getExtraMenuLabel(id);
+    if (label) kb.text(label, EXTRA_MENU_CALLBACK_PREFIX + id).row();
+  }
+  kb.text("◀️ Volver", "volver");
   return kb;
 }
 

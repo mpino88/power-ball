@@ -5,11 +5,13 @@
 export type { GameMenu } from "./types.js";
 export {
   buildMainKeyboard,
+  buildEstrategiasKeyboard,
   buildSubmenuKeyboard,
   buildEstadisticasKeyboard,
   buildIndividualPeriodKeyboard,
   buildDiasDiferenciaKeyboard,
   buildDiasDiferenciaKeyboardIndividual,
+  ESTRATEGIAS_OPEN_CALLBACK,
 } from "./keyboards.js";
 export type { MainKeyboardDeps } from "./keyboards.js";
 export { handleMenuCallback } from "./handlers.js";

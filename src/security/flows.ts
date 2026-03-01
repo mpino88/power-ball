@@ -24,6 +24,9 @@ export type EditingPlanStep =
   | { step: 3; planId: string; title: string; description: string }
   | { step: 4; planId: string; title: string; description: string; price: string };
 
+/** Asignar plan a usuario (dueño): paso 1 = esperando ID, paso 2 = esperando elegir plan (por callback). */
+export type AssigningPlanStep = { step: 1 } | { step: 2; targetUserId: number };
+
 export const addingUserFlow = new Map<number, AddingStep>();
 export const creatingMenuFlow = new Map<number, CreatingStep>();
 export const editingMenuFlow = new Map<number, { menuId: string }>();
@@ -31,6 +34,7 @@ export const deletingMenuFlow = new Map<number, { menuId: string }>();
 export const creatingPlanFlow = new Map<number, CreatingPlanStep>();
 export const editingPlanFlow = new Map<number, EditingPlanStep>();
 export const deletingPlanFlow = new Map<number, { planId: string }>();
+export const assigningPlanFlow = new Map<number, AssigningPlanStep>();
 
 export function clearAllFlows(userId: number): void {
   addingUserFlow.delete(userId);
@@ -40,4 +44,5 @@ export function clearAllFlows(userId: number): void {
   creatingPlanFlow.delete(userId);
   editingPlanFlow.delete(userId);
   deletingPlanFlow.delete(userId);
+  assigningPlanFlow.delete(userId);
 }

@@ -31,6 +31,8 @@ export function buildManagePlansKeyboard(): InlineKeyboard {
     .row()
     .text("📩 Solicitudes pendientes", "admin_plans_requests")
     .row()
+    .text("👤 Asignar plan a usuario", "admin_plans_assign_user")
+    .row()
     .text("➕ Añadir plan", "admin_plans_add")
     .text("✏️ Editar plan", "admin_plans_edit")
     .row()

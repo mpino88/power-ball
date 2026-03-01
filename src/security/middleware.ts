@@ -20,10 +20,13 @@ export interface RestrictMiddlewareOptions {
 
 export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
   const { getOwnerId, isAllowed, requestAccessLink, addPlanRequest } = options;
+  /** Usuario sin acceso que eligió un plan y está pendiente de enviar teléfono. */
+  const pendingPlanRequest = new Map<number, { planId: string; planName: string }>();
 
   return async (
     ctx: {
-      from?: { id: number };
+      from?: { id: number; first_name?: string; last_name?: string };
+      message?: { text?: string };
       callbackQuery?: { data?: string };
       answerCallbackQuery?: (opts?: { text?: string }) => Promise<unknown>;
       reply: (text: string, opts?: object) => Promise<unknown>;
@@ -41,21 +44,31 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
       const planId = data.slice("request_plan_".length);
       const plan = getPlanById(planId);
       if (plan) {
-        try {
-          await addPlanRequest(uid, plan.title);
-          if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery({ text: "Solicitud enviada ✓" });
-          await ctx.reply(
-            "✅ Tu solicitud de acceso ha sido registrada (*" +
-              plan.title +
-              "*). El administrador la revisará y te dará acceso cuando la apruebe.",
-            { parse_mode: "Markdown" }
-          );
-        } catch (e) {
-          if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery({ text: "Error al registrar. Intenta más tarde." }).catch(() => {});
-          await ctx.reply("No se pudo registrar la solicitud. Intenta más tarde o contacta al administrador.").catch(() => {});
-        }
+        pendingPlanRequest.set(uid, { planId, planName: plan.title });
+        if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery({ text: "Envía tu teléfono" });
+        await ctx.reply(
+          "📋 Plan *" + plan.title + "*\n\nPara completar la solicitud, envía tu *número de teléfono* (ej: +1234567890 o 1234567890).",
+          { parse_mode: "Markdown" }
+        );
       } else {
         if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery({ text: "Plan no encontrado." }).catch(() => {});
+      }
+      return;
+    }
+
+    const pending = ctx.message && "text" in ctx.message ? pendingPlanRequest.get(uid) : undefined;
+    if (pending) {
+      const phone = String((ctx.message as { text?: string }).text ?? "").trim();
+      const name = [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ").trim() || "—";
+      pendingPlanRequest.delete(uid);
+      try {
+        await addPlanRequest(uid, pending.planName, { name, phone });
+        await ctx.reply(
+          "✅ Solicitud registrada (*" + pending.planName + "*). Nombre y teléfono guardados. El administrador revisará tu acceso.",
+          { parse_mode: "Markdown" }
+        );
+      } catch (e) {
+        await ctx.reply("No se pudo guardar la solicitud. Intenta más tarde o contacta al administrador.").catch(() => {});
       }
       return;
     }
@@ -71,22 +84,26 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
     const plans = getPlans();
     const header =
       "🔒 *Acceso restringido*\n\n" +
-      "Elige un plan y solicita acceso. Tu ID: `" + uid + "` — envíalo al administrador.\n\n";
+      "Tu ID: `" + uid + "` — elige un plan y solicita acceso.\n\n";
     let body: string;
     if (plans.length === 0) {
       body = "No hay planes configurados. Contacta al administrador para solicitar acceso.";
     } else {
       body =
         plans
-          .map(
-            (p) =>
-              "━━━━━━━━━━━━━━━━\n" +
-              `📋 *${p.title}* — ${p.price}\n` +
-              p.description +
-              "\n"
-          )
-          .join("") +
-        "━━━━━━━━━━━━━━━━\n\n👇 Elige un plan para solicitar acceso:";
+          .map((p) => {
+            const desc = p.description.replace(/\n/g, " ");
+            return (
+              "▃▃▃▃▃▃▃▃▃▃▃▃▃▃▃\n" +
+              `  *${p.title}*\n` +
+              (p.price ? `  *${p.price}*\n` : "") +
+              "  ─────────────\n" +
+              `  ${desc}\n` +
+              "▃▃▃▃▃▃▃▃▃▃▃▃▃▃▃"
+            );
+          })
+          .join("\n\n") +
+        "\n\n👇 _Elige tu plan y toca el botón para solicitar:_";
     }
     const msg = link ? header + body : "🔒 *Acceso restringido.*\n\nNo se pudo generar el enlace para solicitar acceso. Contacta al administrador y envíale tu ID: `" + uid + "`.";
 
@@ -95,7 +112,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
       keyboard.url("📩 Solicitar acceso", link);
     } else {
       for (const p of plans) {
-        keyboard.text(`📋 ${p.title} — ${p.price} — Solicitar`, `request_plan_${p.id}`).row();
+        keyboard.text(`  ✓ ${p.title}  ·  ${p.price}  ·  Solicitar  `, `request_plan_${p.id}`).row();
       }
       if (link) keyboard.url("📩 Contactar al administrador", link);
     }

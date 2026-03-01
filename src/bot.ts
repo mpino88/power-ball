@@ -13,6 +13,7 @@ import {
   isOwner,
   initUserConfig,
   addPlanRequest,
+  requestPlanChange,
 } from "./user-config.js";
 import {
   registerExtraMenu,
@@ -22,7 +23,7 @@ import {
   EXTRA_MENU_CALLBACK_PREFIX,
 } from "./menu-registry.js";
 import { initCustomMenus } from "./custom-menus.js";
-import { initPlans } from "./plans.js";
+import { initPlans, getPlans, getPlanById } from "./plans.js";
 import {
   buildGroupStatsMessage as buildGroupStatsMessageFromStats,
   buildIndividualTop10Message as buildIndividualTop10MessageFromStats,
@@ -44,9 +45,11 @@ import {
 } from "./security/index.js";
 import {
   buildMainKeyboard,
+  buildEstrategiasKeyboard,
   buildEstadisticasKeyboard,
   buildIndividualPeriodKeyboard,
   handleMenuCallback,
+  ESTRATEGIAS_OPEN_CALLBACK,
   type GameMenu,
 } from "./menus/index.js";
 
@@ -220,6 +223,69 @@ bot.on("callback_query:data", async (ctx) => {
       }
       return;
     }
+  }
+
+  if (data === ESTRATEGIAS_OPEN_CALLBACK) {
+    await ctx.answerCallbackQuery();
+    const result = "➕ *Estrategias*\n\nElige una estrategia:";
+    const keyboard = buildEstrategiasKeyboard(ctx.from?.id, mainKbDeps);
+    try {
+      await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
+  }
+
+  if (data === "cambiar_plan_open" && ctx.from && isAllowed(ctx.from.id) && !isOwner(ctx.from.id)) {
+    await ctx.answerCallbackQuery();
+    const plans = getPlans();
+    if (plans.length === 0) {
+      try {
+        await ctx.editMessageText("No hay planes disponibles para cambiar.", {
+          parse_mode: "Markdown",
+          reply_markup: buildMainKb(ctx.from?.id),
+        });
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
+    const result =
+      "📋 *Cambiar de plan*\n\nElige el nuevo plan. _Al confirmar perderás el acceso hasta que el administrador te apruebe de nuevo._";
+    const keyboard = new InlineKeyboard();
+    for (const p of plans) {
+      keyboard.text(`${p.title} — ${p.price}`, `user_cambiar_plan_${p.id}`).row();
+    }
+    keyboard.text("◀️ Cancelar", "volver");
+    try {
+      await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
+  }
+
+  if (data.startsWith("user_cambiar_plan_") && ctx.from && isAllowed(ctx.from.id) && !isOwner(ctx.from.id)) {
+    const planId = data.slice("user_cambiar_plan_".length);
+    const plan = getPlanById(planId);
+    if (plan) {
+      const res = await requestPlanChange(ctx.from.id, plan.title);
+      await ctx.answerCallbackQuery({ text: res.ok ? "Solicitud enviada" : "Error" });
+      try {
+        await ctx.editMessageText(
+          "✅ Has solicitado el plan *" +
+            plan.title +
+            "*.\n\nEl administrador debe aprobarte de nuevo. _Hasta entonces no tendrás acceso al bot._",
+          { parse_mode: "Markdown" }
+        );
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+    } else {
+      await ctx.answerCallbackQuery({ text: "Plan no encontrado" });
+    }
+    return;
   }
 
   const menuDeps = {

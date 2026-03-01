@@ -14,7 +14,7 @@ import {
 import { getExtraMenuIds } from "../menu-registry.js";
 import { addCustomMenu, updateCustomMenu } from "../custom-menus.js";
 import { updateExtraMenuLabel } from "../menu-registry.js";
-import { addPlan, updatePlan, titleToPlanId } from "../plans.js";
+import { addPlan, updatePlan, titleToPlanId, getPlans } from "../plans.js";
 import { buildSecurityKeyboard, buildManageMenusKeyboard, buildManagePlansKeyboard } from "./keyboards.js";
 import { labelToMenuId } from "./menuIdFromLabel.js";
 import {
@@ -23,6 +23,7 @@ import {
   editingMenuFlow,
   creatingPlanFlow,
   editingPlanFlow,
+  assigningPlanFlow,
   clearAllFlows,
 } from "./flows.js";
 
@@ -44,6 +45,36 @@ export async function handleSecurityMessage(
   if (userId === undefined || !deps.isOwner(userId)) return false;
 
   const text = (ctx.message && "text" in ctx.message ? ctx.message.text : undefined)?.trim() ?? "";
+
+  const assigningPlan = assigningPlanFlow.get(userId);
+  if (assigningPlan?.step === 1) {
+    const targetId = parseInt(text, 10);
+    if (Number.isNaN(targetId) || targetId < 0) {
+      await ctx.reply("ID inválido. Envía un número (ej: 123456789).", {
+        reply_markup: new InlineKeyboard().text("◀️ Cancelar", "admin_assign_plan_cancel"),
+      });
+      return true;
+    }
+    assigningPlanFlow.set(userId, { step: 2, targetUserId: targetId });
+    const plans = getPlans();
+    if (plans.length === 0) {
+      assigningPlanFlow.delete(userId);
+      await ctx.reply("No hay planes. Crea uno en Gestionar planes.", {
+        reply_markup: buildManagePlansKeyboard(),
+      });
+      return true;
+    }
+    const kb = new InlineKeyboard();
+    for (const p of plans) {
+      kb.text(`${p.title} — ${p.price}`, `admin_assign_plan_${p.id}`).row();
+    }
+    kb.text("◀️ Cancelar", "admin_assign_plan_cancel");
+    await ctx.reply(`👤 *Asignar plan al usuario \`${targetId}\`*\n\nElige el plan:`, {
+      parse_mode: "Markdown",
+      reply_markup: kb,
+    });
+    return true;
+  }
 
   const flow = addingUserFlow.get(userId);
   if (flow) {

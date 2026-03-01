@@ -17,6 +17,8 @@ import {
   removeMenuFromAllUsers,
   getRequestedPlanUsers,
   approvePlanRequest,
+  assignPlanToUser,
+  reloadConfigFromStorage,
 } from "../user-config.js";
 import {
   getExtraMenuIds,
@@ -55,6 +57,7 @@ import {
   creatingPlanFlow,
   editingPlanFlow,
   deletingPlanFlow,
+  assigningPlanFlow,
   clearAllFlows,
 } from "./flows.js";
 
@@ -92,6 +95,7 @@ export async function handleSecurityCallback(
     result = "👋 Elige juego y luego el período:";
     keyboard = deps.buildMainKeyboard(ctx.from.id);
   } else if (data === "admin_list") {
+    await reloadConfigFromStorage();
     const list = getAllowedUsers();
     const lines = list.map((id) => {
       const name = getUsername(id);
@@ -109,6 +113,7 @@ export async function handleSecurityCallback(
       "➕ *Agregar acceso* (paso 1/3)\n\nEnvía el *ID* del usuario (número). El usuario puede ver su ID escribiendo /start sin acceso.\n\n/cancel para cancelar.";
     keyboard = new InlineKeyboard().text("◀️ Cancelar", "security_open");
   } else if (data === "admin_remove") {
+    await reloadConfigFromStorage();
     const list = getAllowedUsers();
     const slice = list.slice(0, 30);
     result =
@@ -305,6 +310,34 @@ export async function handleSecurityCallback(
     result =
       "💰 *Gestionar planes*\n\nLos planes se muestran a usuarios sin acceso. Lista, añade, edita o elimina planes (título, descripción, precio).";
     keyboard = buildManagePlansKeyboard();
+  } else if (data === "admin_plans_assign_user") {
+    assigningPlanFlow.set(ctx.from.id, { step: 1 });
+    result =
+      "👤 *Asignar plan a usuario*\n\nEnvía el *ID* del usuario (número de Telegram). El usuario puede ver su ID con /start si no tiene acceso.";
+    keyboard = new InlineKeyboard().text("◀️ Cancelar", "admin_assign_plan_cancel");
+  } else if (data.startsWith("admin_assign_plan_") && !data.startsWith("admin_assign_plan_cancel")) {
+    const planId = data.replace("admin_assign_plan_", "");
+    const plan = getPlanById(planId);
+    const flow = assigningPlanFlow.get(ctx.from.id);
+    if (!plan || !flow || flow.step !== 2) {
+      result = plan ? "Sesión expirada. Vuelve a *Asignar plan a usuario* e introduce el ID." : "Plan no encontrado.";
+      keyboard = buildManagePlansKeyboard();
+      if (flow) assigningPlanFlow.delete(ctx.from.id);
+    } else {
+      const targetUserId = flow.targetUserId;
+      assigningPlanFlow.delete(ctx.from.id);
+      const assignResult = await assignPlanToUser(targetUserId, plan.title, plan.menuIds ?? []);
+      if (assignResult.ok) {
+        result = `✅ Plan *${plan.title}* asignado al usuario \`${targetUserId}\`. Menús del plan aplicados.`;
+      } else {
+        result = (assignResult.error ?? "Error al guardar.") + "\n\nVuelve a intentar desde *Asignar plan a usuario*.";
+      }
+      keyboard = buildManagePlansKeyboard();
+    }
+  } else if (data === "admin_assign_plan_cancel") {
+    assigningPlanFlow.delete(ctx.from.id);
+    result = "💰 *Gestionar planes*\n\nOperación cancelada.";
+    keyboard = buildManagePlansKeyboard();
   } else if (data === "admin_plans_list") {
     const list = getPlans();
     const lines = list.map((p) => {
@@ -450,17 +483,26 @@ export async function handleSecurityCallback(
       keyboard = buildManagePlansKeyboard();
     }
   } else if (data === "admin_plans_requests") {
+    await reloadConfigFromStorage();
     const requested = getRequestedPlanUsers();
     if (requested.length === 0) {
-      result = "📩 *Solicitudes pendientes*\n\nNo hay solicitudes con estado _requested_. Los usuarios verán sus menús cuando apruebes su plan.";
+      result =
+        "📩 *Solicitudes pendientes*\n\nNo hay solicitudes. Cuando un usuario sin acceso elija un plan y envíe su teléfono, aparecerán aquí.";
       keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar planes", "admin_plans_manage");
     } else {
       result =
-        "📩 *Solicitudes pendientes* (plan_status = requested)\n\nAprueba para dar acceso y asignar menús:\n\n" +
-        requested.map((u) => `• \`${u.userId}\` — ${u.plan}`).join("\n");
+        "📩 *Solicitudes pendientes* (plan_status = requested)\n\nAprueba para dar acceso y asignar menús del plan:\n\n" +
+        requested
+          .map((u) => {
+            const name = u.name || "—";
+            const phone = u.phone ? `📞 ${u.phone}` : "—";
+            return `• \`${u.userId}\` — *${u.plan}*\n  ${name} — ${phone}`;
+          })
+          .join("\n\n");
       keyboard = new InlineKeyboard();
       for (const u of requested) {
-        keyboard.text(`✅ Aprobar ${u.userId} (${u.plan})`, `admin_plans_approve_${u.userId}`).row();
+        const label = u.name ? `✅ ${u.userId} — ${u.plan} (${u.name})` : `✅ Aprobar ${u.userId} (${u.plan})`;
+        keyboard.text(label, `admin_plans_approve_${u.userId}`).row();
       }
       keyboard.text("◀️ Volver a Gestionar planes", "admin_plans_manage");
     }
