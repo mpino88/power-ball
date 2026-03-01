@@ -70,18 +70,18 @@ export function titleToPlanId(title: string): string {
 const DEFAULT_PLANS: Plan[] = [
   {
     id: "basico",
-    title: "Plan Básico",
+    title: "Básico",
     description:
-      "Consultas ilimitadas a cualquier fecha: Fijo (P3), Corrido (P4) y Estadísticas por grupo (Mediodía/Noche).",
-    price: "Gratis",
+      "Consultas por período: Fijo (P3), Corrido (P4) — Hoy, Ayer, Semana o fecha elegida. Incluye Estadísticas por grupo (Mediodía y Noche).",
+    price: "200",
     menuIds: ["est_grupos"],
   },
   {
     id: "pro",
-    title: "Plan Pro",
+    title: "Pro",
     description:
-      "Todo lo del Básico (consultas Fijo/Corrido + Estadísticas por grupo) más Estadísticas individuales (Top 10 más hot).",
-    price: "Consultar",
+      "Todo lo de Básico (consultas Fijo/Corrido + Estadísticas por grupo) más Estadísticas individuales: Top 10 más hot por Mediodía/Noche.",
+    price: "500",
     menuIds: ["est_grupos", "est_individuales"],
   },
 ];
