@@ -8,6 +8,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import { GoogleSpreadsheet } from "google-spreadsheet";
 import { JWT } from "google-auth-library";
+import { getPlanByTitle } from "./plans.js";
 
 const CONFIG_DIR = path.join(process.cwd(), "data");
 const CONFIG_PATH = path.join(CONFIG_DIR, "bot-users.json");
@@ -651,9 +652,15 @@ export function isAllowed(userId: number): boolean {
   return config.allowed.includes(userId);
 }
 
+/** Menús del usuario = menús de su plan + menús asignados explícitamente (columna menus). */
 export function getExtraMenus(userId: number): string[] {
-  const list = config.menus[String(userId)];
-  return Array.isArray(list) ? [...list] : [];
+  const planTitle = getPlan(userId);
+  const plan = planTitle ? getPlanByTitle(planTitle) : undefined;
+  const planMenuIds = plan?.menuIds ?? [];
+  const assignedMenus = config.menus[String(userId)];
+  const assigned = Array.isArray(assignedMenus) ? assignedMenus : [];
+  const combined = new Set<string>([...planMenuIds, ...assigned]);
+  return Array.from(combined);
 }
 
 export function getAllowedUsers(): number[] {
@@ -730,17 +737,16 @@ export function getRequestedPlanUsers(): { userId: number; plan: string; name?: 
   }));
 }
 
-/** Asigna un plan directamente a un usuario (por el dueño). Le da acceso, plan/plan_status=approved y menús del plan. Si estaba en requestedPlans se quita. */
+/** Asigna un plan directamente a un usuario (por el dueño). Le da acceso y plan/plan_status=approved. Los menús del plan se aplican vía getExtraMenus; no se sobrescribe la asignación individual (menus). */
 export async function assignPlanToUser(
   targetUserId: number,
   planName: string,
-  planMenuIds: string[]
+  _planMenuIds: string[]
 ): Promise<PersistResult> {
   const key = String(targetUserId);
   if (!config.allowed.includes(targetUserId)) config.allowed.push(targetUserId);
   delete config.requestedPlans[key];
   config.userInfo[key] = { ...config.userInfo[key], plan: planName, plan_status: "approved" };
-  config.menus[key] = [...planMenuIds];
   return persist();
 }
 
@@ -757,8 +763,8 @@ export async function requestPlanChange(userId: number, planName: string): Promi
   return persist();
 }
 
-/** Aprueba solicitud: quita de requestedPlans, añade a allowed, asigna menús del plan (si se pasan) y guarda plan/plan_status=approved. */
-export async function approvePlanRequest(userId: number, planMenuIds?: string[]): Promise<PersistResult> {
+/** Aprueba solicitud: quita de requestedPlans, añade a allowed y guarda plan/plan_status=approved. Los menús del plan se aplican vía getExtraMenus; la asignación individual (menus) no se sobrescribe. */
+export async function approvePlanRequest(userId: number, _planMenuIds?: string[]): Promise<PersistResult> {
   const key = String(userId);
   const req = config.requestedPlans[key];
   if (!req) {
@@ -773,7 +779,6 @@ export async function approvePlanRequest(userId: number, planMenuIds?: string[])
     plan: req.plan,
     plan_status: "approved",
   };
-  if (Array.isArray(planMenuIds)) config.menus[key] = [...planMenuIds];
   return persist();
 }
 
