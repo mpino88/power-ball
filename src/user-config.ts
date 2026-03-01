@@ -48,6 +48,14 @@ let config: UsersConfig = { ...defaultConfig };
 const SHEET_HEADERS = ["userId", "nombre", "telefono", "menus", "menus_labels", "plan", "plan_status"] as const;
 type SheetRow = { userId: string; nombre: string; telefono: string; menus: string; menus_labels: string; plan: string; plan_status: string };
 
+/** Índices de columnas (mismo orden que SHEET_HEADERS) para leer sin depender del texto exacto del encabezado. */
+const COL_USERID = 0;
+const COL_NOMBRE = 1;
+const COL_TELEFONO = 2;
+const COL_MENUS = 3;
+const COL_PLAN = 5;
+const COL_PLAN_STATUS = 6;
+
 /** Resolver para obtener el texto (label) de un menú por ID. Se asigna desde bot al arranque (getExtraMenuLabel). */
 let sheetMenuLabelResolver: ((menuId: string) => string | undefined) | null = null;
 export function setSheetMenuLabelResolver(fn: (menuId: string) => string | undefined): void {
@@ -180,48 +188,57 @@ async function loadFromSheet(): Promise<UsersConfig> {
       console.log("[user-config] Google Sheet: cabecera creada (primera vez).");
       return { ...defaultConfig };
     }
-    const rows = await sheet.getRows<SheetRow & { est_grupos?: string; est_individuales?: string }>({ offset: 0 });
+    const rows = await sheet.getRows<SheetRow & { est_grupos?: string; est_individuales?: string }>({
+      offset: 0,
+      limit: 10000,
+    });
     const allowed: number[] = [];
     const menus: Record<string, string[]> = {};
     const userInfo: Record<string, UserInfo> = {};
     const requestedPlans: Record<string, PlanRequest> = {};
     for (const row of rows) {
-      const uidStr = String(row.get("userId") ?? "").trim();
+      const obj = row.toObject();
+      const values = Object.values(obj) as unknown[];
+      const getCol = (i: number) =>
+        i >= 0 && i < values.length ? String(values[i] ?? "").trim() : "";
+      const uidStr = getCol(COL_USERID);
       const uid = parseInt(uidStr, 10);
       if (uidStr === "" || Number.isNaN(uid)) continue;
-      const planStatus = String(row.get("plan_status") ?? "").trim().toLowerCase();
-      const planName = String(row.get("plan") ?? "").trim();
+      const planStatus = getCol(COL_PLAN_STATUS).toLowerCase();
+      const planName = getCol(COL_PLAN);
       if (planStatus === "requested") {
-        const nombre = String(row.get("nombre") ?? "").trim();
-        const telefono = String(row.get("telefono") ?? "").trim();
         requestedPlans[uidStr] = {
           plan: planName || "—",
-          name: nombre || undefined,
-          phone: telefono || undefined,
+          name: getCol(COL_NOMBRE) || undefined,
+          phone: getCol(COL_TELEFONO) || undefined,
         };
         continue;
       }
       allowed.push(uid);
       let menuIds: string[] = [];
-      const menusStr = String(row.get("menus") ?? "").trim();
+      const menusStr = getCol(COL_MENUS);
       if (menusStr) menuIds = menusStr.split(",").map((s) => s.trim()).filter(Boolean);
       else {
-        const g = String(row.get("est_grupos") ?? "").trim();
-        const i = String(row.get("est_individuales") ?? "").trim();
+        const g = String((row as Record<string, unknown>).est_grupos ?? "").trim();
+        const i = String((row as Record<string, unknown>).est_individuales ?? "").trim();
         if (g === "1" || g.toLowerCase() === "true") menuIds.push("est_grupos");
         if (i === "1" || i.toLowerCase() === "true") menuIds.push("est_individuales");
       }
       menus[uidStr] = menuIds;
-      const nombre = String(row.get("nombre") ?? "").trim();
-      const telefono = String(row.get("telefono") ?? "").trim();
       userInfo[uidStr] = {
-        name: nombre || undefined,
-        phone: telefono || undefined,
+        name: getCol(COL_NOMBRE) || undefined,
+        phone: getCol(COL_TELEFONO) || undefined,
         plan: planName || undefined,
         plan_status: planStatus || undefined,
       };
     }
-    console.log("[user-config] Google Sheet: cargados", allowed.length, "usuarios;", Object.keys(requestedPlans).length, "solicitudes pendientes.");
+    console.log(
+      "[user-config] Google Sheet: cargados",
+      allowed.length,
+      "usuarios;",
+      Object.keys(requestedPlans).length,
+      "solicitudes pendientes."
+    );
     return { allowed, menus, userInfo, requestedPlans };
   } catch (e) {
     console.error("[user-config] Error al cargar desde Google Sheet:", e);
@@ -413,12 +430,16 @@ export async function initUserConfig(): Promise<void> {
 export async function reloadConfigFromStorage(): Promise<void> {
   if (useGoogleSheet()) {
     try {
-      config = await loadFromSheet();
+      const loaded = await loadFromSheet();
+      config = loaded;
+      const n = Object.keys(config.requestedPlans).length;
+      console.log("[user-config] reloadConfigFromStorage: recargado desde Sheet;", n, "solicitudes pendientes.");
     } catch (e) {
       console.error("[user-config] reloadConfigFromStorage: error al recargar desde Sheet:", (e as Error)?.message ?? e);
     }
   } else {
     config = loadFromFile();
+    console.log("[user-config] reloadConfigFromStorage: recargado desde archivo;", Object.keys(config.requestedPlans).length, "solicitudes pendientes.");
   }
 }
 
