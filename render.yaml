@@ -18,3 +18,6 @@ services:
       - key: GOOGLE_SERVICE_ACCOUNT_JSON
         sync: false
       # O en lugar de JSON: GOOGLE_SERVICE_ACCOUNT_EMAIL + GOOGLE_PRIVATE_KEY
+      - key: REQUEST_ACCESS_LINK
+        sync: false
+      # Enlace al chat/grupo para solicitar acceso (ej: t.me/mi_grupo). Sin esto no se muestra botón.

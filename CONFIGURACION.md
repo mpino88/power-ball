@@ -95,6 +95,22 @@ Sigue estos pasos en orden. Al final tendrás el bot funcionando con Telegram y 
 
 ---
 
+## Si la Sheet no se actualiza
+
+1. **Logs al arranque:** En los logs del bot (Render → tu servicio → Logs) deberías ver una de estas líneas:
+   - `[user-config] Usando Google Sheet. ID: ...` → el bot está usando la Sheet.
+   - `[user-config] Usando archivo: data/bot-users.json (...)` → **no** está usando la Sheet (falta `GOOGLE_SHEET_ID` o las credenciales).
+
+2. Si usa archivo: en Render revisa que estén definidas **GOOGLE_SHEET_ID** y **GOOGLE_SERVICE_ACCOUNT_JSON** (o EMAIL + PRIVATE_KEY). Sin ellas, los datos se guardan solo en el servidor (y en Render el disco se borra en cada deploy).
+
+3. **GOOGLE_SERVICE_ACCOUNT_JSON:** Debe ser el JSON completo en **una sola línea** (sin saltos de línea). Si falla el parse, en logs verás `Error parsing GOOGLE_SERVICE_ACCOUNT_JSON`.
+
+4. **Compartir la Sheet:** La hoja debe estar compartida con el **client_email** del JSON (ej: `xxx@xxx.iam.gserviceaccount.com`) con permiso **Editor**. Si no, verás errores 403 en los logs al guardar.
+
+5. Al agregar o quitar acceso, en logs debería salir: `[user-config] Google Sheet: guardados N usuarios.` Si sale `Error al guardar en Google Sheet:` revisa permisos y credenciales.
+
+---
+
 ## Resumen: qué info necesitas tener lista
 
 | Dato | Dónde se usa |
@@ -105,6 +121,7 @@ Sigue estos pasos en orden. Al final tendrás el bot funcionando con Telegram y 
 | ID de la Sheet | Ya configurado: `12zXYV7G9Pg3n3_Fu-pMG67z6xGUlSbuY-Yfa94bzrI8` |
 | JSON de la cuenta de servicio (o email + private_key) | `GOOGLE_SERVICE_ACCOUNT_JSON` (o EMAIL + PRIVATE_KEY en Render / .env) |
 | Email de la cuenta de servicio | Para compartir la Sheet en Google (Editor) |
+| Chat para solicitar acceso (opcional) | Si no defines `REQUEST_ACCESS_LINK`, el botón abre **chat directo con el dueño** (usa tu `BOT_OWNER_ID`). Si lo defines, el botón lleva a ese enlace (ej: grupo). |
 
 ---
 

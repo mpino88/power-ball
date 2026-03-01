@@ -28,6 +28,9 @@ const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const WEBHOOK_URL = process.env.WEBHOOK_URL ?? "";
 const FLORIDA_TZ = "America/New_York";
 
+/** Enlace al chat/grupo donde los usuarios pueden solicitar acceso (ej: t.me/mi_grupo o https://t.me/...). Si está definido, se muestra en el mensaje a no autorizados. */
+const REQUEST_ACCESS_LINK = process.env.REQUEST_ACCESS_LINK?.trim() ?? "";
+
 const HELP_TEXT =
   "🏝 *Florida Lottery — Fijo y Corrido*\n\n" +
   "☀️ *Mediodía (M)* · 🌙 *Noche (E)*\n\n" +
@@ -111,15 +114,25 @@ bot.use(async (ctx, next) => {
   const ownerId = getOwnerId();
   if (ownerId === null) return next();
   if (isAllowed(uid)) return next();
-  const isStart = ctx.message?.text?.trim().startsWith("/start");
-  if (isStart) {
-    await ctx.reply(
-      `No tienes acceso a este bot.\n\nTu ID de Telegram: \`${uid}\`. Envía este número al administrador para solicitar acceso.`,
-      { parse_mode: "Markdown" }
-    );
-  } else {
-    await ctx.reply("No tienes acceso a este bot.");
+  const raw = REQUEST_ACCESS_LINK;
+  let link = "";
+  if (raw) {
+    link = raw.startsWith("http") ? raw : "https://t.me/" + raw.replace(/^t\.me\/?/i, "");
+  } else if (ownerId !== null) {
+    link = `tg://user?id=${ownerId}`;
   }
+  const msg =
+    "🔒 *Este bot es de uso restringido.*\n\n" +
+    "Para solicitar acceso, contacta al administrador y envíale tu ID.\n\n" +
+    `Tu ID de Telegram: \`${uid}\` — cópialo y envíalo al dueño del bot.\n\n` +
+    (link
+      ? "👇 Toca el botón para abrir un chat directo con el administrador y solicitar acceso:"
+      : "_No se pudo generar el enlace de contacto._");
+  const keyboard = link ? new InlineKeyboard().url("📩 Chatear con el dueño del bot", link) : undefined;
+  await ctx.reply(msg, {
+    parse_mode: "Markdown",
+    reply_markup: keyboard,
+  });
   return;
 });
 
@@ -144,9 +157,8 @@ bot.command("help", async (ctx) => {
 /** Usuario esperando escribir fecha → juego elegido (fijo, corrido o ambos). */
 const waitingCustomDateGame = new Map<number, GameMenu>();
 
-/** Dueño esperando ID para agregar/quitar usuario. */
+/** Dueño esperando ID para agregar usuario. */
 const waitingAdminAdd = new Set<number>();
-const waitingAdminRemove = new Set<number>();
 
 function buildSecurityKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
@@ -158,6 +170,19 @@ function buildSecurityKeyboard(): InlineKeyboard {
     .text("📋 Menús por usuario", "admin_menus")
     .row()
     .text("◀️ Volver al menú principal", "security_main");
+}
+
+/** Teclado: una fila por menú con botón ➕ (dar acceso) y ➖ (quitar acceso). */
+function buildUserMenusKeyboard(uid: number): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const menuId of EXTRA_MENU_IDS) {
+    kb
+      .text("➕", `admin_menu_add_${uid}_${menuId}`)
+      .text("➖", `admin_menu_remove_${uid}_${menuId}`)
+      .row();
+  }
+  kb.text("◀️ Volver a Seguridad", "security_open");
+  return kb;
 }
 
 bot.command("admin", async (ctx) => {
@@ -184,7 +209,6 @@ bot.on("callback_query:data", async (ctx) => {
       keyboard = buildSecurityKeyboard();
     } else if (data === "security_main") {
       waitingAdminAdd.delete(ctx.from.id);
-      waitingAdminRemove.delete(ctx.from.id);
       result = "👋 Elige juego y luego el período:";
       keyboard = buildMainKeyboard(ctx.from?.id);
     } else if (data === "admin_list") {
@@ -198,9 +222,34 @@ bot.on("callback_query:data", async (ctx) => {
       result = "➕ *Agregar acceso*\n\nEnvía el *ID* del usuario (número) que quieres dar acceso. Ese usuario puede ver su ID si escribe /start sin acceso.\n\n/cancel para cancelar.";
       keyboard = new InlineKeyboard().text("◀️ Cancelar", "security_open");
     } else if (data === "admin_remove") {
-      waitingAdminRemove.add(ctx.from.id);
-      result = "➖ *Quitar acceso*\n\nEnvía el *ID* del usuario a quitar.\n\n/cancel para cancelar.";
-      keyboard = new InlineKeyboard().text("◀️ Cancelar", "security_open");
+      const list = getAllowedUsers();
+      result =
+        list.length === 0
+          ? "➖ *Quitar acceso*\n\n_No hay usuarios con acceso_ (solo tú como dueño)."
+          : "➖ *Quitar acceso*\n\nToca ❌ junto al usuario para quitarle el acceso:";
+      keyboard = new InlineKeyboard();
+      for (const uid of list.slice(0, 30)) {
+        keyboard.text(`❌ ${uid}`, `admin_revoke_${uid}`).row();
+      }
+      keyboard.text("◀️ Volver a Seguridad", "security_open");
+    } else if (data.startsWith("admin_revoke_")) {
+      const uid = parseInt(data.replace("admin_revoke_", ""), 10);
+      if (Number.isNaN(uid)) {
+        result = "Error.";
+        keyboard = buildSecurityKeyboard();
+      } else {
+        await removeAllowed(uid);
+        const list = getAllowedUsers();
+        result =
+          list.length === 0
+            ? `✅ Usuario \`${uid}\` sin acceso. Ya no quedan otros usuarios en la lista.`
+            : `✅ Usuario \`${uid}\` sin acceso. Toca ❌ para quitar a otro:`;
+        keyboard = new InlineKeyboard();
+        for (const id of list.slice(0, 30)) {
+          keyboard.text(`❌ ${id}`, `admin_revoke_${id}`).row();
+        }
+        keyboard.text("◀️ Volver a Seguridad", "security_open");
+      }
     } else if (data === "admin_menus") {
       const list = getAllowedUsers();
       keyboard = new InlineKeyboard();
@@ -209,40 +258,49 @@ bot.on("callback_query:data", async (ctx) => {
       }
       keyboard.text("◀️ Volver a Seguridad", "security_open");
       result = "📋 *Menús por usuario*\n\nElige un usuario para asignar menús extra (Est. grupos, Est. individuales):";
-    } else if (data.startsWith("admin_menus_")) {
+    } else if (data.startsWith("admin_menus_") && !data.includes("_add_") && !data.includes("_remove_")) {
       const uid = parseInt(data.replace("admin_menus_", ""), 10);
       if (Number.isNaN(uid)) {
         result = "Error.";
         keyboard = buildSecurityKeyboard();
       } else {
+        keyboard = buildUserMenusKeyboard(uid);
         const extra = getExtraMenus(uid);
-        keyboard = new InlineKeyboard()
-          .text(extra.includes("est_grupos") ? "📊 Est. grupos ✓" : "📊 Est. grupos", `admin_toggle_${uid}_est_grupos`)
-          .text(extra.includes("est_individuales") ? "📈 Est. indiv. ✓" : "📈 Est. indiv.", `admin_toggle_${uid}_est_individuales`)
-          .row()
-          .text("◀️ Volver a Seguridad", "security_open");
-        result = `📋 Menús para usuario \`${uid}\`. Activa/desactiva los que quieras:`;
+        const menuList = EXTRA_MENU_IDS.map((id) => `• ${EXTRA_MENU_LABELS[id]}${extra.includes(id) ? " ✓" : ""}`).join("\n");
+        result = `📋 *Menús para usuario* \`${uid}\`\n\nCada fila: ➕ dar acceso, ➖ quitar acceso.\n\n${menuList}`;
       }
-    } else if (data.startsWith("admin_toggle_")) {
-      const rest = data.replace("admin_toggle_", "");
+    } else if (data.startsWith("admin_menu_add_")) {
+      const rest = data.replace("admin_menu_add_", "");
       const [uidStr, menuId] = rest.split("_");
       const uid = parseInt(uidStr!, 10);
       if (Number.isNaN(uid) || !EXTRA_MENU_IDS.includes(menuId as ExtraMenuId)) {
         result = "Error.";
         keyboard = buildSecurityKeyboard();
       } else {
-        const nowOn = await toggleExtraMenu(uid, menuId as ExtraMenuId);
         const extra = getExtraMenus(uid);
-        keyboard = new InlineKeyboard()
-          .text(extra.includes("est_grupos") ? "📊 Est. grupos ✓" : "📊 Est. grupos", `admin_toggle_${uid}_est_grupos`)
-          .text(extra.includes("est_individuales") ? "📈 Est. indiv. ✓" : "📈 Est. indiv.", `admin_toggle_${uid}_est_individuales`)
-          .row()
-          .text("◀️ Volver a Seguridad", "security_open");
-        result = `📋 Menús para usuario \`${uid}\`. ${nowOn ? "Activado" : "Desactivado"}: ${EXTRA_MENU_LABELS[menuId as ExtraMenuId]}`;
+        if (!extra.includes(menuId as ExtraMenuId)) await toggleExtraMenu(uid, menuId as ExtraMenuId);
+        keyboard = buildUserMenusKeyboard(uid);
+        const extraAfter = getExtraMenus(uid);
+        const menuList = EXTRA_MENU_IDS.map((id) => `• ${EXTRA_MENU_LABELS[id]}${extraAfter.includes(id) ? " ✓" : ""}`).join("\n");
+        result = `📋 *Menús para usuario* \`${uid}\`\n\n✅ Acceso dado: ${EXTRA_MENU_LABELS[menuId as ExtraMenuId]}\n\n${menuList}`;
+      }
+    } else if (data.startsWith("admin_menu_remove_")) {
+      const rest = data.replace("admin_menu_remove_", "");
+      const [uidStr, menuId] = rest.split("_");
+      const uid = parseInt(uidStr!, 10);
+      if (Number.isNaN(uid) || !EXTRA_MENU_IDS.includes(menuId as ExtraMenuId)) {
+        result = "Error.";
+        keyboard = buildSecurityKeyboard();
+      } else {
+        const extra = getExtraMenus(uid);
+        if (extra.includes(menuId as ExtraMenuId)) await toggleExtraMenu(uid, menuId as ExtraMenuId);
+        keyboard = buildUserMenusKeyboard(uid);
+        const extraAfter = getExtraMenus(uid);
+        const menuList = EXTRA_MENU_IDS.map((id) => `• ${EXTRA_MENU_LABELS[id]}${extraAfter.includes(id) ? " ✓" : ""}`).join("\n");
+        result = `📋 *Menús para usuario* \`${uid}\`\n\n❌ Acceso quitado: ${EXTRA_MENU_LABELS[menuId as ExtraMenuId]}\n\n${menuList}`;
       }
     } else if (data === "admin_back") {
       waitingAdminAdd.delete(ctx.from!.id);
-      waitingAdminRemove.delete(ctx.from!.id);
       result = "🔒 *Seguridad* — Gestiona quién puede usar el bot y sus menús.";
       keyboard = buildSecurityKeyboard();
     } else {
@@ -471,7 +529,6 @@ bot.command("cancel", async (ctx) => {
   if (userId) {
     waitingCustomDateGame.delete(userId);
     waitingAdminAdd.delete(userId);
-    waitingAdminRemove.delete(userId);
   }
   await ctx.reply("Cancelado.", { reply_markup: buildMainKeyboard(ctx.from?.id) });
 });
@@ -490,17 +547,6 @@ bot.on("message:text", async (ctx) => {
       }
       await addAllowed(id);
       await ctx.reply(`✅ Usuario ${id} agregado. Ya puede usar el bot.`);
-      return;
-    }
-    if (waitingAdminRemove.has(userId)) {
-      waitingAdminRemove.delete(userId);
-      const id = parseInt(text, 10);
-      if (Number.isNaN(id) || id < 0) {
-        await ctx.reply("ID inválido. Usa un número (ej: 123456789).");
-        return;
-      }
-      await removeAllowed(id);
-      await ctx.reply(`✅ Usuario ${id} quitado. Ya no tiene acceso.`);
       return;
     }
   }
