@@ -16,6 +16,9 @@ import {
   removeAllowed,
   toggleExtraMenu,
   getAllowedUsers,
+  getUsername,
+  getPhone,
+  setUserInfo,
   isOwner,
   initUserConfig,
   EXTRA_MENU_IDS,
@@ -157,8 +160,9 @@ bot.command("help", async (ctx) => {
 /** Usuario esperando escribir fecha → juego elegido (fijo, corrido o ambos). */
 const waitingCustomDateGame = new Map<number, GameMenu>();
 
-/** Dueño esperando ID para agregar usuario. */
-const waitingAdminAdd = new Set<number>();
+/** Flujo agregar usuario: 1 = ID, 2 = Nombre, 3 = Teléfono. Clave = from.id del dueño. */
+type AddingStep = { step: 1; userId?: number } | { step: 2; userId: number; name?: string } | { step: 3; userId: number; name: string; phone?: string };
+const addingUserFlow = new Map<number, AddingStep>();
 
 function buildSecurityKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
@@ -208,18 +212,24 @@ bot.on("callback_query:data", async (ctx) => {
       result = "🔒 *Seguridad* — Gestiona quién puede usar el bot y sus menús.";
       keyboard = buildSecurityKeyboard();
     } else if (data === "security_main") {
-      waitingAdminAdd.delete(ctx.from.id);
+      addingUserFlow.delete(ctx.from.id);
       result = "👋 Elige juego y luego el período:";
       keyboard = buildMainKeyboard(ctx.from?.id);
     } else if (data === "admin_list") {
       const list = getAllowedUsers();
+      const lines = list.map((id) => {
+        const name = getUsername(id);
+        const phone = getPhone(id);
+        const extra = [name && `— ${name}`, phone && `📞 ${phone}`].filter(Boolean).join(" ");
+        return extra ? `• \`${id}\` ${extra}` : `• \`${id}\``;
+      });
       result =
         "👥 *Usuarios con acceso* (" + list.length + ")\n\n" +
-        (list.length ? list.map((id) => `• \`${id}\``).join("\n") : "_Ninguno_");
+        (lines.length ? lines.join("\n") : "_Ninguno_");
       keyboard = new InlineKeyboard().text("◀️ Volver a Seguridad", "security_open");
     } else if (data === "admin_add") {
-      waitingAdminAdd.add(ctx.from.id);
-      result = "➕ *Agregar acceso*\n\nEnvía el *ID* del usuario (número) que quieres dar acceso. Ese usuario puede ver su ID si escribe /start sin acceso.\n\n/cancel para cancelar.";
+      addingUserFlow.set(ctx.from.id, { step: 1 });
+      result = "➕ *Agregar acceso* (paso 1/3)\n\nEnvía el *ID* del usuario (número). El usuario puede ver su ID escribiendo /start sin acceso.\n\n/cancel para cancelar.";
       keyboard = new InlineKeyboard().text("◀️ Cancelar", "security_open");
     } else if (data === "admin_remove") {
       const list = getAllowedUsers();
@@ -300,7 +310,7 @@ bot.on("callback_query:data", async (ctx) => {
         result = `📋 *Menús para usuario* \`${uid}\`\n\n❌ Acceso quitado: ${EXTRA_MENU_LABELS[menuId as ExtraMenuId]}\n\n${menuList}`;
       }
     } else if (data === "admin_back") {
-      waitingAdminAdd.delete(ctx.from!.id);
+      addingUserFlow.delete(ctx.from!.id);
       result = "🔒 *Seguridad* — Gestiona quién puede usar el bot y sus menús.";
       keyboard = buildSecurityKeyboard();
     } else {
@@ -528,7 +538,7 @@ bot.command("cancel", async (ctx) => {
   const userId = ctx.from?.id;
   if (userId) {
     waitingCustomDateGame.delete(userId);
-    waitingAdminAdd.delete(userId);
+    addingUserFlow.delete(userId);
   }
   await ctx.reply("Cancelado.", { reply_markup: buildMainKeyboard(ctx.from?.id) });
 });
@@ -538,16 +548,45 @@ bot.on("message:text", async (ctx) => {
   const text = ctx.message.text.trim();
 
   if (userId && isOwner(userId)) {
-    if (waitingAdminAdd.has(userId)) {
-      waitingAdminAdd.delete(userId);
-      const id = parseInt(text, 10);
-      if (Number.isNaN(id) || id < 0) {
-        await ctx.reply("ID inválido. Usa un número (ej: 123456789).");
+    const flow = addingUserFlow.get(userId);
+    if (flow) {
+      if (flow.step === 1) {
+        const id = parseInt(text, 10);
+        if (Number.isNaN(id) || id < 0) {
+          await ctx.reply("ID inválido. Usa un número (ej: 123456789).");
+          return;
+        }
+        addingUserFlow.set(userId, { step: 2, userId: id });
+        await ctx.reply("➕ *Agregar acceso* (paso 2/3)\n\nEnvía el *Nombre* del usuario.", {
+          parse_mode: "Markdown",
+          reply_markup: new InlineKeyboard().text("◀️ Cancelar", "security_open"),
+        });
         return;
       }
-      await addAllowed(id);
-      await ctx.reply(`✅ Usuario ${id} agregado. Ya puede usar el bot.`);
-      return;
+      if (flow.step === 2) {
+        const name = text.trim();
+        if (!name) {
+          await ctx.reply("Escribe un nombre (texto).");
+          return;
+        }
+        addingUserFlow.set(userId, { step: 3, userId: flow.userId, name });
+        await ctx.reply("➕ *Agregar acceso* (paso 3/3)\n\nEnvía el *Teléfono* del usuario.", {
+          parse_mode: "Markdown",
+          reply_markup: new InlineKeyboard().text("◀️ Cancelar", "security_open"),
+        });
+        return;
+      }
+      if (flow.step === 3) {
+        const phone = text.trim();
+        addingUserFlow.delete(userId);
+        await addAllowed(flow.userId);
+        await setUserInfo(flow.userId, { name: flow.name, phone: phone || undefined });
+        await ctx.reply(
+          `✅ Usuario agregado.\n\nID: \`${flow.userId}\`\nNombre: ${flow.name}\nTeléfono: ${phone || "—"}`,
+          { parse_mode: "Markdown", reply_markup: buildSecurityKeyboard() }
+        );
+        return;
+      }
     }
   }
 

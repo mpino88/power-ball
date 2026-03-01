@@ -20,16 +20,22 @@ export const EXTRA_MENU_LABELS: Record<ExtraMenuId, string> = {
   est_individuales: "📈 Est. individuales",
 };
 
+export interface UserInfo {
+  name?: string;
+  phone?: string;
+}
+
 interface UsersConfig {
   allowed: number[];
   menus: Record<string, ExtraMenuId[]>;
+  userInfo: Record<string, UserInfo>;
 }
 
-const defaultConfig: UsersConfig = { allowed: [], menus: {} };
+const defaultConfig: UsersConfig = { allowed: [], menus: {}, userInfo: {} };
 let config: UsersConfig = { ...defaultConfig };
 
-const SHEET_HEADERS = ["userId", "est_grupos", "est_individuales"] as const;
-type SheetRow = { userId: string; est_grupos: string; est_individuales: string };
+const SHEET_HEADERS = ["userId", "nombre", "telefono", "est_grupos", "est_individuales"] as const;
+type SheetRow = { userId: string; nombre: string; telefono: string; est_grupos: string; est_individuales: string };
 
 function useGoogleSheet(): boolean {
   const id = process.env.GOOGLE_SHEET_ID;
@@ -99,6 +105,7 @@ async function loadFromSheet(): Promise<UsersConfig> {
     const rows = await sheet.getRows<SheetRow>({ offset: 0 });
     const allowed: number[] = [];
     const menus: Record<string, ExtraMenuId[]> = {};
+    const userInfo: Record<string, UserInfo> = {};
     for (const row of rows) {
       const uidStr = String(row.get("userId") ?? "").trim();
       const uid = parseInt(uidStr, 10);
@@ -110,9 +117,12 @@ async function loadFromSheet(): Promise<UsersConfig> {
       if (g === "1" || g.toLowerCase() === "true") menuIds.push("est_grupos");
       if (i === "1" || i.toLowerCase() === "true") menuIds.push("est_individuales");
       menus[uidStr] = menuIds;
+      const nombre = String(row.get("nombre") ?? "").trim();
+      const telefono = String(row.get("telefono") ?? "").trim();
+      if (nombre || telefono) userInfo[uidStr] = { name: nombre || undefined, phone: telefono || undefined };
     }
     console.log("[user-config] Google Sheet: cargados", allowed.length, "usuarios.");
-    return { allowed, menus };
+    return { allowed, menus, userInfo };
   } catch (e) {
     console.error("[user-config] Error al cargar desde Google Sheet:", e);
     return { ...defaultConfig };
@@ -123,10 +133,11 @@ function loadFromFile(): UsersConfig {
   try {
     if (existsSync(CONFIG_PATH)) {
       const raw = readFileSync(CONFIG_PATH, "utf8");
-      const data = JSON.parse(raw) as UsersConfig;
+      const data = JSON.parse(raw) as Partial<UsersConfig>;
       return {
         allowed: Array.isArray(data.allowed) ? data.allowed : [],
         menus: data.menus && typeof data.menus === "object" ? data.menus : {},
+        userInfo: data.userInfo && typeof data.userInfo === "object" ? data.userInfo : {},
       };
     }
   } catch (e) {
@@ -150,14 +161,18 @@ async function saveToSheet(): Promise<void> {
     try {
       await sheet.loadHeaderRow(1);
     } catch {
-      await sheet.setHeaderRow([...SHEET_HEADERS], 1);
+      /* primera vez o hoja vacía */
     }
+    await sheet.setHeaderRow([...SHEET_HEADERS], 1);
     await sheet.clearRows();
     const rows: SheetRow[] = config.allowed.map((uid) => {
       const key = String(uid);
       const extra = config.menus[key] ?? [];
+      const info = config.userInfo[key];
       return {
         userId: key,
+        nombre: info?.name ?? "",
+        telefono: info?.phone ?? "",
         est_grupos: extra.includes("est_grupos") ? "1" : "0",
         est_individuales: extra.includes("est_individuales") ? "1" : "0",
       };
@@ -222,6 +237,20 @@ export function getAllowedUsers(): number[] {
   return [...config.allowed];
 }
 
+export function getUsername(userId: number): string | undefined {
+  return config.userInfo[String(userId)]?.name;
+}
+
+export function getPhone(userId: number): string | undefined {
+  return config.userInfo[String(userId)]?.phone;
+}
+
+export async function setUserInfo(userId: number, info: UserInfo): Promise<void> {
+  const key = String(userId);
+  config.userInfo[key] = { ...config.userInfo[key], ...info };
+  await persist();
+}
+
 export async function addAllowed(userId: number): Promise<void> {
   if (!config.allowed.includes(userId)) {
     config.allowed.push(userId);
@@ -231,6 +260,9 @@ export async function addAllowed(userId: number): Promise<void> {
 
 export async function removeAllowed(userId: number): Promise<void> {
   config.allowed = config.allowed.filter((id) => id !== userId);
+  const key = String(userId);
+  delete config.userInfo[key];
+  delete config.menus[key];
   await persist();
 }
 
