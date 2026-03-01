@@ -194,7 +194,11 @@ async function loadFromSheet(): Promise<UsersConfig> {
       if (planStatus === "requested") {
         const nombre = String(row.get("nombre") ?? "").trim();
         const telefono = String(row.get("telefono") ?? "").trim();
-        requestedPlans[uidStr] = { plan: planName || "—", name: nombre || undefined, phone: telefono || undefined };
+        requestedPlans[uidStr] = {
+          plan: planName || "—",
+          name: nombre || undefined,
+          phone: telefono || undefined,
+        };
         continue;
       }
       allowed.push(uid);

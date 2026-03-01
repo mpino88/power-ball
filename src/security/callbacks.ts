@@ -496,15 +496,16 @@ export async function handleSecurityCallback(
         .row()
         .text("◀️ Volver a Gestionar planes", "admin_plans_manage");
     } else {
+      const lines = requested.map((u) => {
+        const id = String(u.userId);
+        const plan = u.plan || "—";
+        const nombre = (u.name && u.name.trim()) ? u.name.trim() : "—";
+        const telefono = (u.phone && u.phone.trim()) ? u.phone.trim() : "—";
+        return `• *ID:* \`${id}\` | *Plan:* ${plan}\n  *Nombre:* ${nombre} | *Teléfono:* ${telefono}`;
+      });
       result =
-        "📩 *Solicitudes pendientes* (plan_status = requested)\n\nAprueba para dar acceso y asignar menús del plan:\n\n" +
-        requested
-          .map((u) => {
-            const name = u.name || "—";
-            const phone = u.phone ? `📞 ${u.phone}` : "—";
-            return `• \`${u.userId}\` — *${u.plan}*\n  ${name} — ${phone}`;
-          })
-          .join("\n\n");
+        "📩 *Solicitudes pendientes* (plan_status = requested)\n\nSe muestran todos los datos cargados del Sheet/archivo:\n\n" +
+        lines.join("\n\n");
       keyboard = new InlineKeyboard();
       for (const u of requested) {
         const label = u.name ? `✅ ${u.userId} — ${u.plan} (${u.name})` : `✅ Aprobar ${u.userId} (${u.plan})`;
