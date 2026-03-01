@@ -49,7 +49,11 @@ const toGap = (t: Track): GroupGap => ({
 });
 
 /**
- * Un solo recorrido: estadísticas de grupos e individuales usando solo el periodo indicado (M o E).
+ * Un solo recorrido: estadísticas de grupos (terminales, iniciales, dobles) e individuales (00-99)
+ * usando solo el periodo indicado (M o E). Usa un mapa de fechas distinto por periodo: solo se
+ * consideran fechas que tienen sorteo M o E respectivamente, así el gap es "días entre sorteos
+ * de ese periodo", no días de calendario. Grupos e individual comparten la misma secuencia de
+ * fechas (solo sorteos M o solo E) y un único recorrido.
  */
 export function computeStatsCombined(
   map: DateDrawsMapStats,
@@ -58,10 +62,15 @@ export function computeStatsCombined(
   groups: { terminales: GroupGap[]; iniciales: GroupGap[]; dobles: GroupGap };
   individual: GroupGap[];
 } {
-  const sortedDates = sortDateKeys(Object.keys(map));
   const key = period === "M" ? "m" : "e";
+  const datesWithDraw = sortDateKeys(
+    Object.keys(map).filter((dateStr) => {
+      const draw = map[dateStr]?.[key];
+      return draw != null && draw.length >= 3;
+    })
+  );
   const emptyGap = (): GroupGap[] => Array.from({ length: 10 }, () => ({ maxGapDays: 0, currentGapDays: null }));
-  if (sortedDates.length === 0) {
+  if (datesWithDraw.length === 0) {
     return {
       groups: { terminales: emptyGap(), iniciales: emptyGap(), dobles: { maxGapDays: 0, currentGapDays: null } },
       individual: Array.from({ length: 100 }, () => ({ maxGapDays: 0, currentGapDays: null })),
@@ -83,18 +92,15 @@ export function computeStatsCombined(
 
   let prevDateStr: string | null = null;
 
-  for (const dateStr of sortedDates) {
-    const draws = map[dateStr];
-    const draw = draws?.[key];
-    const numbersThisDay = new Set<number>();
-    const groupsThisDay = new Set<string>();
-    if (draw && draw.length >= 3) {
-      const n = twoDigitFromP3(draw);
-      numbersThisDay.add(n);
-      groupsThisDay.add(`T${n % 10}`);
-      groupsThisDay.add(`I${Math.floor(n / 10)}`);
-      if (DOUBLES_SET.has(n)) groupsThisDay.add("D");
-    }
+  for (const dateStr of datesWithDraw) {
+    const draw = map[dateStr]?.[key]!;
+    const n = twoDigitFromP3(draw);
+    const numbersThisDay = new Set<number>([n]);
+    const groupsThisDay = new Set<string>([
+      `T${n % 10}`,
+      `I${Math.floor(n / 10)}`,
+      ...(DOUBLES_SET.has(n) ? ["D"] : []),
+    ]);
 
     const daysSincePrev = prevDateStr !== null ? dayDiff(prevDateStr, dateStr) : 0;
 
