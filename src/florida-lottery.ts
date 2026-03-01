@@ -40,14 +40,14 @@ export interface GameResults {
 }
 
 async function getPageText(url: string): Promise<string> {
-  const playwright = await import("playwright");
-  const browser = await playwright.chromium.launch({
+  const puppeteer = await import("puppeteer");
+  const browser = await puppeteer.default.launch({
     headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
   });
   try {
     const page = await browser.newPage();
-    await page.goto(url, { waitUntil: "networkidle", timeout: SCRAPE_TIMEOUT_MS });
+    await page.goto(url, { waitUntil: "networkidle0", timeout: SCRAPE_TIMEOUT_MS });
     const text = await page.evaluate(() => document.body.innerText);
     return text ?? "";
   } finally {
@@ -100,8 +100,8 @@ async function scrapeTodayFromPage(
   numbersClass: "game-numbers--pick3" | "game-numbers--pick4",
   numDigits: 3 | 4
 ): Promise<TodayScrapeResult> {
-  const playwright = await import("playwright");
-  const browser = await playwright.chromium.launch({
+  const puppeteer = await import("puppeteer");
+  const browser = await puppeteer.default.launch({
     headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
   });

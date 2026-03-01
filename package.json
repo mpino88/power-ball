@@ -24,7 +24,7 @@
     "google-spreadsheet": "^5.2.0",
     "grammy": "^1.28.0",
     "pdfjs-dist": "^4.4.168",
-    "playwright": "^1.49.0"
+    "puppeteer": "^24.15.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

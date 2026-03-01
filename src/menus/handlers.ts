@@ -189,7 +189,12 @@ export async function handleMenuCallback(
           result = deps.buildResultOneDay(key, d3, d4, game, "Hoy");
           return { result, keyboard: mainKb() };
         } catch (scrapeErr) {
-          console.warn("Scrape Hoy no disponible (ej. Playwright no instalado), usando PDF:", scrapeErr);
+          const msg = scrapeErr instanceof Error ? scrapeErr.message : String(scrapeErr);
+          if (msg.includes("Puppeteer not available")) {
+            console.log("[Hoy] Usando PDF (Puppeteer no disponible en este entorno).");
+          } else {
+            console.warn("Scrape Hoy no disponible (ej. Puppeteer no instalado), usando PDF:", scrapeErr);
+          }
           try {
             const [map3, map4] = await Promise.all([deps.getP3Map(), deps.getP4Map()]);
             const key = deps.getTodayFloridaMMDDYY();

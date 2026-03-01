@@ -50,14 +50,15 @@ function getSheetAuth(): JWT | null {
     try {
       const cred = JSON.parse(json) as { client_email?: string; private_key?: string };
       if (cred.client_email && cred.private_key) {
+        const privateKey = cred.private_key.replace(/\\n/g, "\n");
         return new JWT({
           email: cred.client_email,
-          key: cred.private_key,
+          key: privateKey,
           scopes: ["https://www.googleapis.com/auth/spreadsheets"],
         });
       }
     } catch (e) {
-      console.error("Error parsing GOOGLE_SERVICE_ACCOUNT_JSON:", e);
+      console.error("[user-config] Error parsing GOOGLE_SERVICE_ACCOUNT_JSON:", e);
       return null;
     }
   }
@@ -205,7 +206,10 @@ function saveToFile(): void {
 }
 
 async function persist(): Promise<void> {
-  if (useGoogleSheet()) {
+  const backend = getStorageBackend();
+  const count = config.allowed.length;
+  console.log("[user-config] persist: backend=" + backend + ", usuarios=" + count);
+  if (backend === "sheet") {
     try {
       await saveToSheet();
     } catch (e) {
@@ -219,11 +223,25 @@ async function persist(): Promise<void> {
 
 /** Carga la config desde Sheet o archivo. Llamar al arranque del bot. */
 export async function initUserConfig(): Promise<void> {
+  const sheetId = process.env.GOOGLE_SHEET_ID;
+  const hasAuth = getSheetAuth() !== null;
+  if (sheetId && !hasAuth) {
+    console.warn(
+      "[user-config] GOOGLE_SHEET_ID está definido pero las credenciales fallan o no están. " +
+        "Revisa GOOGLE_SERVICE_ACCOUNT_JSON (JSON en una línea) o EMAIL+PRIVATE_KEY. Los datos se guardarán solo en archivo."
+    );
+  }
   if (useGoogleSheet()) {
-    console.log("[user-config] Usando Google Sheet. ID:", process.env.GOOGLE_SHEET_ID);
+    console.log("[user-config] Usando Google Sheet. ID:", sheetId);
     config = await loadFromSheet();
+    try {
+      await saveToSheet();
+      console.log("[user-config] Google Sheet: verificación de escritura OK.");
+    } catch (e) {
+      console.error("[user-config] Google Sheet: verificación de escritura FALLO (al guardar usuarios fallará):", (e as Error)?.message ?? e);
+    }
   } else {
-    console.log("[user-config] Usando archivo:", CONFIG_PATH, "(GOOGLE_SHEET_ID o credenciales no configurados)");
+    console.log("[user-config] Usando archivo:", CONFIG_PATH);
     config = loadFromFile();
   }
 }
