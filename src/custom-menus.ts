@@ -23,7 +23,7 @@ export interface CustomMenu {
   createdBy?: number;
   /** Precio (mostrado solo si el usuario tiene acceso vía menus, no vía plan). */
   price?: string;
-  /** "private" = solo creador y dueño; "public" = visible en Tienda. Por defecto "private". */
+  /** "private" = solo creador y dueño; "public" = visible en Tienda. Siempre "private" al crear. */
   visibility?: StrategyVisibility;
 }
 

@@ -430,18 +430,20 @@ export async function initUserConfig(): Promise<void> {
   }
 }
 
-/** Fila de la 2ª pestaña (Estrategias): id, titulo, descripcion, createdBy, price, visibility. */
+/** Fila de la 2ª pestaña (Estrategias): id, titulo, descripcion, createdBy, price, status (public|private). Por defecto status=private al crear. */
 export interface StrategyRow {
   id: string;
   titulo: string;
   descripcion?: string;
   createdBy?: number;
   price?: string;
+  /** En el Sheet se guarda como columna "status"; "private" por defecto al crear. */
   visibility?: string;
 }
 
 const STRATEGIES_SHEET_TITLE = "Estrategias";
-const STRATEGIES_HEADERS = ["id", "titulo", "descripcion", "createdBy", "price", "visibility"] as const;
+/** status = "private" | "public"; las nuevas estrategias se crean como private por defecto. */
+const STRATEGIES_HEADERS = ["id", "titulo", "descripcion", "createdBy", "price", "status"] as const;
 
 /** Carga estrategias desde la 2ª pestaña de la hoja de cálculo. Si no hay Sheet o la pestaña no existe, la crea y devuelve []. */
 export async function loadStrategiesFromSheet(): Promise<StrategyRow[]> {
@@ -467,8 +469,12 @@ export async function loadStrategiesFromSheet(): Promise<StrategyRow[]> {
       await sheet.setHeaderRow([...STRATEGIES_HEADERS], 1);
       return [];
     }
+    let headers = sheet.headerValues;
+    if (headers.length < STRATEGIES_HEADERS.length) {
+      await sheet.setHeaderRow([...STRATEGIES_HEADERS], 1);
+      headers = [...STRATEGIES_HEADERS];
+    }
     const rows = await sheet.getRows({ offset: 0, limit: 5000 });
-    const headers = sheet.headerValues;
     const result: StrategyRow[] = [];
     for (const row of rows) {
       const obj = row.toObject() as Record<string, unknown>;
@@ -498,7 +504,7 @@ export async function loadStrategiesFromSheet(): Promise<StrategyRow[]> {
   }
 }
 
-/** Guarda estrategias en la 2ª pestaña (id, titulo, descripcion, createdBy). Crea la pestaña si no existe. */
+/** Guarda estrategias en la 2ª pestaña (id, titulo, descripcion, createdBy, price, status). status=public|private; por defecto private al crear. */
 export async function saveStrategiesToSheet(items: StrategyRow[]): Promise<void> {
   const sheetId = getSheetId();
   if (!sheetId) return;
@@ -523,7 +529,7 @@ export async function saveStrategiesToSheet(items: StrategyRow[]): Promise<void>
         descripcion: r.descripcion ?? "",
         createdBy: r.createdBy !== undefined && r.createdBy !== null ? String(r.createdBy) : "",
         price: r.price ?? "",
-        visibility: r.visibility ?? "private",
+        status: r.visibility ?? "private",
       }));
       await sheet.addRows(rows);
     }

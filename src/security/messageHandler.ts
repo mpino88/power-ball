@@ -106,7 +106,7 @@ export async function handleSecurityMessage(
     const id = labelToMenuId(label)!;
     const createdBy = creating.createdBy;
     creatingMenuFlow.delete(userId);
-    if (!addCustomMenu(id, label, description, createdBy, price, "private")) {
+    if (!addCustomMenu(id, label, description, createdBy, price, "private" /* nueva estrategia siempre privada */)) {
       const backKb = createdBy != null ? buildManageEstrategiasKeyboardUser() : buildManageEstrategiasKeyboard();
       await ctx.reply("No se pudo crear (id duplicado).", { reply_markup: backKb });
       return true;
