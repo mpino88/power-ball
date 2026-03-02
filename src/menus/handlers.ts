@@ -104,12 +104,15 @@ export async function handleMenuCallback(
   }
 
   if (data === "menu_basedatos") {
+    const P3_PDF = "https://files.floridalottery.com/exptkt/p3.pdf";
+    const P4_PDF = "https://files.floridalottery.com/exptkt/p4.pdf";
     return {
-      result:
-        "📚 *Base de datos*\n\nEnlaces oficiales Florida Lottery (PDF):\n\n" +
-        "• [Fijos \\(P3\\)](https://files.floridalottery.com/exptkt/p3.pdf)\n" +
-        "• [Corridos \\(P4\\)](https://files.floridalottery.com/exptkt/p4.pdf)",
-      keyboard: new InlineKeyboard().text("◀️ Volver", "volver"),
+      result: "📚 *Base de datos*\n\nEnlaces oficiales Florida Lottery (PDF). Pulsa el botón para abrir:",
+      keyboard: new InlineKeyboard()
+        .url("🎯 Fijos (P3)", P3_PDF)
+        .url("🎲 Corridos (P4)", P4_PDF)
+        .row()
+        .text("◀️ Volver", "volver"),
     };
   }
 
