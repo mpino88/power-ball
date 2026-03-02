@@ -17,6 +17,8 @@ import {
   setUserInfo,
   toggleExtraMenu,
   getExtraMenus,
+  getUserAssignedMenuIds,
+  removeMenuFromUser,
   removeMenuFromAllUsers,
   getRequestedPlanUsers,
   approvePlanRequest,
@@ -78,6 +80,10 @@ export interface SecurityCallbackDeps {
   buildMainKeyboard: (userId: number | undefined) => InlineKeyboard;
   getExtraMenuIds: () => string[];
   getExtraMenuLabel: (menuId: string) => string | undefined;
+  /** Si se proporciona, "Listar planes" recarga desde el Sheet antes de mostrar. */
+  getStorageBackend?: () => "sheet" | "file";
+  loadPlansFromSheet?: () => Promise<{ id: string; title: string; description: string; price: string; menuIds: string }[]>;
+  initPlansFromSheet?: (rows: { id: string; title: string; description: string; price: string; menuIds: string }[]) => void;
 }
 
 export async function handleSecurityCallback(
@@ -340,6 +346,10 @@ export async function handleSecurityCallback(
     result = "💰 *Gestionar planes*\n\nOperación cancelada.";
     keyboard = buildManagePlansKeyboard();
   } else if (data === "admin_plans_list") {
+    if (deps.getStorageBackend?.() === "sheet" && deps.loadPlansFromSheet && deps.initPlansFromSheet) {
+      const rows = await deps.loadPlansFromSheet();
+      deps.initPlansFromSheet(rows);
+    }
     const list = getPlans();
     const lines = list.map((p) => {
       const menus = (p.menuIds?.length ? p.menuIds.join(", ") : "—") || "—";
@@ -543,6 +553,10 @@ export interface EstrategiasUserCallbackDeps {
   getExtraMenuIds: () => string[];
   getExtraMenuLabel: (id: string) => string | undefined;
   getExtraMenus: (userId: number) => string[];
+  getUserAssignedMenuIds: (userId: number) => string[];
+  getPlan?: (userId: number) => string | undefined;
+  getPlanByTitle?: (title: string) => { menuIds?: string[] } | undefined;
+  getMenuCreatedBy?: (menuId: string) => number | undefined;
   getOwnerId: () => number | null;
   buildMainKeyboard: (userId: number | undefined) => InlineKeyboard;
 }
@@ -579,14 +593,37 @@ export async function handleEstrategiasUserCallback(
     const allIds = getExtraMenuIds();
     const assignedSet = new Set(assignedIds);
     const createdSet = new Set(createdByMe.map((m) => m.id));
+    const ownerId = deps.getOwnerId();
+    const isOwnerUser = ownerId !== null && userId === ownerId;
+    const getIcon = (menuId: string): string => {
+      const createdBy = deps.getMenuCreatedBy?.(menuId);
+      if (isOwnerUser) {
+        if (createdBy === undefined || createdBy === 0 || createdBy === ownerId) return "👤 ";
+        return "👥 ";
+      }
+      if (createdBy === userId) return "✏️ ";
+      const planTitle = deps.getPlan?.(userId);
+      const plan = planTitle ? deps.getPlanByTitle?.(planTitle) : undefined;
+      if ((plan && "menuIds" in plan ? plan.menuIds : undefined)?.includes(menuId)) return "📋 ";
+      if ((deps.getUserAssignedMenuIds(userId) ?? []).includes(menuId)) return "➕ ";
+      return "";
+    };
     const lines: string[] = [];
     for (const id of allIds) {
       if (!assignedSet.has(id) && !createdSet.has(id)) continue;
       const label = deps.getExtraMenuLabel(id) ?? id;
+      const icon = getIcon(id);
       const suffix = BUILTIN_MENU_IDS.has(id) ? " — _integrado_" : createdSet.has(id) ? " — _creada por ti_" : "";
-      lines.push(`• ${escapeMd(label)} (\`${id}\`)${suffix}`);
+      lines.push(`• ${icon}${escapeMd(label)} (\`${id}\`)${suffix}`);
     }
-    result = "📋 *Tus estrategias*\n\n" + (lines.length ? lines.join("\n") : "_Ninguna asignada ni creada por ti._");
+    const legend = isOwnerUser
+      ? "\n_👤 propia · 👥 creada por un usuario_"
+      : "\n_📋 plan · ➕ adquirida · ✏️ propia_";
+    result =
+      "📋 *Tus estrategias*" +
+      legend +
+      "\n\n" +
+      (lines.length ? lines.join("\n") : "_Ninguna asignada ni creada por ti._");
     keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar", "estrategias_manage");
     return { result, keyboard };
   }
@@ -600,16 +637,26 @@ export async function handleEstrategiasUserCallback(
   }
 
   if (data === "estrategias_delete") {
-    const mine = getCustomMenusCreatedBy(userId);
-    if (mine.length === 0) {
-      result = "🗑 *Eliminar estrategia*\n\n_No has creado ninguna estrategia._ Solo puedes eliminar las que tú creaste.";
+    const ownerId = deps.getOwnerId();
+    const isOwnerUser = ownerId !== null && userId === ownerId;
+    const list = isOwnerUser
+      ? getCustomMenus()
+      : deps.getUserAssignedMenuIds(userId).filter((id) => deps.getExtraMenuIds().includes(id));
+    if (list.length === 0) {
+      result = isOwnerUser
+        ? "🗑 *Eliminar estrategia*\n\n_No hay estrategias._"
+        : "🗑 *Quitar estrategia*\n\n_No tienes estrategias asignadas que puedas quitar._ Solo se pueden quitar las de tu columna menus.";
       keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar", "estrategias_manage");
       return { result, keyboard };
     }
-    result = "🗑 *Eliminar estrategia*\n\nElige una de tus estrategias a eliminar:";
+    result = isOwnerUser
+      ? "🗑 *Eliminar estrategia*\n\nElige la estrategia a eliminar del sistema (se quitará de todos los usuarios):"
+      : "🗑 *Quitar estrategia*\n\nElige la estrategia a quitar de tus asignadas (solo se quitará de tu columna menus):";
     keyboard = new InlineKeyboard();
-    for (const m of mine) {
-      keyboard.text(`🗑 ${m.label}`, `estrategias_delete_pick_${m.id}`).row();
+    for (const item of list) {
+      const id = typeof item === "string" ? item : item.id;
+      const label = deps.getExtraMenuLabel(id) ?? id;
+      keyboard.text(`🗑 ${label}`, `estrategias_delete_pick_${id}`).row();
     }
     keyboard.text("◀️ Volver a Gestionar", "estrategias_manage");
     return { result, keyboard };
@@ -617,16 +664,22 @@ export async function handleEstrategiasUserCallback(
 
   if (data.startsWith("estrategias_delete_pick_")) {
     const menuId = data.replace("estrategias_delete_pick_", "");
-    if (!canDeleteCustomMenu(menuId, userId, false)) {
-      result = "No puedes eliminar esta estrategia.";
+    const isOwnerUser = deps.getOwnerId() !== null && userId === deps.getOwnerId();
+    const canProceed = isOwnerUser
+      ? canDeleteCustomMenu(menuId, userId, true)
+      : deps.getUserAssignedMenuIds(userId).includes(menuId);
+    if (!canProceed) {
+      result = isOwnerUser ? "No puedes eliminar esta estrategia." : "No tienes esta estrategia asignada.";
       keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar", "estrategias_manage");
       return { result, keyboard };
     }
     deletingMenuFlow.set(userId, { menuId });
     const label = deps.getExtraMenuLabel(menuId) ?? menuId;
-    result = `🗑 ¿Eliminar la estrategia *${escapeMd(label)}* (\`${menuId}\`)?`;
+    result = isOwnerUser
+      ? `🗑 ¿Eliminar la estrategia *${escapeMd(label)}* (\`${menuId}\`)?\n\nSe quitará de todos los usuarios.`
+      : `🗑 ¿Quitar la estrategia *${escapeMd(label)}* de tus asignadas?`;
     keyboard = new InlineKeyboard()
-      .text("✅ Sí, eliminar", `estrategias_delete_confirm_${menuId}`)
+      .text("✅ Sí", `estrategias_delete_confirm_${menuId}`)
       .text("❌ No", "estrategias_delete_cancel")
       .row()
       .text("◀️ Volver a Gestionar", "estrategias_manage");
@@ -636,16 +689,25 @@ export async function handleEstrategiasUserCallback(
   if (data.startsWith("estrategias_delete_confirm_")) {
     const menuId = data.replace("estrategias_delete_confirm_", "");
     deletingMenuFlow.delete(userId);
-    if (!canDeleteCustomMenu(menuId, userId, false)) {
-      result = "No puedes eliminar esta estrategia.";
+    const isOwnerUser = deps.getOwnerId() !== null && userId === deps.getOwnerId();
+    const canProceed = isOwnerUser
+      ? canDeleteCustomMenu(menuId, userId, true)
+      : deps.getUserAssignedMenuIds(userId).includes(menuId);
+    if (!canProceed) {
+      result = isOwnerUser ? "No puedes eliminar esta estrategia." : "No tienes esta estrategia asignada.";
       keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar", "estrategias_manage");
       return { result, keyboard };
     }
-    removeCustomMenu(menuId);
-    unregisterExtraMenu(menuId);
-    await removeMenuFromAllUsers(menuId);
     const label = deps.getExtraMenuLabel(menuId) ?? menuId;
-    result = `✅ Estrategia *${escapeMd(label)}* eliminada.`;
+    if (isOwnerUser) {
+      removeCustomMenu(menuId);
+      unregisterExtraMenu(menuId);
+      await removeMenuFromAllUsers(menuId);
+      result = `✅ Estrategia *${escapeMd(label)}* eliminada del sistema.`;
+    } else {
+      await removeMenuFromUser(userId, menuId);
+      result = `✅ Estrategia *${escapeMd(label)}* quitada de tus asignadas.`;
+    }
     keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar", "estrategias_manage");
     return { result, keyboard };
   }

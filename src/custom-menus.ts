@@ -125,6 +125,12 @@ export function removeCustomMenu(id: string): boolean {
   }
   return false;
 }
+/** userId del creador de la estrategia, o undefined si la creó el dueño (o no es custom). */
+export function getMenuCreatedBy(menuId: string): number | undefined {
+  const m = customMenus.find((x) => x.id === menuId);
+  return m?.createdBy;
+}
+
 /** Estrategias creadas por este usuario (para listar/eliminar propias). */
 export function getCustomMenusCreatedBy(userId: number): CustomMenu[] {
   return customMenus.filter((m) => m.createdBy === userId);

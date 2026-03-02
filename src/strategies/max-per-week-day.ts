@@ -16,7 +16,9 @@ type CountMap = Map<number, Map<DayOfWeek, number>>;
 const DAY_HEADERS = ["L", "Ma", "Mi", "J", "V", "S", "D"] as const; /* Lun, Mar, Mié, Jue, Vie, Sáb, Dom */
 const DAY_ORDER: DayOfWeek[] = [1, 2, 3, 4, 5, 6, 0];
 
-const W_CELL = 10; /* ancho por columna ej. " 42(200) " */
+/** Bloques para mejorar legibilidad: [L,Ma,Mi], [J], [V,S,D]. */
+const DAY_BLOCKS: DayOfWeek[][] = [[1, 2, 3], [4], [5, 6, 0]];
+const W_CELL = 10;
 
 function mmddyyToDate(key: string): Date | null {
   const m = key.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
@@ -94,35 +96,39 @@ function getTop10PerDay(result: CountMap, day: DayOfWeek): { num: number; count:
   return items.slice(0, 10);
 }
 
-/** Un solo mensaje en formato tabla: cabecera L Ma Mi J V S D y filas con #(count) por columna. */
+/** Un solo mensaje con bloques separados: L Ma Mi | J | V S D para distinguir bien la data. */
 function formatMessage(result: CountMap, mapSource: "p3" | "p4", period: "m" | "e"): string {
   const periodLabel = period === "m" ? "☀️ Mediodía (M)" : "🌙 Noche (E)";
   const mapLabel = mapSource === "p3" ? "P3 (Fijos)" : "P4 (Corridos)";
 
   const cell = (num: number, count: number) => `${String(num).padStart(2, "0")}(${count})`.padEnd(W_CELL);
-  const headerRow = DAY_HEADERS.map((h) => h.padEnd(W_CELL)).join("");
-  const sep = "─".repeat(W_CELL * DAY_HEADERS.length);
 
   const lines: string[] = [
     `📊 *Más salidores x día de la semana* — ${mapLabel} · ${periodLabel}`,
     "Top 10 por día (formato #(count))\n",
     "```",
-    headerRow,
-    sep,
   ];
 
-  for (let row = 0; row < 10; row++) {
-    const cells: string[] = [];
-    for (const day of DAY_ORDER) {
-      const top10 = getTop10PerDay(result, day);
-      const item = top10[row];
-      cells.push(item ? cell(item.num, item.count) : "".padEnd(W_CELL));
+  const dayToHeader: Record<DayOfWeek, string> = { 0: "D", 1: "L", 2: "Ma", 3: "Mi", 4: "J", 5: "V", 6: "S" };
+  for (const block of DAY_BLOCKS) {
+    const headers = block.map((d) => dayToHeader[d].padEnd(W_CELL)).join(" ");
+    const sep = "─".repeat(block.length * (W_CELL + 1) - 1);
+    lines.push(headers);
+    lines.push(sep);
+    for (let row = 0; row < 10; row++) {
+      const cells: string[] = [];
+      for (const day of block) {
+        const top10 = getTop10PerDay(result, day);
+        const item = top10[row];
+        cells.push(item ? cell(item.num, item.count) : "".padEnd(W_CELL));
+      }
+      lines.push(cells.join(" "));
     }
-    lines.push(cells.join(""));
+    lines.push("");
   }
 
   lines.push("```");
-  const full = lines.join("\n");
+  const full = lines.join("\n").trimEnd();
   return full.length > 4000 ? full.slice(0, 3990) + "\n\n_… (mensaje recortado)_" : full;
 }
 

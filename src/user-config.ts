@@ -652,6 +652,44 @@ export function isAllowed(userId: number): boolean {
   return config.allowed.includes(userId);
 }
 
+/** IDs de menús asignados explícitamente al usuario (columna menus). No incluye los del plan. */
+export function getUserAssignedMenuIds(userId: number): string[] {
+  const list = config.menus[String(userId)];
+  return Array.isArray(list) ? [...list] : [];
+}
+
+/** Quita un menú de la asignación del usuario (solo columna menus). No elimina la estrategia del sistema. */
+export async function removeMenuFromUser(userId: number, menuId: string): Promise<PersistResult> {
+  const key = String(userId);
+  const current = config.menus[key] ?? [];
+  if (!current.includes(menuId)) return { backend: getStorageBackend(), ok: true, count: config.allowed.length };
+  config.menus[key] = current.filter((m) => m !== menuId);
+  return persist();
+}
+
+/**
+ * Revisa tras cargar config y planes: para cada usuario con plan, quita de config.menus
+ * los menuIds que ya vienen del plan, para que la columna menus solo tenga asignaciones extra.
+ * Así getExtraMenus = plan + menus queda bien. Si hubo cambios, persiste.
+ */
+export async function normalizeUserMenusAfterLoad(): Promise<void> {
+  let changed = false;
+  for (const uid of config.allowed) {
+    const key = String(uid);
+    const planTitle = config.userInfo[key]?.plan;
+    const plan = planTitle ? getPlanByTitle(planTitle) : undefined;
+    const planMenuIds = new Set(plan?.menuIds ?? []);
+    if (planMenuIds.size === 0) continue;
+    const current = config.menus[key] ?? [];
+    const onlyExtras = current.filter((id) => !planMenuIds.has(id));
+    if (onlyExtras.length !== current.length) {
+      config.menus[key] = onlyExtras;
+      changed = true;
+    }
+  }
+  if (changed) await persist();
+}
+
 /** Menús del usuario = menús de su plan + menús asignados explícitamente (columna menus). */
 export function getExtraMenus(userId: number): string[] {
   const planTitle = getPlan(userId);

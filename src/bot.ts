@@ -10,6 +10,8 @@ import {
   getOwnerId,
   isAllowed,
   getExtraMenus,
+  getPlan,
+  getUserAssignedMenuIds,
   isOwner,
   initUserConfig,
   addPlanRequest,
@@ -21,6 +23,7 @@ import {
   saveStrategiesToSheet,
   loadPlansFromSheet,
   savePlansToSheet,
+  normalizeUserMenusAfterLoad,
 } from "./user-config.js";
 import {
   registerExtraMenu,
@@ -36,8 +39,9 @@ import {
   initCustomMenusFromSheet,
   setStrategySheetPersist,
   getCustomMenus,
+  getMenuCreatedBy,
 } from "./custom-menus.js";
-import { initPlans, initPlansFromSheet, setPlanSheetPersist, getPlans, getPlanById } from "./plans.js";
+import { initPlans, initPlansFromSheet, setPlanSheetPersist, getPlans, getPlanById, getPlanByTitle } from "./plans.js";
 import {
   buildGroupStatsMessage as buildGroupStatsMessageFromStats,
   buildIndividualTop10Message as buildIndividualTop10MessageFromStats,
@@ -134,6 +138,10 @@ const mainKbDeps = {
   getExtraMenus,
   getExtraMenuIds,
   getExtraMenuLabel,
+  getPlan,
+  getPlanByTitle,
+  getUserAssignedMenuIds,
+  getMenuCreatedBy,
 };
 
 function buildMainKb(userId: number | undefined) {
@@ -257,6 +265,9 @@ bot.on("callback_query:data", async (ctx) => {
       buildMainKeyboard: buildMainKb,
       getExtraMenuIds,
       getExtraMenuLabel,
+      getStorageBackend,
+      loadPlansFromSheet,
+      initPlansFromSheet,
     });
     if (out) {
       try {
@@ -285,6 +296,10 @@ bot.on("callback_query:data", async (ctx) => {
       getExtraMenuIds,
       getExtraMenuLabel,
       getExtraMenus,
+      getUserAssignedMenuIds,
+      getPlan,
+      getPlanByTitle,
+      getMenuCreatedBy,
       getOwnerId,
       buildMainKeyboard: buildMainKb,
     });
@@ -842,6 +857,7 @@ async function main(): Promise<void> {
   if (getStorageBackend() !== "sheet") {
     initPlans();
   }
+  await normalizeUserMenusAfterLoad();
   await bot.init();
 
   /* Precarga única: lectura de los PDF y extracción de los mapas de fechas. El resto se calcula on demand. */

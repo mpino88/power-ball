@@ -16,6 +16,33 @@ export interface MainKeyboardDeps {
   getExtraMenus: (userId: number) => string[];
   getExtraMenuIds: typeof GetExtraMenuIds;
   getExtraMenuLabel: typeof GetExtraMenuLabel;
+  /** Opcionales para mostrar icono en estrategias: 📋 plan, ➕ adquirida, ✏️ propia; dueño: 👤 propia, 👥 creada por user. */
+  getPlan?: (userId: number) => string | undefined;
+  getPlanByTitle?: (title: string) => { menuIds?: string[] } | undefined;
+  getUserAssignedMenuIds?: (userId: number) => string[];
+  getMenuCreatedBy?: (menuId: string) => number | undefined;
+}
+
+function getStrategyIcon(
+  menuId: string,
+  userId: number,
+  ownerId: number | null,
+  deps: MainKeyboardDeps
+): string {
+  const createdBy = deps.getMenuCreatedBy?.(menuId);
+  const isOwner = ownerId !== null && userId === ownerId;
+  if (isOwner) {
+    if (createdBy === undefined || createdBy === 0 || createdBy === ownerId) return "👤 "; /* propia del dueño */
+    return "👥 "; /* creada por un usuario */
+  }
+  if (createdBy === userId) return "✏️ "; /* propia (creada por ti) */
+  const planTitle = deps.getPlan?.(userId);
+  const plan = planTitle ? deps.getPlanByTitle?.(planTitle) : undefined;
+  const planIds = (plan && "menuIds" in plan ? plan.menuIds : undefined) ?? [];
+  if (planIds.includes(menuId)) return "📋 "; /* parte del plan */
+  const assigned = deps.getUserAssignedMenuIds?.(userId) ?? [];
+  if (assigned.includes(menuId)) return "➕ "; /* adquirida fuera del plan */
+  return "";
 }
 
 /** Callback al pulsar "➕ Estrategias": abre el submenú de estrategias. */
@@ -59,9 +86,13 @@ export function buildEstrategiasKeyboard(userId: number | undefined, deps: MainK
     return deps.getExtraMenus(userId ?? 0).includes(id);
   });
   const kb = new InlineKeyboard();
+  const uid = userId ?? 0;
   for (const id of showExtra) {
     const label = deps.getExtraMenuLabel(id);
-    if (label) kb.text(label, EXTRA_MENU_CALLBACK_PREFIX + id).row();
+    if (label) {
+      const icon = getStrategyIcon(id, uid, ownerId, deps);
+      kb.text(icon + label, EXTRA_MENU_CALLBACK_PREFIX + id).row();
+    }
   }
   kb.row().text("⚙️ Gestionar estrategias", "estrategias_manage");
   kb.text("◀️ Volver", "volver");
