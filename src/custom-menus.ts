@@ -9,6 +9,8 @@ import path from "node:path";
 const DATA_DIR = path.join(process.cwd(), "data");
 const FILE_PATH = path.join(DATA_DIR, "extra-menus.json");
 
+export type StrategyVisibility = "public" | "private";
+
 export interface CustomMenu {
   id: string;
   /** Título (texto del botón). */
@@ -19,6 +21,10 @@ export interface CustomMenu {
   status?: "pendiente" | "implemented";
   /** undefined o 0 = creada por dueño; número = userId del usuario que la creó (se auto-asigna). */
   createdBy?: number;
+  /** Precio (mostrado solo si el usuario tiene acceso vía menus, no vía plan). */
+  price?: string;
+  /** "private" = solo creador y dueño; "public" = visible en Tienda. Por defecto "private". */
+  visibility?: StrategyVisibility;
 }
 
 let customMenus: CustomMenu[] = [];
@@ -30,14 +36,23 @@ export function setStrategySheetPersist(fn: ((items: CustomMenu[]) => Promise<vo
   strategySheetPersist = fn;
 }
 
-/** Inicializa desde filas de la hoja (id, titulo, descripcion, createdBy). No guarda en archivo. */
-export function initCustomMenusFromSheet(rows: { id: string; titulo: string; descripcion?: string; createdBy?: number }[]): void {
+/** Inicializa desde filas de la hoja (id, titulo, descripcion, createdBy, price, visibility). No guarda en archivo. */
+export function initCustomMenusFromSheet(rows: {
+  id: string;
+  titulo: string;
+  descripcion?: string;
+  createdBy?: number;
+  price?: string;
+  visibility?: string;
+}[]): void {
   customMenus = rows.map((r) => ({
     id: r.id,
     label: r.titulo,
     description: r.descripcion?.trim() || undefined,
     status: "pendiente" as const,
     createdBy: r.createdBy === 0 ? undefined : r.createdBy,
+    price: r.price?.trim() || undefined,
+    visibility: (r.visibility?.toLowerCase() === "public" ? "public" : "private") as StrategyVisibility,
   }));
 }
 
@@ -87,7 +102,9 @@ export function addCustomMenu(
   id: string,
   label: string,
   description?: string,
-  createdBy?: number
+  createdBy?: number,
+  price?: string,
+  visibility?: StrategyVisibility
 ): boolean {
   const normId = id.trim().replace(/\s+/g, "_");
   if (!normId) return false;
@@ -98,6 +115,8 @@ export function addCustomMenu(
     description: description?.trim() || undefined,
     status: "pendiente",
     createdBy: createdBy === 0 ? undefined : createdBy,
+    price: price?.trim() || undefined,
+    visibility: visibility === "public" ? "public" : "private",
   });
   save();
   return true;
@@ -105,13 +124,21 @@ export function addCustomMenu(
 
 export function updateCustomMenu(
   id: string,
-  updates: { label?: string; description?: string; status?: "pendiente" | "implemented" }
+  updates: {
+    label?: string;
+    description?: string;
+    status?: "pendiente" | "implemented";
+    price?: string;
+    visibility?: StrategyVisibility;
+  }
 ): boolean {
   const entry = customMenus.find((m) => m.id === id);
   if (!entry) return false;
   if (updates.label !== undefined) entry.label = updates.label.trim() || entry.label;
   if (updates.description !== undefined) entry.description = updates.description.trim() || undefined;
   if (updates.status !== undefined) entry.status = updates.status;
+  if (updates.price !== undefined) entry.price = updates.price.trim() || undefined;
+  if (updates.visibility !== undefined) entry.visibility = updates.visibility === "public" ? "public" : "private";
   save();
   return true;
 }
@@ -137,6 +164,27 @@ export function getCustomMenusCreatedBy(userId: number): CustomMenu[] {
 }
 /** true si la estrategia la creó este usuario (puede eliminarla). */
 export function canDeleteCustomMenu(menuId: string, userId: number, isOwner: boolean): boolean {
+  if (isOwner) return true;
+  const m = customMenus.find((x) => x.id === menuId);
+  return m?.createdBy === userId;
+}
+
+export function getMenuPrice(menuId: string): string | undefined {
+  return customMenus.find((m) => m.id === menuId)?.price;
+}
+
+export function getMenuVisibility(menuId: string): StrategyVisibility {
+  const v = customMenus.find((m) => m.id === menuId)?.visibility;
+  return v === "public" ? "public" : "private";
+}
+
+/** Estrategias públicas (visibles en Tienda para cualquier usuario). */
+export function getPublicStrategies(): CustomMenu[] {
+  return customMenus.filter((m) => m.visibility === "public");
+}
+
+/** true si el usuario puede cambiar la visibilidad (creador o dueño). */
+export function canChangeVisibility(menuId: string, userId: number, isOwner: boolean): boolean {
   if (isOwner) return true;
   const m = customMenus.find((x) => x.id === menuId);
   return m?.createdBy === userId;

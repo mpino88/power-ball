@@ -12,6 +12,7 @@ import { getPlanByTitle } from "./plans.js";
 
 const CONFIG_DIR = path.join(process.cwd(), "data");
 const CONFIG_PATH = path.join(CONFIG_DIR, "bot-users.json");
+const STRATEGY_REQUESTS_PATH = path.join(CONFIG_DIR, "strategy-requests.json");
 
 export interface UserInfo {
   name?: string;
@@ -429,16 +430,18 @@ export async function initUserConfig(): Promise<void> {
   }
 }
 
-/** Fila de la 2ª pestaña (Estrategias): id, titulo, descripcion, createdBy. */
+/** Fila de la 2ª pestaña (Estrategias): id, titulo, descripcion, createdBy, price, visibility. */
 export interface StrategyRow {
   id: string;
   titulo: string;
   descripcion?: string;
   createdBy?: number;
+  price?: string;
+  visibility?: string;
 }
 
 const STRATEGIES_SHEET_TITLE = "Estrategias";
-const STRATEGIES_HEADERS = ["id", "titulo", "descripcion", "createdBy"] as const;
+const STRATEGIES_HEADERS = ["id", "titulo", "descripcion", "createdBy", "price", "visibility"] as const;
 
 /** Carga estrategias desde la 2ª pestaña de la hoja de cálculo. Si no hay Sheet o la pestaña no existe, la crea y devuelve []. */
 export async function loadStrategiesFromSheet(): Promise<StrategyRow[]> {
@@ -476,11 +479,15 @@ export async function loadStrategiesFromSheet(): Promise<StrategyRow[]> {
       const desc = values[2] ?? "";
       const createdByStr = values[3] ?? "";
       const createdBy = createdByStr ? parseInt(createdByStr, 10) : undefined;
+      const price = values[4]?.trim() || undefined;
+      const visibility = values[5]?.trim() || undefined;
       result.push({
         id,
         titulo: titulo || id,
         descripcion: desc || undefined,
         createdBy: Number.isNaN(createdBy as number) ? undefined : (createdBy as number),
+        price: price || undefined,
+        visibility: visibility || undefined,
       });
     }
     console.log("[user-config] Estrategias: cargadas", result.length, "desde 2ª pestaña.");
@@ -515,6 +522,8 @@ export async function saveStrategiesToSheet(items: StrategyRow[]): Promise<void>
         titulo: r.titulo,
         descripcion: r.descripcion ?? "",
         createdBy: r.createdBy !== undefined && r.createdBy !== null ? String(r.createdBy) : "",
+        price: r.price ?? "",
+        visibility: r.visibility ?? "private",
       }));
       await sheet.addRows(rows);
     }
@@ -842,6 +851,150 @@ export async function removeMenuFromAllUsers(menuId: string): Promise<void> {
     if (config.menus[key].length !== before) changed = true;
   }
   if (changed) await persist();
+}
+
+/** Solicitud de estrategia (usuario pide acceso; solo el dueño puede aprobar). */
+export interface StrategyRequest {
+  userId: number;
+  menuId: string;
+  requestedAt: number;
+}
+
+const STRATEGY_REQUESTS_SHEET_TITLE = "SolicitudesEstrategias";
+const STRATEGY_REQUESTS_HEADERS = ["userId", "menuId", "requestedAt"] as const;
+const STRATEGY_REQUESTS_SHEET_INDEX = 3;
+
+function loadStrategyRequestsSync(): StrategyRequest[] {
+  try {
+    if (existsSync(STRATEGY_REQUESTS_PATH)) {
+      const raw = readFileSync(STRATEGY_REQUESTS_PATH, "utf8");
+      const data = JSON.parse(raw) as { requests?: StrategyRequest[] };
+      return Array.isArray(data.requests) ? data.requests : [];
+    }
+  } catch (e) {
+    console.error("[user-config] Error al cargar solicitudes de estrategias:", e);
+  }
+  return [];
+}
+
+function saveStrategyRequestsSync(requests: StrategyRequest[]): void {
+  try {
+    if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
+    writeFileSync(STRATEGY_REQUESTS_PATH, JSON.stringify({ requests }, null, 2), "utf8");
+  } catch (e) {
+    console.error("[user-config] Error al guardar solicitudes de estrategias:", e);
+  }
+}
+
+/** Carga solicitudes de estrategias desde la 4ª pestaña del Sheet. */
+export async function loadStrategyRequestsFromSheet(): Promise<StrategyRequest[]> {
+  const sheetId = getSheetId();
+  if (!sheetId) return [];
+  const auth = getSheetAuth();
+  if (!auth) return [];
+  try {
+    const doc = new GoogleSpreadsheet(sheetId, auth);
+    await doc.loadInfo();
+    let sheet = doc.sheetsByIndex[STRATEGY_REQUESTS_SHEET_INDEX];
+    if (!sheet) {
+      await doc.addSheet({
+        title: STRATEGY_REQUESTS_SHEET_TITLE,
+        headerValues: [...STRATEGY_REQUESTS_HEADERS],
+      });
+      console.log("[user-config] Hoja de cálculo: pestaña «SolicitudesEstrategias» creada (4ª pestaña).");
+      return [];
+    }
+    try {
+      await sheet.loadHeaderRow(1);
+    } catch {
+      await sheet.setHeaderRow([...STRATEGY_REQUESTS_HEADERS], 1);
+      return [];
+    }
+    const rows = await sheet.getRows({ offset: 0, limit: 2000 });
+    const headers = sheet.headerValues;
+    const result: StrategyRequest[] = [];
+    for (const row of rows) {
+      const obj = row.toObject() as Record<string, unknown>;
+      const values = headers.map((h) => (h ? String(obj[h] ?? "").trim() : ""));
+      const userIdStr = values[0] ?? "";
+      const menuId = values[1] ?? "";
+      const requestedAtStr = values[2] ?? "";
+      if (!userIdStr || !menuId) continue;
+      const userId = parseInt(userIdStr, 10);
+      const requestedAt = requestedAtStr ? parseInt(requestedAtStr, 10) : Date.now();
+      if (Number.isNaN(userId)) continue;
+      result.push({ userId, menuId, requestedAt: Number.isNaN(requestedAt) ? Date.now() : requestedAt });
+    }
+    return result;
+  } catch (e) {
+    console.error("[user-config] Error al cargar solicitudes de estrategias desde Sheet:", (e as Error)?.message ?? e);
+    return [];
+  }
+}
+
+/** Guarda solicitudes de estrategias en la 4ª pestaña del Sheet. */
+export async function saveStrategyRequestsToSheet(requests: StrategyRequest[]): Promise<void> {
+  const sheetId = getSheetId();
+  if (!sheetId) return;
+  const auth = getSheetAuth();
+  if (!auth) return;
+  try {
+    const doc = new GoogleSpreadsheet(sheetId, auth);
+    await doc.loadInfo();
+    let sheet = doc.sheetsByIndex[STRATEGY_REQUESTS_SHEET_INDEX];
+    if (!sheet) {
+      sheet = await doc.addSheet({
+        title: STRATEGY_REQUESTS_SHEET_TITLE,
+        headerValues: [...STRATEGY_REQUESTS_HEADERS],
+      });
+    }
+    await sheet.setHeaderRow([...STRATEGY_REQUESTS_HEADERS], 1);
+    await sheet.clearRows();
+    if (requests.length > 0) {
+      const rows = requests.map((r) => ({
+        userId: String(r.userId),
+        menuId: r.menuId,
+        requestedAt: String(r.requestedAt),
+      }));
+      await sheet.addRows(rows);
+    }
+    console.log("[user-config] Solicitudes de estrategias: guardadas", requests.length, "en 4ª pestaña.");
+  } catch (e) {
+    console.error("[user-config] Error al guardar solicitudes de estrategias en Sheet:", (e as Error)?.message ?? e);
+  }
+}
+
+/** Carga solicitudes (desde Sheet si aplica, si no desde archivo). */
+export async function getStrategyRequests(): Promise<StrategyRequest[]> {
+  if (useGoogleSheet()) return loadStrategyRequestsFromSheet();
+  return loadStrategyRequestsSync();
+}
+
+/** Añade una solicitud de estrategia (evita duplicados userId+menuId). */
+export async function addStrategyRequest(userId: number, menuId: string): Promise<boolean> {
+  const list = useGoogleSheet() ? await loadStrategyRequestsFromSheet() : loadStrategyRequestsSync();
+  if (list.some((r) => r.userId === userId && r.menuId === menuId)) return false;
+  list.push({ userId, menuId, requestedAt: Date.now() });
+  if (useGoogleSheet()) await saveStrategyRequestsToSheet(list);
+  else saveStrategyRequestsSync(list);
+  return true;
+}
+
+/** Elimina una solicitud (al aprobar o rechazar). */
+export async function removeStrategyRequest(userId: number, menuId: string): Promise<boolean> {
+  const list = useGoogleSheet() ? await loadStrategyRequestsFromSheet() : loadStrategyRequestsSync();
+  const next = list.filter((r) => !(r.userId === userId && r.menuId === menuId));
+  if (next.length >= list.length) return false;
+  if (useGoogleSheet()) await saveStrategyRequestsToSheet(next);
+  else saveStrategyRequestsSync(next);
+  return true;
+}
+
+/** Aprobación: asigna el menú al usuario y quita la solicitud. */
+export async function approveStrategyRequest(userId: number, menuId: string): Promise<PersistResult> {
+  await toggleExtraMenu(userId, menuId);
+  await removeStrategyRequest(userId, menuId);
+  return persist();
 }
 
 export function isOwner(userId: number): boolean {

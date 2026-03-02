@@ -291,7 +291,7 @@ bot.on("callback_query:data", async (ctx) => {
     return;
   }
 
-  if (ctx.from && isAllowed(ctx.from.id) && (data === "estrategias_manage" || data === "estrategias_list" || data === "estrategias_create" || data === "estrategias_delete" || data.startsWith("estrategias_delete_"))) {
+  if (ctx.from && isAllowed(ctx.from.id) && (data === "estrategias_manage" || data === "estrategias_list" || data === "estrategias_tienda" || data === "estrategias_tienda_mias" || data === "estrategias_tienda_venta" || data.startsWith("estrategias_request_") || data === "estrategias_visibility" || data.startsWith("estrategias_visibility_toggle_") || data === "estrategias_create" || data === "estrategias_delete" || data.startsWith("estrategias_delete_"))) {
     const estrategiasOut = await handleEstrategiasUserCallback(ctx, data, {
       getExtraMenuIds,
       getExtraMenuLabel,
@@ -794,6 +794,8 @@ async function main(): Promise<void> {
               titulo: "Más salidores x dia de la Semana",
               descripcion: "Números que más han salido x cada dia de la semana",
               createdBy: r.createdBy,
+              price: r.price,
+              visibility: r.visibility,
             }
           : r
       );
@@ -807,6 +809,8 @@ async function main(): Promise<void> {
           titulo: m.label,
           descripcion: m.description ?? "",
           createdBy: m.createdBy ?? 0,
+          price: m.price ?? "",
+          visibility: m.visibility ?? "private",
         }))
       )
     );

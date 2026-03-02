@@ -63,7 +63,7 @@ export function buildPlanMenusKeyboard(
   return kb;
 }
 
-/** Teclado Gestionar Estrategias (dueño): listar, crear, eliminar, asignar a usuarios. */
+/** Teclado Gestionar Estrategias (dueño): listar, crear, eliminar, asignar, solicitudes. */
 export function buildManageEstrategiasKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
     .text("📋 Listar estrategias", "admin_estrategias_list")
@@ -72,6 +72,9 @@ export function buildManageEstrategiasKeyboard(): InlineKeyboard {
     .text("🗑 Eliminar estrategia", "admin_estrategias_delete")
     .row()
     .text("📋 Asignar estrategias a usuarios", "admin_menus")
+    .text("📥 Solicitudes pendientes", "admin_estrategias_requests")
+    .row()
+    .text("🌐 Visibilidad (pública/privada)", "admin_estrategias_visibility")
     .row()
     .text("◀️ Volver a Seguridad", "security_open");
 }

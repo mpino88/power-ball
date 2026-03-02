@@ -78,18 +78,35 @@ export async function handleSecurityMessage(
       }
       creatingMenuFlow.set(userId, { step: 2, label, createdBy: creating.createdBy });
       const cancelData = creating.createdBy != null ? "estrategias_manage" : "admin_estrategias_manage";
-      await ctx.reply("➕ *Crear estrategia* (paso 2/2)\n\nEnvía la *descripción* (qué hace la estrategia). Opcional: envía *-* para omitir.", {
+      await ctx.reply("➕ *Crear estrategia* (paso 2/3)\n\nEnvía la *descripción* (qué hace la estrategia). Opcional: envía *-* para omitir.", {
         parse_mode: "Markdown",
         reply_markup: new InlineKeyboard().text("◀️ Cancelar", cancelData),
       });
       return true;
     }
-    const description = text.trim() === "-" || text.trim() === "" ? undefined : text.trim();
+    if (creating.step === 2) {
+      const description = text.trim() === "-" || text.trim() === "" ? undefined : text.trim();
+      creatingMenuFlow.set(userId, {
+        step: 3,
+        label: creating.label,
+        description,
+        createdBy: creating.createdBy,
+      });
+      const cancelData = creating.createdBy != null ? "estrategias_manage" : "admin_estrategias_manage";
+      await ctx.reply(
+        "➕ *Crear estrategia* (paso 3/3)\n\nEnvía el *precio* (ej: 5 USD, Gratis). Se mostrará a usuarios que la soliciten fuera de su plan. Opcional: envía *-* para omitir.",
+        { parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("◀️ Cancelar", cancelData) }
+      );
+      return true;
+    }
+    if (creating.step === 3) {
+    const price = text.trim() === "-" || text.trim() === "" ? undefined : text.trim();
     const label = creating.label;
+    const description = creating.description;
     const id = labelToMenuId(label)!;
     const createdBy = creating.createdBy;
     creatingMenuFlow.delete(userId);
-    if (!addCustomMenu(id, label, description, createdBy)) {
+    if (!addCustomMenu(id, label, description, createdBy, price, "private")) {
       const backKb = createdBy != null ? buildManageEstrategiasKeyboardUser() : buildManageEstrategiasKeyboard();
       await ctx.reply("No se pudo crear (id duplicado).", { reply_markup: backKb });
       return true;
@@ -106,6 +123,7 @@ export async function handleSecurityMessage(
       `✅ Estrategia creada: *${label}* (\`${id}\`).${createdBy != null ? " Se te ha asignado automáticamente." : ""}\n\nEstado: _pendiente de implementación_ hasta que se asocie una función.`,
       { parse_mode: "Markdown", reply_markup: kb }
     );
+    }
     return true;
   }
 

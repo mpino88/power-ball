@@ -7,10 +7,11 @@ export type AddingStep =
   | { step: 2; userId: number; name?: string }
   | { step: 3; userId: number; name: string; phone?: string };
 
-/** Crear estrategia: paso 1 = título; paso 2 = descripción. createdBy = userId si la crea un usuario (se auto-asigna). */
+/** Crear estrategia: paso 1 = título; paso 2 = descripción; paso 3 = precio. createdBy = userId si la crea un usuario (se auto-asigna). */
 export type CreatingStep =
   | { step: 1; createdBy?: number }
-  | { step: 2; label: string; createdBy?: number };
+  | { step: 2; label: string; createdBy?: number }
+  | { step: 3; label: string; description?: string; createdBy?: number };
 
 /** Crear plan: título → descripción → precio → menús. */
 export type CreatingPlanStep =
