@@ -714,7 +714,7 @@ export async function handleEstrategiasUserCallback(
       const m = getCustomMenus().find((x) => x.id === id);
       const price = m?.price;
       const priceStr = price ? ` — ${escapeMd(price)}` : "";
-      const tag = createdIds.has(id) ? " _creada por ti_" : " _creada por otro usuario_";
+      const tag = createdIds.has(id) ? " _creada por ti_" : " _adquirida_";
       result += `• ${escapeMd(label)} (\`${id}\`)${priceStr}${tag}\n`;
     }
     keyboard = new InlineKeyboard().text("◀️ Volver a Tienda", "estrategias_tienda");
@@ -732,7 +732,7 @@ export async function handleEstrategiasUserCallback(
     result = "🛍 *En venta*\n\nEstrategias públicas que puedes solicitar. Solo el administrador puede aprobar tu solicitud.\n\n";
     for (const m of publicList) {
       const priceStr = m.price ? ` — ${escapeMd(m.price)}` : "";
-      const authorTag = m.createdBy === userId ? " _creada por ti_" : " _creada por otro usuario_";
+      const authorTag = m.createdBy === userId ? " _creada por ti_" : " _creada por otro_";
       result += `• ${escapeMd(m.label)} (\`${m.id}\`)${priceStr}${authorTag}\n`;
     }
     keyboard = new InlineKeyboard();
