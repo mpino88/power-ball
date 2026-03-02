@@ -53,7 +53,9 @@ export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboard
     .text("🎯 Fijo (P3)", "menu_fijo")
     .text("🎲 Corrido (P4)", "menu_corrido")
     .row()
-    .text("☀️🌙 Ambos (Fijo + Corrido)", "menu_ambos");
+    .text("☀️🌙 Ambos (Fijo + Corrido)", "menu_ambos")
+    .row()
+    .text("📚 Base de datos", "menu_basedatos");
   const ownerId = deps.getOwnerId();
   const extraIds = deps.getExtraMenuIds();
   const showExtra = extraIds.filter((id) => {

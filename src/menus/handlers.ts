@@ -103,6 +103,16 @@ export async function handleMenuCallback(
     };
   }
 
+  if (data === "menu_basedatos") {
+    return {
+      result:
+        "📚 *Base de datos*\n\nEnlaces oficiales Florida Lottery (PDF):\n\n" +
+        "• [Fijos \\(P3\\)](https://files.floridalottery.com/exptkt/p3.pdf)\n" +
+        "• [Corridos \\(P4\\)](https://files.floridalottery.com/exptkt/p4.pdf)",
+      keyboard: new InlineKeyboard().text("◀️ Volver", "volver"),
+    };
+  }
+
   if (data === "stats_set_days") {
     return {
       result: `🔢 *Días de diferencia* (valor actual: ${hot})\n\nSi (Máx.hist − Máx.actual) ≤ N, se marca 🔥 Hot. Elige N:`,
