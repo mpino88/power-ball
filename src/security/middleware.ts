@@ -3,7 +3,7 @@
  * Los no autorizados ven los planes; al hacer clic se registra la solicitud en el sheet (E=plan, F=requested).
  */
 
-import { InlineKeyboard, Keyboard } from "grammy";
+import { InlineKeyboard, Keyboard } from "grammy"; // Keyboard used for requestContact reply keyboard
 import type { getOwnerId as GetOwnerId, isAllowed as IsAllowed } from "../user-config.js";
 import { addPlanRequest } from "../user-config.js";
 import { getPlans, getPlanById } from "../plans.js";
@@ -80,11 +80,11 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
           await addPlanRequest(uid, pending.planName, { name, phone });
           await ctx.reply(
             "✅ Solicitud registrada (*" + pending.planName + "*). El administrador revisará tu acceso.",
-            { parse_mode: "Markdown", reply_markup: Keyboard.removed() }
+            { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } }
           );
         } catch (e) {
           await ctx.reply("No se pudo guardar la solicitud. Intenta más tarde o contacta al administrador.", {
-            reply_markup: Keyboard.removed(),
+            reply_markup: { remove_keyboard: true },
           }).catch(() => {});
         }
         return;
@@ -93,7 +93,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
       const text = (ctx.message as { text?: string }).text?.trim() ?? "";
       if (text === "❌ Cancelar") {
         pendingPlanRequest.delete(uid);
-        await ctx.reply("Solicitud cancelada.", { reply_markup: Keyboard.removed() });
+        await ctx.reply("Solicitud cancelada.", { reply_markup: { remove_keyboard: true } });
         return;
       }
 
