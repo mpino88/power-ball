@@ -56,7 +56,7 @@ export async function handleSecurityMessage(
     if (creating.step === 1) {
       const label = text.trim();
       if (!label) {
-        const cancelData = creating.createdBy != null ? "estrategias_manage" : "admin_estrategias_manage";
+        const cancelData = creating.fromAdmin ? "admin_estrategias_manage" : "estrategias_manage";
         await ctx.reply("Escribe el *título* del botón. Ej: 📅 Fechas Calor.", {
           parse_mode: "Markdown",
           reply_markup: new InlineKeyboard().text("◀️ Cancelar", cancelData),
@@ -76,8 +76,8 @@ export async function handleSecurityMessage(
         );
         return true;
       }
-      creatingMenuFlow.set(userId, { step: 2, label, createdBy: creating.createdBy });
-      const cancelData = creating.createdBy != null ? "estrategias_manage" : "admin_estrategias_manage";
+      creatingMenuFlow.set(userId, { step: 2, label, createdBy: creating.createdBy, fromAdmin: creating.fromAdmin });
+      const cancelData = creating.fromAdmin ? "admin_estrategias_manage" : "estrategias_manage";
       await ctx.reply("➕ *Crear estrategia* (paso 2/3)\n\nEnvía la *descripción* (qué hace la estrategia). Opcional: envía *-* para omitir.", {
         parse_mode: "Markdown",
         reply_markup: new InlineKeyboard().text("◀️ Cancelar", cancelData),
@@ -91,6 +91,7 @@ export async function handleSecurityMessage(
         label: creating.label,
         description,
         createdBy: creating.createdBy,
+        fromAdmin: creating.fromAdmin,
       });
       const cancelData = creating.createdBy != null ? "estrategias_manage" : "admin_estrategias_manage";
       await ctx.reply(
@@ -105,22 +106,23 @@ export async function handleSecurityMessage(
     const description = creating.description;
     const id = labelToMenuId(label)!;
     const createdBy = creating.createdBy;
+    const fromAdmin = creating.fromAdmin ?? false;
     creatingMenuFlow.delete(userId);
     if (!addCustomMenu(id, label, description, createdBy, price, "private" /* nueva estrategia siempre privada */)) {
-      const backKb = createdBy != null ? buildManageEstrategiasKeyboardUser() : buildManageEstrategiasKeyboard();
+      const backKb = fromAdmin ? buildManageEstrategiasKeyboard() : buildManageEstrategiasKeyboardUser();
       await ctx.reply("No se pudo crear (id duplicado).", { reply_markup: backKb });
       return true;
     }
     deps.onMenuCreated(id, label, description, createdBy);
     const kb = new InlineKeyboard();
-    if (createdBy == null) {
+    if (fromAdmin) {
       kb.text("📋 Asignar a usuarios", "admin_menus").row();
       kb.text("◀️ Volver a Gestionar Estrategias", "admin_estrategias_manage");
     } else {
       kb.text("◀️ Volver a Gestionar estrategias", "estrategias_manage");
     }
     await ctx.reply(
-      `✅ Estrategia creada: *${label}* (\`${id}\`).${createdBy != null ? " Se te ha asignado automáticamente." : ""}\n\nEstado: _pendiente de implementación_ hasta que se asocie una función.`,
+      `✅ Estrategia creada: *${label}* (\`${id}\`). Se te ha asignado automáticamente.\n\nEstado: _pendiente de implementación_ hasta que se asocie una función.`,
       { parse_mode: "Markdown", reply_markup: kb }
     );
     }

@@ -7,11 +7,13 @@ export type AddingStep =
   | { step: 2; userId: number; name?: string }
   | { step: 3; userId: number; name: string; phone?: string };
 
-/** Crear estrategia: paso 1 = título; paso 2 = descripción; paso 3 = precio. createdBy = userId si la crea un usuario (se auto-asigna). */
+/** Crear estrategia: paso 1 = título; paso 2 = descripción; paso 3 = precio.
+ * createdBy = userId del creador (siempre presente; se usa para auto-asignar al completar).
+ * fromAdmin = true cuando el flujo lo inicia el panel de admin (cambia el teclado post-creación). */
 export type CreatingStep =
-  | { step: 1; createdBy?: number }
-  | { step: 2; label: string; createdBy?: number }
-  | { step: 3; label: string; description?: string; createdBy?: number };
+  | { step: 1; createdBy?: number; fromAdmin?: boolean }
+  | { step: 2; label: string; createdBy?: number; fromAdmin?: boolean }
+  | { step: 3; label: string; description?: string; createdBy?: number; fromAdmin?: boolean };
 
 /** Crear plan: título → descripción → precio → menús. */
 export type CreatingPlanStep =

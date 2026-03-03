@@ -268,7 +268,7 @@ export async function handleSecurityCallback(
       (lines.length ? lines.join("\n") + "\n\n_✅ implementada_ = con función asignada · _⏳ pendiente_ = sin función (mensaje por defecto)." : "_Ninguna_");
     keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar Estrategias", "admin_estrategias_manage");
   } else if (data === "admin_estrategias_create") {
-    creatingMenuFlow.set(ctx.from.id, { step: 1 });
+    creatingMenuFlow.set(ctx.from.id, { step: 1, createdBy: ctx.from.id, fromAdmin: true });
     result =
       "➕ *Crear estrategia* (paso 1/3)\n\nEnvía el *título* (texto del botón). Ej: 📅 Fechas Calor.\n\n" +
       "El id se generará automáticamente (minúsculas, snake\\_case, sin acentos).";
