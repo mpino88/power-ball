@@ -9,7 +9,7 @@ import path from "node:path";
 import { GoogleSpreadsheet } from "google-spreadsheet";
 import { JWT } from "google-auth-library";
 import { getPlanByTitle } from "./plans.js";
-import { isCustomMenu, adjustSubscriberCount } from "./custom-menus.js";
+import { isCustomMenu, adjustSubscriberCount, getMenuCreatedBy } from "./custom-menus.js";
 
 const CONFIG_DIR = path.join(process.cwd(), "data");
 const CONFIG_PATH = path.join(CONFIG_DIR, "bot-users.json");
@@ -694,7 +694,9 @@ export async function removeMenuFromUser(userId: number, menuId: string): Promis
   if (!current.includes(menuId)) return { backend: getStorageBackend(), ok: true, count: config.allowed.length };
   config.menus[key] = current.filter((m) => m !== menuId);
   const result = await persist();
-  if (isCustomMenu(menuId)) adjustSubscriberCount(menuId, -1);
+  if (isCustomMenu(menuId) && userId !== getMenuCreatedBy(menuId)) {
+    adjustSubscriberCount(menuId, -1);
+  }
   return result;
 }
 
@@ -861,21 +863,30 @@ export async function toggleExtraMenu(userId: number, menuId: string): Promise<b
     config.menus[key] = [...current, menuId];
   }
   await persist();
-  if (isCustomMenu(menuId)) adjustSubscriberCount(menuId, has ? -1 : 1);
+  if (isCustomMenu(menuId) && userId !== getMenuCreatedBy(menuId)) {
+    adjustSubscriberCount(menuId, has ? -1 : 1);
+  }
   return !has;
 }
 
 /** Quita un menú de todos los usuarios (p. ej. al eliminar el menú). */
 export async function removeMenuFromAllUsers(menuId: string): Promise<void> {
-  let removed = 0;
+  const createdBy = isCustomMenu(menuId) ? getMenuCreatedBy(menuId) : undefined;
+  let changed = false;
+  let nonCreatorRemoved = 0;
   for (const key of Object.keys(config.menus)) {
     const before = config.menus[key].length;
     config.menus[key] = config.menus[key].filter((m) => m !== menuId);
-    if (config.menus[key].length !== before) removed++;
+    if (config.menus[key].length !== before) {
+      changed = true;
+      if (createdBy === undefined || Number(key) !== createdBy) nonCreatorRemoved++;
+    }
   }
-  if (removed > 0) {
+  if (changed) {
     await persist();
-    if (isCustomMenu(menuId)) adjustSubscriberCount(menuId, -removed);
+    if (isCustomMenu(menuId) && nonCreatorRemoved > 0) {
+      adjustSubscriberCount(menuId, -nonCreatorRemoved);
+    }
   }
 }
 
