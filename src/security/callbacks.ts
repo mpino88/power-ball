@@ -259,13 +259,18 @@ export async function handleSecurityCallback(
     const builtIn = ids.filter((id) => BUILTIN_MENU_IDS.has(id));
     const custom = ids.filter((id) => isCustomMenu(id));
     const statusLabel = (id: string) => (getExtraMenuStatus(id) === "implemented" ? "✅ implementada" : "⏳ _pendiente_");
+    const userCountTag = (id: string): string => {
+      const m = getCustomMenus().find((x) => x.id === id);
+      const count = m?.subscribers ?? 0;
+      return count > 0 ? ` 👤${count}` : "";
+    };
     const lines = [
       ...builtIn.map((id) => `• ${getExtraMenuLabel(id) ?? id} (\`${id}\`) — _integrado_ — ${statusLabel(id)}`),
-      ...custom.map((id) => `• ${getExtraMenuLabel(id) ?? id} (\`${id}\`) — ${statusLabel(id)}`),
+      ...custom.map((id) => `• ${getExtraMenuLabel(id) ?? id} (\`${id}\`) — ${statusLabel(id)}${userCountTag(id)}`),
     ];
     result =
       "📋 *Listar estrategias*\n\n" +
-      (lines.length ? lines.join("\n") + "\n\n_✅ implementada_ = con función asignada · _⏳ pendiente_ = sin función (mensaje por defecto)." : "_Ninguna_");
+      (lines.length ? lines.join("\n") + "\n\n_✅ implementada_ = con función asignada · _⏳ pendiente_ = sin función (mensaje por defecto).\n_👤N_ = usuarios con la estrategia asignada (sin contar al creador)." : "_Ninguna_");
     keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar Estrategias", "admin_estrategias_manage");
   } else if (data === "admin_estrategias_create") {
     creatingMenuFlow.set(ctx.from.id, { step: 1, createdBy: ctx.from.id, fromAdmin: true });
@@ -853,10 +858,16 @@ export async function handleEstrategiasUserCallback(
         const price = getMenuPrice(id);
         if (price) suffix += ` — ${escapeMd(price)}`;
       }
-      lines.push(`• ${icon}${escapeMd(label)} (\`${id}\`)${suffix}`);
+      let countTag = "";
+      if (isCustomMenu(id)) {
+        const m = getCustomMenus().find((x) => x.id === id);
+        const count = m?.subscribers ?? 0;
+        if (count > 0) countTag = ` 👤${count}`;
+      }
+      lines.push(`• ${icon}${escapeMd(label)} (\`${id}\`)${suffix}${countTag}`);
     }
     const legend = isOwnerUser
-      ? "\n_👤 propia · 👥 creada por un usuario_"
+      ? "\n_👤 propia · 👥 creada por un usuario · 👤N = usuarios con la estrategia_"
       : "\n_📋 plan · ➕ adquirida · ✏️ propia_";
     result =
       "📋 *Tus estrategias*" +

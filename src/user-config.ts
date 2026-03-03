@@ -9,6 +9,7 @@ import path from "node:path";
 import { GoogleSpreadsheet } from "google-spreadsheet";
 import { JWT } from "google-auth-library";
 import { getPlanByTitle } from "./plans.js";
+import { isCustomMenu, adjustSubscriberCount } from "./custom-menus.js";
 
 const CONFIG_DIR = path.join(process.cwd(), "data");
 const CONFIG_PATH = path.join(CONFIG_DIR, "bot-users.json");
@@ -430,7 +431,7 @@ export async function initUserConfig(): Promise<void> {
   }
 }
 
-/** Fila de la 2ª pestaña (Estrategias): id, titulo, descripcion, createdBy, price, status (public|private). Por defecto status=private al crear. */
+/** Fila de la 2ª pestaña (Estrategias): id, titulo, descripcion, createdBy, price, status (public|private), subscribers. Por defecto status=private y subscribers=0 al crear. */
 export interface StrategyRow {
   id: string;
   titulo: string;
@@ -439,11 +440,13 @@ export interface StrategyRow {
   price?: string;
   /** En el Sheet se guarda como columna "status"; "private" por defecto al crear. */
   visibility?: string;
+  /** Nº de usuarios (distinto al creador) con la estrategia asignada explícitamente. */
+  subscribers?: number;
 }
 
 const STRATEGIES_SHEET_TITLE = "Estrategias";
-/** status = "private" | "public"; las nuevas estrategias se crean como private por defecto. */
-const STRATEGIES_HEADERS = ["id", "titulo", "descripcion", "createdBy", "price", "status"] as const;
+/** status = "private" | "public"; subscribers = contador de asignaciones (sin el creador). */
+const STRATEGIES_HEADERS = ["id", "titulo", "descripcion", "createdBy", "price", "status", "subscribers"] as const;
 
 /** Carga estrategias desde la 2ª pestaña de la hoja de cálculo. Si no hay Sheet o la pestaña no existe, la crea y devuelve []. */
 export async function loadStrategiesFromSheet(): Promise<StrategyRow[]> {
@@ -487,6 +490,8 @@ export async function loadStrategiesFromSheet(): Promise<StrategyRow[]> {
       const createdBy = createdByStr ? parseInt(createdByStr, 10) : undefined;
       const price = values[4]?.trim() || undefined;
       const visibility = values[5]?.trim() || undefined;
+      const subscribersRaw = values[6]?.trim();
+      const subscribers = subscribersRaw ? parseInt(subscribersRaw, 10) : 0;
       result.push({
         id,
         titulo: titulo || id,
@@ -494,6 +499,7 @@ export async function loadStrategiesFromSheet(): Promise<StrategyRow[]> {
         createdBy: Number.isNaN(createdBy as number) ? undefined : (createdBy as number),
         price: price || undefined,
         visibility: visibility || undefined,
+        subscribers: Number.isNaN(subscribers) ? 0 : subscribers,
       });
     }
     console.log("[user-config] Estrategias: cargadas", result.length, "desde 2ª pestaña.");
@@ -530,6 +536,7 @@ export async function saveStrategiesToSheet(items: StrategyRow[]): Promise<void>
         createdBy: r.createdBy !== undefined && r.createdBy !== null ? String(r.createdBy) : "",
         price: r.price ?? "",
         status: r.visibility ?? "private",
+        subscribers: String(r.subscribers ?? 0),
       }));
       await sheet.addRows(rows);
     }
@@ -673,13 +680,22 @@ export function getUserAssignedMenuIds(userId: number): string[] {
   return Array.isArray(list) ? [...list] : [];
 }
 
+/** Usuarios que tienen el menú asignado explícitamente (columna menus), excluyendo al creador si se indica. */
+export function getUsersWithMenu(menuId: string, excludeUserId?: number): number[] {
+  return Object.entries(config.menus)
+    .filter(([key, ids]) => ids.includes(menuId) && (excludeUserId === undefined || Number(key) !== excludeUserId))
+    .map(([key]) => Number(key));
+}
+
 /** Quita un menú de la asignación del usuario (solo columna menus). No elimina la estrategia del sistema. */
 export async function removeMenuFromUser(userId: number, menuId: string): Promise<PersistResult> {
   const key = String(userId);
   const current = config.menus[key] ?? [];
   if (!current.includes(menuId)) return { backend: getStorageBackend(), ok: true, count: config.allowed.length };
   config.menus[key] = current.filter((m) => m !== menuId);
-  return persist();
+  const result = await persist();
+  if (isCustomMenu(menuId)) adjustSubscriberCount(menuId, -1);
+  return result;
 }
 
 /**
@@ -845,18 +861,22 @@ export async function toggleExtraMenu(userId: number, menuId: string): Promise<b
     config.menus[key] = [...current, menuId];
   }
   await persist();
+  if (isCustomMenu(menuId)) adjustSubscriberCount(menuId, has ? -1 : 1);
   return !has;
 }
 
 /** Quita un menú de todos los usuarios (p. ej. al eliminar el menú). */
 export async function removeMenuFromAllUsers(menuId: string): Promise<void> {
-  let changed = false;
+  let removed = 0;
   for (const key of Object.keys(config.menus)) {
     const before = config.menus[key].length;
     config.menus[key] = config.menus[key].filter((m) => m !== menuId);
-    if (config.menus[key].length !== before) changed = true;
+    if (config.menus[key].length !== before) removed++;
   }
-  if (changed) await persist();
+  if (removed > 0) {
+    await persist();
+    if (isCustomMenu(menuId)) adjustSubscriberCount(menuId, -removed);
+  }
 }
 
 /** Solicitud de estrategia (usuario pide acceso; solo el dueño puede aprobar). */

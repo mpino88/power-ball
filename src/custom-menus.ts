@@ -25,6 +25,8 @@ export interface CustomMenu {
   price?: string;
   /** "private" = solo creador y dueño; "public" = visible en Tienda. Siempre "private" al crear. */
   visibility?: StrategyVisibility;
+  /** Nº de usuarios (distinto al creador) que tienen la estrategia asignada explícitamente. Persistido en Sheet. */
+  subscribers?: number;
 }
 
 let customMenus: CustomMenu[] = [];
@@ -36,7 +38,7 @@ export function setStrategySheetPersist(fn: ((items: CustomMenu[]) => Promise<vo
   strategySheetPersist = fn;
 }
 
-/** Inicializa desde filas de la hoja (id, titulo, descripcion, createdBy, price, visibility). No guarda en archivo. */
+/** Inicializa desde filas de la hoja (id, titulo, descripcion, createdBy, price, visibility, subscribers). No guarda en archivo. */
 export function initCustomMenusFromSheet(rows: {
   id: string;
   titulo: string;
@@ -44,6 +46,7 @@ export function initCustomMenusFromSheet(rows: {
   createdBy?: number;
   price?: string;
   visibility?: string;
+  subscribers?: number;
 }[]): void {
   customMenus = rows.map((r) => ({
     id: r.id,
@@ -53,6 +56,7 @@ export function initCustomMenusFromSheet(rows: {
     createdBy: r.createdBy === 0 ? undefined : r.createdBy,
     price: r.price?.trim() || undefined,
     visibility: (r.visibility?.toLowerCase() === "public" ? "public" : "private") as StrategyVisibility,
+    subscribers: r.subscribers ?? 0,
   }));
 }
 
@@ -117,6 +121,7 @@ export function addCustomMenu(
     createdBy: createdBy === 0 ? undefined : createdBy,
     price: price?.trim() || undefined,
     visibility: visibility === "public" ? "public" : "private",
+    subscribers: 0,
   });
   save();
   return true;
@@ -188,4 +193,12 @@ export function canChangeVisibility(menuId: string, userId: number, isOwner: boo
   if (isOwner) return true;
   const m = customMenus.find((x) => x.id === menuId);
   return m?.createdBy === userId;
+}
+
+/** Incrementa o decrementa el contador de suscriptores de una estrategia y persiste. Mínimo 0. */
+export function adjustSubscriberCount(menuId: string, delta: number): void {
+  const m = customMenus.find((x) => x.id === menuId);
+  if (!m) return;
+  m.subscribers = Math.max(0, (m.subscribers ?? 0) + delta);
+  save();
 }

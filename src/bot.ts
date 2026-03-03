@@ -811,6 +811,7 @@ async function main(): Promise<void> {
           createdBy: m.createdBy ?? 0,
           price: m.price ?? "",
           visibility: m.visibility ?? "private",
+          subscribers: m.subscribers ?? 0,
         }))
       )
     );
