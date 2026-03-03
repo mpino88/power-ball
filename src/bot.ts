@@ -40,6 +40,7 @@ import {
   setStrategySheetPersist,
   getCustomMenus,
   getMenuCreatedBy,
+  getMenuSubscribers,
 } from "./custom-menus.js";
 import { initPlans, initPlansFromSheet, setPlanSheetPersist, getPlans, getPlanById, getPlanByTitle } from "./plans.js";
 import {
@@ -142,6 +143,7 @@ const mainKbDeps = {
   getPlanByTitle,
   getUserAssignedMenuIds,
   getMenuCreatedBy,
+  getMenuSubscribers,
 };
 
 function buildMainKb(userId: number | undefined) {

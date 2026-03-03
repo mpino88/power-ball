@@ -202,3 +202,8 @@ export function adjustSubscriberCount(menuId: string, delta: number): void {
   m.subscribers = Math.max(0, (m.subscribers ?? 0) + delta);
   save();
 }
+
+/** Devuelve el contador de suscriptores de una estrategia custom (0 si no existe o no es custom). */
+export function getMenuSubscribers(menuId: string): number {
+  return customMenus.find((m) => m.id === menuId)?.subscribers ?? 0;
+}

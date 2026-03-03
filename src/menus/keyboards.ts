@@ -21,6 +21,8 @@ export interface MainKeyboardDeps {
   getPlanByTitle?: (title: string) => { menuIds?: string[] } | undefined;
   getUserAssignedMenuIds?: (userId: number) => string[];
   getMenuCreatedBy?: (menuId: string) => number | undefined;
+  /** Devuelve el nº de suscriptores de una estrategia custom para mostrarlo en el botón. */
+  getMenuSubscribers?: (menuId: string) => number;
 }
 
 function getStrategyIcon(
@@ -93,7 +95,9 @@ export function buildEstrategiasKeyboard(userId: number | undefined, deps: MainK
     const label = deps.getExtraMenuLabel(id);
     if (label) {
       const icon = getStrategyIcon(id, uid, ownerId, deps);
-      kb.text(icon + label, EXTRA_MENU_CALLBACK_PREFIX + id).row();
+      const count = deps.getMenuSubscribers?.(id) ?? 0;
+      const countSuffix = count > 0 ? ` 👤${count}` : "";
+      kb.text(icon + label + countSuffix, EXTRA_MENU_CALLBACK_PREFIX + id).row();
     }
   }
   kb.row().text("⚙️ Gestionar estrategias", "estrategias_manage");
