@@ -11,6 +11,7 @@ import {
   isAllowed,
   getExtraMenus,
   getPlan,
+  getPendingPlan,
   getUserAssignedMenuIds,
   isOwner,
   initUserConfig,
@@ -333,15 +334,22 @@ bot.on("callback_query:data", async (ctx) => {
       }
       return;
     }
-    const result =
-      "📋 *Cambiar de plan*\n\nElige el nuevo plan. _Al confirmar perderás el acceso hasta que el administrador te apruebe de nuevo._";
+    const currentPlan = getPlan(ctx.from.id);
+    const pendingPlan = getPendingPlan(ctx.from.id);
+    let headerMsg = "📋 *Cambiar de plan*\n\n";
+    if (pendingPlan) {
+      headerMsg += `_Ya tienes una solicitud pendiente para cambiar a *${pendingPlan}*. Puedes elegir otro plan para reemplazarla._\n\n`;
+    } else if (currentPlan) {
+      headerMsg += `Plan actual: *${currentPlan}*\n\n`;
+    }
+    headerMsg += "_Tu acceso actual se mantiene hasta que el administrador apruebe el cambio._";
     const keyboard = new InlineKeyboard();
     for (const p of plans) {
       keyboard.text(`${p.title} — ${p.price}`, `user_cambiar_plan_${p.id}`).row();
     }
     keyboard.text("◀️ Cancelar", "volver");
     try {
-      await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
+      await ctx.editMessageText(headerMsg, { parse_mode: "Markdown", reply_markup: keyboard });
     } catch (e) {
       if (!(e as Error).message?.includes("message is not modified")) console.error(e);
     }
@@ -352,14 +360,16 @@ bot.on("callback_query:data", async (ctx) => {
     const planId = data.slice("user_cambiar_plan_".length);
     const plan = getPlanById(planId);
     if (plan) {
+      const currentPlan = getPlan(ctx.from.id);
       const res = await requestPlanChange(ctx.from.id, plan.title);
       await ctx.answerCallbackQuery({ text: res.ok ? "Solicitud enviada" : "Error" });
+      const currentPlanNote = currentPlan
+        ? `Sigues con tu plan *${currentPlan}* hasta que el administrador apruebe el cambio.`
+        : "_El administrador revisará tu solicitud._";
       try {
         await ctx.editMessageText(
-          "✅ Has solicitado el plan *" +
-            plan.title +
-            "*.\n\nEl administrador debe aprobarte de nuevo. _Hasta entonces no tendrás acceso al bot._",
-          { parse_mode: "Markdown" }
+          `✅ Has solicitado cambiar al plan *${plan.title}*.\n\n${currentPlanNote}`,
+          { parse_mode: "Markdown", reply_markup: buildMainKb(ctx.from.id) }
         );
       } catch (e) {
         if (!(e as Error).message?.includes("message is not modified")) console.error(e);

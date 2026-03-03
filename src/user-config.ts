@@ -20,6 +20,8 @@ export interface UserInfo {
   phone?: string;
   plan?: string;
   plan_status?: string;
+  /** Plan solicitado para cambio. El usuario conserva su plan actual hasta que el dueño apruebe. */
+  pending_plan?: string;
 }
 
 /** Usuarios que solicitaron un plan pero aún no están aprobados (no están en allowed). */
@@ -48,8 +50,8 @@ let config: UsersConfig = { ...defaultConfig };
  * - plan (F), plan_status (G).
  * Lógica: plan_status === "requested" → requestedPlans; resto → allowed + userInfo + menus.
  */
-const SHEET_HEADERS = ["userId", "nombre", "telefono", "menus", "menus_labels", "plan", "plan_status"] as const;
-type SheetRow = { userId: string; nombre: string; telefono: string; menus: string; menus_labels: string; plan: string; plan_status: string };
+const SHEET_HEADERS = ["userId", "nombre", "telefono", "menus", "menus_labels", "plan", "plan_status", "pending_plan"] as const;
+type SheetRow = { userId: string; nombre: string; telefono: string; menus: string; menus_labels: string; plan: string; plan_status: string; pending_plan: string };
 
 /** Índices de columnas (mismo orden que SHEET_HEADERS) para leer sin depender del texto exacto del encabezado. */
 const COL_USERID = 0;
@@ -58,6 +60,7 @@ const COL_TELEFONO = 2;
 const COL_MENUS = 3;
 const COL_PLAN = 5;
 const COL_PLAN_STATUS = 6;
+const COL_PENDING_PLAN = 7;
 
 /** Resolver para obtener el texto (label) de un menú por ID. Se asigna desde bot al arranque (getExtraMenuLabel). */
 let sheetMenuLabelResolver: ((menuId: string) => string | undefined) | null = null;
@@ -230,11 +233,13 @@ async function loadFromSheet(): Promise<UsersConfig> {
         if (i === "1" || i.toLowerCase() === "true") menuIds.push("est_individuales");
       }
       menus[uidStr] = menuIds;
+      const pendingPlan = getCol(COL_PENDING_PLAN);
       userInfo[uidStr] = {
         name: getCol(COL_NOMBRE) || undefined,
         phone: getCol(COL_TELEFONO) || undefined,
         plan: planName || undefined,
         plan_status: planStatus || undefined,
+        pending_plan: pendingPlan || undefined,
       };
     }
     console.log(
@@ -318,6 +323,7 @@ async function saveToSheet(): Promise<void> {
         menus_labels: labels.join(", "),
         plan: info?.plan ?? "",
         plan_status: info?.plan_status ?? "approved",
+        pending_plan: info?.pending_plan ?? "",
       };
     });
     const requestedRows: SheetRow[] = Object.entries(config.requestedPlans).map(([uid, req]) => ({
@@ -328,6 +334,7 @@ async function saveToSheet(): Promise<void> {
       menus_labels: "",
       plan: req.plan,
       plan_status: "requested",
+      pending_plan: "",
     }));
     const rows: SheetRow[] = [...allowedRows, ...requestedRows];
     if (rows.length > 0) {
@@ -754,6 +761,11 @@ export function getPlanStatus(userId: number): string | undefined {
   return config.userInfo[String(userId)]?.plan_status;
 }
 
+/** Plan pendiente de aprobación (solicitado para cambio). null si no hay cambio pendiente. */
+export function getPendingPlan(userId: number): string | undefined {
+  return config.userInfo[String(userId)]?.pending_plan;
+}
+
 export async function setUserInfo(userId: number, info: UserInfo): Promise<PersistResult> {
   const key = String(userId);
   config.userInfo[key] = { ...config.userInfo[key], ...info };
@@ -798,14 +810,34 @@ export async function addPlanRequest(
   return persist();
 }
 
-/** Lista de usuarios con plan_status "requested" (pendientes de aprobación). */
-export function getRequestedPlanUsers(): { userId: number; plan: string; name?: string; phone?: string }[] {
-  return Object.entries(config.requestedPlans).map(([uid, req]) => ({
+export interface RequestedPlanUser {
+  userId: number;
+  plan: string;
+  name?: string;
+  phone?: string;
+  /** true = usuario ya tiene acceso y solicita cambio de plan; false = usuario nuevo sin acceso. */
+  isPlanChange: boolean;
+}
+
+/** Lista de solicitudes pendientes: usuarios nuevos (requestedPlans) + usuarios con acceso solicitando cambio de plan (pending_plan). */
+export function getRequestedPlanUsers(): RequestedPlanUser[] {
+  const fromNew: RequestedPlanUser[] = Object.entries(config.requestedPlans).map(([uid, req]) => ({
     userId: parseInt(uid, 10),
     plan: req.plan,
     name: req.name,
     phone: req.phone,
+    isPlanChange: false,
   }));
+  const fromChange: RequestedPlanUser[] = Object.entries(config.userInfo)
+    .filter(([, info]) => !!info.pending_plan)
+    .map(([uid, info]) => ({
+      userId: parseInt(uid, 10),
+      plan: info.pending_plan!,
+      name: info.name,
+      phone: info.phone,
+      isPlanChange: true,
+    }));
+  return [...fromNew, ...fromChange];
 }
 
 /** Asigna un plan directamente a un usuario (por el dueño). Le da acceso y plan/plan_status=approved. Los menús del plan se aplican vía getExtraMenus; no se sobrescribe la asignación individual (menus). */
@@ -821,36 +853,49 @@ export async function assignPlanToUser(
   return persist();
 }
 
-/** Usuario con acceso solicita cambio de plan: se quita de allowed, se añade a requestedPlans (plan nuevo, nombre/teléfono actuales) y se persiste. Deja de tener acceso hasta que lo aprueben. */
+/** Usuario con acceso solicita cambio de plan: conserva su plan actual (sigue en allowed) y se guarda el nuevo plan en pending_plan. El dueño lo aprueba cuando quiera; hasta entonces el usuario mantiene acceso al plan vigente. */
 export async function requestPlanChange(userId: number, planName: string): Promise<PersistResult> {
   const key = String(userId);
-  const info = config.userInfo[key];
-  config.allowed = config.allowed.filter((id) => id !== userId);
-  config.requestedPlans[key] = {
-    plan: planName,
-    name: info?.name,
-    phone: info?.phone,
-  };
+  config.userInfo[key] = { ...config.userInfo[key], pending_plan: planName };
   return persist();
 }
 
-/** Aprueba solicitud: quita de requestedPlans, añade a allowed y guarda plan/plan_status=approved. Los menús del plan se aplican vía getExtraMenus; la asignación individual (menus) no se sobrescribe. */
+/** Aprueba solicitud de plan.
+ * - Usuario nuevo (en requestedPlans): le da acceso + asigna el plan solicitado.
+ * - Usuario con cambio pendiente (pending_plan): actualiza su plan al pending_plan y limpia el campo.
+ */
 export async function approvePlanRequest(userId: number, _planMenuIds?: string[]): Promise<PersistResult> {
   const key = String(userId);
+
+  // Caso 1: usuario nuevo sin acceso (en requestedPlans)
   const req = config.requestedPlans[key];
-  if (!req) {
-    return { backend: getStorageBackend(), ok: false, count: config.allowed.length, error: "Usuario no está en solicitudes pendientes." };
+  if (req) {
+    delete config.requestedPlans[key];
+    if (!config.allowed.includes(userId)) config.allowed.push(userId);
+    config.userInfo[key] = {
+      ...config.userInfo[key],
+      name: req.name ?? config.userInfo[key]?.name,
+      phone: req.phone ?? config.userInfo[key]?.phone,
+      plan: req.plan,
+      plan_status: "approved",
+      pending_plan: undefined,
+    };
+    return persist();
   }
-  delete config.requestedPlans[key];
-  if (!config.allowed.includes(userId)) config.allowed.push(userId);
-  config.userInfo[key] = {
-    ...config.userInfo[key],
-    name: req.name ?? config.userInfo[key]?.name,
-    phone: req.phone ?? config.userInfo[key]?.phone,
-    plan: req.plan,
-    plan_status: "approved",
-  };
-  return persist();
+
+  // Caso 2: usuario con acceso que solicita cambio de plan (pending_plan)
+  const pendingPlan = config.userInfo[key]?.pending_plan;
+  if (pendingPlan) {
+    config.userInfo[key] = {
+      ...config.userInfo[key],
+      plan: pendingPlan,
+      plan_status: "approved",
+      pending_plan: undefined,
+    };
+    return persist();
+  }
+
+  return { backend: getStorageBackend(), ok: false, count: config.allowed.length, error: "Usuario no tiene solicitud pendiente." };
 }
 
 export async function toggleExtraMenu(userId: number, menuId: string): Promise<boolean> {

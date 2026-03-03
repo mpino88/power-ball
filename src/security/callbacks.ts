@@ -11,6 +11,7 @@ import {
   getPhone,
   getPlan,
   getPlanStatus,
+  getPendingPlan,
   getOwnerId,
   addAllowed,
   removeAllowed,
@@ -128,7 +129,9 @@ export async function handleSecurityCallback(
       const phone = escapeMd((getPhone(uid) || "").trim() || "—");
       const plan = escapeMd((getPlan(uid) || "").trim() || "—");
       const status = escapeMd((getPlanStatus(uid) || "").trim() || "—");
-      return `• *ID:* \`${uid}\` | *Nombre:* ${name} | *Teléfono:* ${phone}\n  *Plan:* ${plan} | *Estado:* ${status}`;
+      const pending = getPendingPlan(uid);
+      const pendingNote = pending ? ` _(cambio pendiente → ${escapeMd(pending)})_` : "";
+      return `• *ID:* \`${uid}\` | *Nombre:* ${name} | *Teléfono:* ${phone}\n  *Plan:* ${plan}${pendingNote} | *Estado:* ${status}`;
     });
     result =
       "👥 *Listar usuarios* (" + list.length + ")\n\n" +
@@ -593,7 +596,7 @@ export async function handleSecurityCallback(
     const requested = getRequestedPlanUsers();
     if (requested.length === 0) {
       result =
-        "📩 *Solicitudes pendientes*\n\nNo hay solicitudes. Cuando un usuario sin acceso elija un plan y envíe su teléfono, aparecerán aquí.";
+        "📩 *Solicitudes pendientes*\n\nNo hay solicitudes. Cuando un usuario sin acceso elija un plan, o un usuario con acceso solicite cambiar de plan, aparecerán aquí.";
       keyboard = new InlineKeyboard()
         .text("🔄 Actualizar desde Sheet", "admin_plans_requests_refresh")
         .row()
@@ -604,15 +607,19 @@ export async function handleSecurityCallback(
         const plan = escapeMd(u.plan || "—");
         const nombre = escapeMd((u.name && u.name.trim()) ? u.name.trim() : "—");
         const telefono = escapeMd((u.phone && u.phone.trim()) ? u.phone.trim() : "—");
-        return `• *ID:* \`${id}\` | *Plan:* ${plan}\n  *Nombre:* ${nombre} | *Teléfono:* ${telefono}`;
+        const typeTag = u.isPlanChange ? " _🔄 cambio de plan_" : " _🆕 acceso nuevo_";
+        return `• *ID:* \`${id}\` | *Plan solicitado:* ${plan}${typeTag}\n  *Nombre:* ${nombre} | *Teléfono:* ${telefono}`;
       });
       result =
-        "📩 *Solicitudes pendientes* (plan\\_status = requested)\n\nSe muestran todos los datos cargados del Sheet/archivo:\n\n" +
+        "📩 *Solicitudes pendientes*\n\n_🆕 acceso nuevo_ = usuario sin acceso · _🔄 cambio de plan_ = usuario activo cambiando plan\n\n" +
         lines.join("\n\n");
       keyboard = new InlineKeyboard();
       for (const u of requested) {
         const displayName = (u.name && u.name.trim()) ? u.name.trim() : null;
-        const label = displayName ? `✅ ${u.userId} — ${u.plan} (${displayName})` : `✅ Aprobar ${u.userId} (${u.plan})`;
+        const typeIcon = u.isPlanChange ? "🔄" : "✅";
+        const label = displayName
+          ? `${typeIcon} ${u.userId} — ${u.plan} (${displayName})`
+          : `${typeIcon} Aprobar ${u.userId} (${u.plan})`;
         keyboard.text(label, `admin_plans_approve_${u.userId}`).row();
       }
       keyboard.text("🔄 Actualizar lista", "admin_plans_requests_refresh").row().text("◀️ Volver a Gestionar planes", "admin_plans_manage");
@@ -627,10 +634,13 @@ export async function handleSecurityCallback(
       const requested = getRequestedPlanUsers().find((u) => u.userId === userId);
       const plan = requested ? getPlanByTitle(requested.plan) : undefined;
       const planMenuIds = plan?.menuIds ?? [];
+      const isPlanChange = requested?.isPlanChange ?? false;
       const approveResult = await approvePlanRequest(userId, planMenuIds);
       if (approveResult.ok) {
         const menuInfo = planMenuIds.length > 0 ? ` Menús del plan: ${planMenuIds.join(", ")}.` : "";
-        result = `✅ Usuario \`${userId}\` aprobado. Ya tiene acceso al bot.${menuInfo} Puedes asignar más menús en *Menús por usuario*.`;
+        result = isPlanChange
+          ? `✅ Cambio de plan aprobado para usuario \`${userId}\`. Nuevo plan: *${escapeMd(requested?.plan ?? "")}*.${menuInfo}`
+          : `✅ Usuario \`${userId}\` aprobado. Ya tiene acceso al bot.${menuInfo} Puedes asignar más menús en *Menús por usuario*.`;
       } else {
         result = (approveResult.error ?? "Error al aprobar.") + "\n\nVuelve a Solicitudes pendientes.";
       }
