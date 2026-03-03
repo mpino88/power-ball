@@ -3,7 +3,7 @@
  * Los no autorizados ven los planes; al hacer clic se registra la solicitud en el sheet (E=plan, F=requested).
  */
 
-import { InlineKeyboard } from "grammy";
+import { InlineKeyboard, Keyboard } from "grammy";
 import type { getOwnerId as GetOwnerId, isAllowed as IsAllowed } from "../user-config.js";
 import { addPlanRequest } from "../user-config.js";
 import { getPlans, getPlanById } from "../plans.js";
@@ -23,10 +23,18 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
   /** Usuario sin acceso que eligió un plan y está pendiente de enviar teléfono. */
   const pendingPlanRequest = new Map<number, { planId: string; planName: string }>();
 
+  const contactRequestKb = (planTitle: string) =>
+    new Keyboard()
+      .requestContact("📱 Compartir mi número — " + planTitle)
+      .row()
+      .text("❌ Cancelar")
+      .resized()
+      .oneTime();
+
   return async (
     ctx: {
       from?: { id: number; first_name?: string; last_name?: string };
-      message?: { text?: string };
+      message?: { text?: string; contact?: { phone_number: string; first_name?: string; last_name?: string; user_id?: number } };
       callbackQuery?: { data?: string };
       answerCallbackQuery?: (opts?: { text?: string }) => Promise<unknown>;
       reply: (text: string, opts?: object) => Promise<unknown>;
@@ -45,10 +53,12 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
       const plan = getPlanById(planId);
       if (plan) {
         pendingPlanRequest.set(uid, { planId, planName: plan.title });
-        if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery({ text: "Envía tu teléfono" });
+        if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery();
         await ctx.reply(
-          "📋 Plan *" + plan.title + "*\n\nPara completar la solicitud, envía tu *número de teléfono* (ej: +1234567890 o 1234567890).",
-          { parse_mode: "Markdown" }
+          "📋 Plan *" + plan.title + "*\n\n" +
+          "Para completar la solicitud necesitamos tu número de contacto.\n\n" +
+          "Toca el botón de abajo — Telegram te pedirá tu consentimiento antes de compartirlo.",
+          { parse_mode: "Markdown", reply_markup: contactRequestKb(plan.title) }
         );
       } else {
         if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery({ text: "Plan no encontrado." }).catch(() => {});
@@ -56,20 +66,42 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
       return;
     }
 
-    const pending = ctx.message && "text" in ctx.message ? pendingPlanRequest.get(uid) : undefined;
+    const pending = ctx.message ? pendingPlanRequest.get(uid) : undefined;
     if (pending) {
-      const phone = String((ctx.message as { text?: string }).text ?? "").trim();
-      const name = [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ").trim() || "—";
-      pendingPlanRequest.delete(uid);
-      try {
-        await addPlanRequest(uid, pending.planName, { name, phone });
-        await ctx.reply(
-          "✅ Solicitud registrada (*" + pending.planName + "*). Nombre y teléfono guardados. El administrador revisará tu acceso.",
-          { parse_mode: "Markdown" }
-        );
-      } catch (e) {
-        await ctx.reply("No se pudo guardar la solicitud. Intenta más tarde o contacta al administrador.").catch(() => {});
+      const contact = ctx.message?.contact;
+      if (contact) {
+        const phone = contact.phone_number;
+        const name =
+          [contact.first_name, contact.last_name].filter(Boolean).join(" ").trim() ||
+          [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ").trim() ||
+          "—";
+        pendingPlanRequest.delete(uid);
+        try {
+          await addPlanRequest(uid, pending.planName, { name, phone });
+          await ctx.reply(
+            "✅ Solicitud registrada (*" + pending.planName + "*). El administrador revisará tu acceso.",
+            { parse_mode: "Markdown", reply_markup: Keyboard.removed() }
+          );
+        } catch (e) {
+          await ctx.reply("No se pudo guardar la solicitud. Intenta más tarde o contacta al administrador.", {
+            reply_markup: Keyboard.removed(),
+          }).catch(() => {});
+        }
+        return;
       }
+
+      const text = (ctx.message as { text?: string }).text?.trim() ?? "";
+      if (text === "❌ Cancelar") {
+        pendingPlanRequest.delete(uid);
+        await ctx.reply("Solicitud cancelada.", { reply_markup: Keyboard.removed() });
+        return;
+      }
+
+      await ctx.reply(
+        "⚠️ Para solicitar el plan *" + pending.planName + "* debes compartir tu número usando el botón de abajo.\n\n" +
+        "No se aceptan números escritos manualmente.",
+        { parse_mode: "Markdown", reply_markup: contactRequestKb(pending.planName) }
+      );
       return;
     }
 
