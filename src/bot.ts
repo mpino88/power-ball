@@ -94,6 +94,13 @@ import {
   buildConsensusSelectionMessage,
 } from "./strategies/consensus-multi.js";
 import type { StrategyContext } from "./strategies/types.js";
+import {
+  buildCharadaMenuKeyboard,
+  buildCharadaCatalogKeyboard,
+  buildCatalogPage,
+  searchCharada,
+  buildSearchMessage,
+} from "./charada.js";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
@@ -120,6 +127,9 @@ interface ConsensusSession {
   step: "selecting" | "waiting_count";
 }
 const consensusSessionMap = new Map<number, ConsensusSession>();
+
+/** Usuarios que están esperando introducir una búsqueda en la Charada. */
+const waitingCharadaSearch = new Map<number, true>();
 
 /** Caché del scrape "Hoy" (10 min); solo la fuente PDF se precarga, el resto es on demand. */
 const HOY_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -709,6 +719,73 @@ bot.on("callback_query:data", async (ctx) => {
     return;
   }
 
+  // ── Charada Cubana ────────────────────────────────────────────────────────
+  if (data === "charada_open") {
+    await ctx.answerCallbackQuery();
+    try {
+      await ctx.editMessageText(
+        "🃏 *Charada Cubana*\n\nSistema de numerología popular cubano: 100 números \\(00–99\\) con sus significados tradicionales\\.\n\nElige una opción:",
+        { parse_mode: "MarkdownV2", reply_markup: buildCharadaMenuKeyboard() }
+      );
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
+  }
+
+  if (data.startsWith("charada_cat_")) {
+    const page = parseInt(data.slice("charada_cat_".length), 10);
+    if (!Number.isNaN(page) && page >= 0 && page < 5) {
+      await ctx.answerCallbackQuery();
+      try {
+        await ctx.editMessageText(buildCatalogPage(page), {
+          parse_mode: "Markdown",
+          reply_markup: buildCharadaCatalogKeyboard(page),
+        });
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
+  }
+
+  if (data === "charada_buscar" && ctx.from) {
+    waitingCharadaSearch.set(ctx.from.id, true);
+    await ctx.answerCallbackQuery();
+    try {
+      await ctx.editMessageText(
+        "🔍 *Buscar en la Charada Cubana*\n\nEscribe un *número* (00–99) o una *palabra* y te mostraré las coincidencias\\.\n\n_Usa /cancel para cancelar\\._",
+        {
+          parse_mode: "MarkdownV2",
+          reply_markup: new InlineKeyboard().text("❌ Cancelar", "charada_cancel_search"),
+        }
+      );
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
+  }
+
+  if (data === "charada_cancel_search" && ctx.from) {
+    waitingCharadaSearch.delete(ctx.from.id);
+    await ctx.answerCallbackQuery({ text: "Búsqueda cancelada" });
+    try {
+      await ctx.editMessageText(
+        "🃏 *Charada Cubana*\n\nSistema de numerología popular cubano\\.\n\nElige una opción:",
+        { parse_mode: "MarkdownV2", reply_markup: buildCharadaMenuKeyboard() }
+      );
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
+  }
+
+  if (data === "charada_noop") {
+    await ctx.answerCallbackQuery();
+    return;
+  }
+  // ── fin Charada ────────────────────────────────────────────────────────────
+
   result = "Opción no reconocida. Usa /start para ver el menú.";
   try {
     if (!asyncData) await ctx.answerCallbackQuery().catch(() => {});
@@ -725,6 +802,7 @@ bot.command("cancel", async (ctx) => {
   if (userId) {
     waitingCustomDateGame.delete(userId);
     consensusSessionMap.delete(userId);
+    waitingCharadaSearch.delete(userId);
     const wasInPlanFlow = creatingPlanFlow.has(userId) || editingPlanFlow.has(userId);
     clearAllFlows(userId);
     if (wasInPlanFlow && isOwner(userId)) {
@@ -782,6 +860,18 @@ bot.on("message:text", async (ctx) => {
         reply_markup: buildMainKb(userId),
       });
     }
+    return;
+  }
+
+  // ── Charada: búsqueda por texto o número ───────────────────────────────────
+  if (userId && waitingCharadaSearch.has(userId)) {
+    waitingCharadaSearch.delete(userId);
+    const results = searchCharada(text);
+    const msg = buildSearchMessage(text, results);
+    await ctx.reply(msg, {
+      parse_mode: "Markdown",
+      reply_markup: buildCharadaMenuKeyboard(),
+    });
     return;
   }
 

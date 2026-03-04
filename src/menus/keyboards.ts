@@ -57,7 +57,9 @@ export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboard
     .row()
     .text("☀️🌙 Ambos (Fijo + Corrido)", "menu_ambos")
     .row()
-    .text("📚 Base de datos", "menu_basedatos");
+    .text("📚 Base de datos", "menu_basedatos")
+    .row()
+    .text("🃏 Charada Cubana", "charada_open");
   const ownerId = deps.getOwnerId();
   const extraIds = deps.getExtraMenuIds();
   const showExtra = extraIds.filter((id) => {
