@@ -17,7 +17,10 @@ import {
 } from "./keyboards.js";
 
 export interface MenuHandlersDeps extends MainKeyboardDeps {
-  helpText: string;
+  /** Genera el texto de ayuda a partir del nombre de plan actual del usuario. */
+  buildHelpText: (planName: string) => string;
+  /** Recarga la config desde el Sheet (o archivo) para reflejar cambios de plan aprobados. */
+  reloadUserConfig: () => Promise<void>;
   /** ID numérico del dueño (BOT_OWNER_ID). Si está definido, aparece botón de contacto directo en la ayuda. */
   ownerUserId?: number;
   getHotThresholdDays: () => number;
@@ -76,11 +79,13 @@ export async function handleMenuCallback(
   const mainKb = () => buildMainKeyboard(userId, deps);
 
   if (data === "help") {
+    await deps.reloadUserConfig();
+    const planName = (userId !== undefined ? deps.getPlan?.(userId) : undefined) ?? "Básico";
     const kb = mainKb();
     if (deps.ownerUserId) {
       kb.row().url("📩 Contactar al administrador", `tg://user?id=${deps.ownerUserId}`);
     }
-    return { result: "*❓ Ayuda*\n\n" + deps.helpText, keyboard: kb };
+    return { result: "*❓ Ayuda*\n\n" + deps.buildHelpText(planName), keyboard: kb };
   }
 
   if (data === "volver") {

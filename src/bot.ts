@@ -17,6 +17,7 @@ import {
   initUserConfig,
   addPlanRequest,
   requestPlanChange,
+  reloadConfigFromStorage,
   setSheetMenuLabelResolver,
   toggleExtraMenu,
   getStorageBackend,
@@ -89,11 +90,15 @@ const WEBHOOK_URL = process.env.WEBHOOK_URL ?? "";
 const FLORIDA_TZ = "America/New_York";
 const REQUEST_ACCESS_LINK = process.env.REQUEST_ACCESS_LINK?.trim() ?? "";
 
-const HELP_TEXT =
-  "📋 *Ayuda — Plan Básico*\n\n" +
-  "Ud. posee un *plan Básico*: le brindamos algunas estadísticas y consultas.\n\n" +
-  "Si requiere implementar su propia solución con un costo adicional, contacte al administrador.\n\n" +
-  "Note que esas funciones las podrá comercializar con otros usuarios a través de la aplicación y por medio del admin.";
+function buildHelpText(planName: string): string {
+  const safePlan = escapeMd(planName);
+  return (
+    `📋 *Ayuda — ${safePlan}*\n\n` +
+    `Ud. posee el plan *${safePlan}*: le brindamos acceso a sus estadísticas y estrategias configuradas.\n\n` +
+    "Si requiere implementar su propia solución con un costo adicional, contacte al administrador.\n\n" +
+    "Note que esas funciones las podrá comercializar con otros usuarios a través de la aplicación y por medio del admin."
+  );
+}
 
 let hotThresholdDays = 5;
 const waitingCustomDateGame = new Map<number, GameMenu>();
@@ -238,12 +243,15 @@ bot.command("start", async (ctx) => {
 });
 
 bot.command("help", async (ctx) => {
-  const kb = buildMainKb(ctx.from?.id);
+  await reloadConfigFromStorage();
+  const userId = ctx.from?.id;
+  const planName = (userId !== undefined ? getPlan(userId) : undefined) ?? "Básico";
+  const kb = buildMainKb(userId);
   const ownerId = getOwnerId();
   if (ownerId) {
     kb.row().url("📩 Contactar al administrador", `tg://user?id=${ownerId}`);
   }
-  await ctx.reply(HELP_TEXT, { parse_mode: "Markdown", reply_markup: kb });
+  await ctx.reply(buildHelpText(planName), { parse_mode: "Markdown", reply_markup: kb });
 });
 
 bot.command("admin", async (ctx) => {
@@ -385,7 +393,8 @@ bot.on("callback_query:data", async (ctx) => {
 
   const menuDeps = {
     ...mainKbDeps,
-    helpText: HELP_TEXT,
+    buildHelpText,
+    reloadUserConfig: reloadConfigFromStorage,
     ownerUserId: getOwnerId() ?? undefined,
     getHotThresholdDays: () => hotThresholdDays,
     setHotThresholdDays: (n: number) => {
