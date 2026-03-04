@@ -302,16 +302,23 @@ const BUILT_IN_STRATEGIES: Array<{ id: string; label: string; description: strin
 const PLAN_MENU_IDS = ["est_grupos", "est_individuales"] as const;
 
 /**
- * Siembra las estrategias built-in que no estén aún en el registro y las asigna
- * al dueño del bot. Idempotente: solo actúa si hay diferencias.
+ * Siembra las estrategias built-in que no estén aún en el catálogo y las asigna
+ * al dueño del bot respetando cambios manuales en el Sheet.
  *
- * - customMenus (pestaña "Estrategias"): solo los 7 built-in con StrategyDefinition.
- * - Asignación al dueño (columna "menus"): los 7 anteriores + est_grupos + est_individuales.
+ * Reglas de asignación al dueño:
+ *  - PLAN_MENU_IDS (est_grupos, est_individuales): siempre se añaden si faltan.
+ *    Son menús base del sistema, no gestionables desde el catálogo.
+ *  - BUILT_IN_STRATEGIES: solo se añaden al dueño si son NUEVAS en este arranque
+ *    (acaban de añadirse al catálogo). Si ya existían en el catálogo pero el dueño
+ *    las quitó manualmente del Sheet, ese cambio se respeta y no se revierten.
+ *  - La carga previa desde el Sheet en initUserConfig() ya reflejó el estado actual
+ *    del dueño; aquí solo completamos lo genuinamente nuevo.
  */
 async function seedBuiltInStrategies(ownerId: number | null): Promise<void> {
-  const added = seedCustomMenus(BUILT_IN_STRATEGIES);
-  if (added > 0) {
-    console.log(`[seed] ${added} estrategia(s) nueva(s) registrada(s) en el catálogo.`);
+  // newIds = IDs que NO estaban en el catálogo y se acaban de insertar ahora.
+  const newIds = seedCustomMenus(BUILT_IN_STRATEGIES);
+  if (newIds.length > 0) {
+    console.log(`[seed] ${newIds.length} estrategia(s) nueva(s) en catálogo: ${newIds.join(", ")}`);
   }
 
   if (ownerId === null) {
@@ -319,21 +326,22 @@ async function seedBuiltInStrategies(ownerId: number | null): Promise<void> {
     return;
   }
 
-  // Todos los IDs que el dueño debe tener asignados: las 7 built-in + los 2 de planes.
-  const allOwnerIds = [
-    ...BUILT_IN_STRATEGIES.map((s) => s.id),
-    ...PLAN_MENU_IDS,
-  ];
   const current = getUserAssignedMenuIds(ownerId);
-  const missing = allOwnerIds.filter((id) => !current.includes(id));
 
-  if (missing.length === 0) return;
+  // Candidatos a añadir al dueño:
+  //  · Estrategias recién creadas en el catálogo (genuinamente nuevas para este arranque)
+  //  · PLAN_MENU_IDS que no tenga aún (son intransferibles al catálogo)
+  const toAdd = [
+    ...newIds,
+    ...(PLAN_MENU_IDS as readonly string[]),
+  ].filter((id) => !current.includes(id));
 
-  // Ensure the owner appears in config.allowed so their menus persisten in the Sheet.
+  if (toAdd.length === 0) return;
+
   await addAllowed(ownerId);
-  await setExtraMenus(ownerId, [...current, ...missing]);
+  await setExtraMenus(ownerId, [...current, ...toAdd]);
   console.log(
-    `[seed] ${missing.length} estrategia(s) asignada(s) al dueño (userId=${ownerId}): ${missing.join(", ")}`
+    `[seed] ${toAdd.length} estrategia(s) añadida(s) al dueño (userId=${ownerId}): ${toAdd.join(", ")}`
   );
 }
 

@@ -210,7 +210,8 @@ export function getMenuSubscribers(menuId: string): number {
 
 /**
  * Inserta en bloque los ítems que aún no existen (por id), con createdBy=undefined (dueño).
- * Llama a save() una sola vez al final. Retorna el número de ítems nuevos añadidos.
+ * Llama a save() una sola vez al final.
+ * Retorna los IDs de los ítems NUEVOS añadidos en esta llamada (no los que ya existían).
  * Útil para sembrar estrategias built-in al arrancar el bot sin N escrituras al Sheet.
  */
 export function seedCustomMenus(
@@ -220,8 +221,8 @@ export function seedCustomMenus(
     description?: string;
     visibility?: StrategyVisibility;
   }>
-): number {
-  let added = 0;
+): string[] {
+  const newIds: string[] = [];
   for (const item of items) {
     const normId = item.id.trim();
     if (!normId || customMenus.some((m) => m.id === normId)) continue;
@@ -235,8 +236,8 @@ export function seedCustomMenus(
       visibility: item.visibility ?? "private",
       subscribers: 0,
     });
-    added++;
+    newIds.push(normId);
   }
-  if (added > 0) save();
-  return added;
+  if (newIds.length > 0) save();
+  return newIds;
 }
