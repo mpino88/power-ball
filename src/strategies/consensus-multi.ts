@@ -8,6 +8,19 @@
  * Flujo: selección interactiva (cns_t_<id>) → confirmación (cns_ok) →
  * entrada de cantidad (texto libre 1-20) → resultado con análisis cruzado.
  *
+ * ── PARA AGREGAR UNA NUEVA ESTRATEGIA AL CONSENSO ────────────────────────────
+ * Solo implementa `getCandidates` en su StrategyDefinition:
+ *
+ *   async getCandidates(context, map): Promise<number[]> { ... }
+ *
+ * Devuelve una lista ordenada de números 00-99 (más probable primero).
+ * El sistema la detecta automáticamente — no hay que modificar este archivo.
+ *
+ * Opcionalmente, añade una entrada en STRATEGY_META (abajo) para personalizar
+ * el emoji, nombre corto y descripción que aparece en la pantalla de selección.
+ * Si no se añade, se usan valores por defecto derivados del id.
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
  * Id: consensus_multi
  */
 
@@ -17,6 +30,9 @@ import { buildDefaultContextKeyboard, getDefaultContextMessage } from "./context
 import { validDateKeys, DAY_NAMES, MONTH_NAMES, mmddyyToDate } from "./utils.js";
 
 // ─── Meta-data de cada estrategia para display y explicación ─────────────────
+// Añade aquí una entrada cuando implementes una nueva estrategia para
+// personalizar su representación en el selector de Consenso.
+// Si no añades entrada, se usará el fallback genérico (ver getStrategyMeta).
 
 interface StrategyMeta {
   emoji: string;
@@ -70,25 +86,38 @@ const STRATEGY_META: Record<string, StrategyMeta> = {
   },
 };
 
-/** IDs de estrategias que implementan getCandidates y pueden participar en el consenso. */
-export const CONSENSUS_SELECTABLE_IDS = [
-  "freq_analysis",
-  "gap_due",
-  "calendar_pattern",
-  "transition_follow",
-  "trend_momentum",
-  "max_per_week_day",
-] as const;
+/**
+ * Retorna el meta de una estrategia. Si no tiene entrada en STRATEGY_META,
+ * genera valores por defecto a partir del id para que cualquier nueva estrategia
+ * que implemente getCandidates aparezca correctamente en el selector sin
+ * necesidad de modificar este archivo.
+ */
+function getStrategyMeta(id: string, ctx: StrategyContext, nextDate: Date | null): StrategyMeta {
+  if (STRATEGY_META[id]) return STRATEGY_META[id]!;
+  // Fallback genérico: capitaliza el id y usa emoji neutro
+  const fallbackName = id.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return {
+    emoji: "🎲",
+    shortName: id.slice(0, 7),
+    fullName: fallbackName,
+    candidateDesc: () => "candidatos de esta estrategia",
+  };
+}
 
 // ─── UI helpers ──────────────────────────────────────────────────────────────
 
+/**
+ * Construye el mensaje de selección de estrategias.
+ * @param selectableIds Lista dinámica de IDs seleccionables (de getConsensusSelectableIds).
+ */
 export function buildConsensusSelectionMessage(
   selectedCount: number,
-  context: StrategyContext
+  context: StrategyContext,
+  selectableIds: string[]
 ): string {
   const mapLabel = context.mapSource === "p3" ? "P3 (Fijos)" : "P4 (Corridos)";
   const periodLabel = context.period === "m" ? "☀️ Mediodía" : "🌙 Noche";
-  const total = CONSENSUS_SELECTABLE_IDS.length;
+  const total = selectableIds.length;
 
   const lines = [
     `🤝 *Consenso Multi-Estrategia* — ${mapLabel} · ${periodLabel}`,
@@ -105,14 +134,18 @@ export function buildConsensusSelectionMessage(
   return lines.join("\n");
 }
 
+/**
+ * Construye el teclado de selección de estrategias.
+ * @param selectableIds Lista dinámica de IDs seleccionables (de getConsensusSelectableIds).
+ */
 export function buildConsensusSelectionKeyboard(
   selectedIds: Set<string>,
-  _context: StrategyContext
+  context: StrategyContext,
+  selectableIds: string[]
 ): InlineKeyboard {
   const kb = new InlineKeyboard();
-  for (const id of CONSENSUS_SELECTABLE_IDS) {
-    const meta = STRATEGY_META[id];
-    if (!meta) continue;
+  for (const id of selectableIds) {
+    const meta = getStrategyMeta(id, context, null);
     const selected = selectedIds.has(id);
     const mark = selected ? "✅" : "⬜";
     kb.text(`${mark} ${meta.emoji} ${meta.fullName}`, `cns_t_${id}`).row();
@@ -170,15 +203,16 @@ export async function runConsensusAggregation(
   const votes = new Map<number, number>();
   const voterIds = new Map<number, string[]>(); // num → strategy short-names
   for (const id of selectedIds) {
+    const meta = getStrategyMeta(id, context, nextDate);
     const candidates = candidatesPerStrategy.get(id) ?? [];
     for (const num of candidates) {
       votes.set(num, (votes.get(num) ?? 0) + 1);
       if (!voterIds.has(num)) voterIds.set(num, []);
-      voterIds.get(num)!.push(STRATEGY_META[id]?.shortName ?? id);
+      voterIds.get(num)!.push(meta.shortName);
     }
   }
 
-  // Sort by votes desc, then by vote order stability
+  // Sort by votes desc
   const ranked = [...votes.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, count);
@@ -208,8 +242,7 @@ export async function runConsensusAggregation(
   lines.push(`_(${mapLabel} · ${periodLabel})_ y se compararon sus listas de candidatos.`);
   lines.push("");
   for (const id of selectedIds) {
-    const meta = STRATEGY_META[id];
-    if (!meta) continue;
+    const meta = getStrategyMeta(id, context, nextDate);
     const desc = meta.candidateDesc(context, nextDate);
     lines.push(`· ${meta.emoji} *${meta.shortName}* — ${desc}`);
   }
@@ -245,8 +278,7 @@ export async function runConsensusAggregation(
   lines.push("_Candidatos por estrategia:_");
   lines.push("```");
   for (const id of selectedIds) {
-    const meta = STRATEGY_META[id];
-    if (!meta) continue;
+    const meta = getStrategyMeta(id, context, nextDate);
     const cands = (candidatesPerStrategy.get(id) ?? []).slice(0, 12);
     const numsStr = cands.map((n) => String(n).padStart(2, "0")).join(" ");
     const label = `${meta.shortName}:`.padEnd(9);

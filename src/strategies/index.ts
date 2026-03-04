@@ -57,6 +57,28 @@ export async function runStrategy(
   return s.run(context, map);
 }
 
+/**
+ * Retorna los IDs de todas las estrategias registradas que implementan `getCandidates`
+ * (excluyendo `consensus_multi`).
+ *
+ * ── CONVENCIÓN ──────────────────────────────────────────────────────────────
+ * Para que una nueva estrategia sea SELECCIONABLE en Consenso Multi-Estrategia,
+ * basta con que implemente el método opcional `getCandidates` en su objeto
+ * `StrategyDefinition`. No hay que tocar ningún archivo adicional; el sistema
+ * la detecta automáticamente en tiempo de ejecución.
+ *
+ *   getCandidates(context, map): Promise<number[]>
+ *
+ * El método debe devolver una lista ordenada (de más a menos probable) de
+ * números 00-99 que la estrategia considera candidatos para el próximo sorteo.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+export function getConsensusSelectableIds(): string[] {
+  return [...registry.entries()]
+    .filter(([id, s]) => id !== "consensus_multi" && typeof s.getCandidates === "function")
+    .map(([id]) => id);
+}
+
 // —— Registro de estrategias (añadir una línea por cada nueva estrategia) ——
 registerStrategy(maxPerWeekDay);
 registerStrategy(freqAnalysis);

@@ -85,11 +85,11 @@ import {
   runStrategy,
   hasStrategyRunner,
   getStrategy,
+  getConsensusSelectableIds,
 } from "./strategies/index.js";
 import { STRATEGY_CONTEXT_CALLBACK_PREFIX } from "./strategies/types.js";
 import {
   runConsensusAggregation,
-  CONSENSUS_SELECTABLE_IDS,
   buildConsensusSelectionKeyboard,
   buildConsensusSelectionMessage,
 } from "./strategies/consensus-multi.js";
@@ -560,8 +560,9 @@ bot.on("callback_query:data", async (ctx) => {
             selectedIds: new Set(),
             step: "selecting",
           });
-          const msg = buildConsensusSelectionMessage(0, parsed.context);
-          const kb = buildConsensusSelectionKeyboard(new Set(), parsed.context);
+          const selectableIds = getConsensusSelectableIds();
+          const msg = buildConsensusSelectionMessage(0, parsed.context, selectableIds);
+          const kb = buildConsensusSelectionKeyboard(new Set(), parsed.context, selectableIds);
           try {
             await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
           } catch (e) {
@@ -603,19 +604,16 @@ bot.on("callback_query:data", async (ctx) => {
     const userId = ctx.from.id;
     const session = consensusSessionMap.get(userId);
     const stratId = data.slice("cns_t_".length);
-    if (
-      session &&
-      session.step === "selecting" &&
-      (CONSENSUS_SELECTABLE_IDS as readonly string[]).includes(stratId)
-    ) {
+    if (session && session.step === "selecting" && getConsensusSelectableIds().includes(stratId)) {
       if (session.selectedIds.has(stratId)) {
         session.selectedIds.delete(stratId);
       } else {
         session.selectedIds.add(stratId);
       }
       await ctx.answerCallbackQuery();
-      const msg = buildConsensusSelectionMessage(session.selectedIds.size, session.context);
-      const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context);
+      const selectableIds = getConsensusSelectableIds();
+      const msg = buildConsensusSelectionMessage(session.selectedIds.size, session.context, selectableIds);
+      const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds);
       try {
         await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
       } catch (e) {
@@ -635,12 +633,6 @@ bot.on("callback_query:data", async (ctx) => {
       }
       session.step = "waiting_count";
       await ctx.answerCallbackQuery();
-      const names = [...session.selectedIds].map((id) => {
-        const meta = (CONSENSUS_SELECTABLE_IDS as readonly string[]).includes(id) ? id : id;
-        void meta;
-        return id.replace(/_/g, " ");
-      });
-      void names;
       const count = session.selectedIds.size;
       try {
         await ctx.editMessageText(
