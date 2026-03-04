@@ -81,7 +81,7 @@ import {
 const BUILTIN_MENU_IDS = new Set(["est_grupos", "est_individuales"]);
 
 /** Escapa caracteres especiales de Telegram Markdown (legacy) para evitar "can't parse entities". */
-function escapeMd(s: string): string {
+export function escapeMd(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/_/g, "\\_").replace(/\*/g, "\\*").replace(/`/g, "\\`").replace(/\[/g, "\\[");
 }
 

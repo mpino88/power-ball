@@ -63,6 +63,7 @@ import {
   clearAllFlows,
   creatingPlanFlow,
   editingPlanFlow,
+  escapeMd,
 } from "./security/index.js";
 import {
   buildMainKeyboard,
@@ -340,9 +341,9 @@ bot.on("callback_query:data", async (ctx) => {
     const pendingPlan = getPendingPlan(ctx.from.id);
     let headerMsg = "📋 *Cambiar de plan*\n\n";
     if (pendingPlan) {
-      headerMsg += `_Ya tienes una solicitud pendiente para cambiar a *${pendingPlan}*. Puedes elegir otro plan para reemplazarla._\n\n`;
+      headerMsg += `_Ya tienes una solicitud pendiente para cambiar a *${escapeMd(pendingPlan)}*. Puedes elegir otro plan para reemplazarla._\n\n`;
     } else if (currentPlan) {
-      headerMsg += `Plan actual: *${currentPlan}*\n\n`;
+      headerMsg += `Plan actual: *${escapeMd(currentPlan)}*\n\n`;
     }
     headerMsg += "_Tu acceso actual se mantiene hasta que el administrador apruebe el cambio._";
     const keyboard = new InlineKeyboard();
@@ -366,11 +367,11 @@ bot.on("callback_query:data", async (ctx) => {
       const res = await requestPlanChange(ctx.from.id, plan.title);
       await ctx.answerCallbackQuery({ text: res.ok ? "Solicitud enviada" : "Error" });
       const currentPlanNote = currentPlan
-        ? `Sigues con tu plan *${currentPlan}* hasta que el administrador apruebe el cambio.`
+        ? `Sigues con tu plan *${escapeMd(currentPlan)}* hasta que el administrador apruebe el cambio.`
         : "_El administrador revisará tu solicitud._";
       try {
         await ctx.editMessageText(
-          `✅ Has solicitado cambiar al plan *${plan.title}*.\n\n${currentPlanNote}`,
+          `✅ Has solicitado cambiar al plan *${escapeMd(plan.title)}*.\n\n${currentPlanNote}`,
           { parse_mode: "Markdown", reply_markup: buildMainKb(ctx.from.id) }
         );
       } catch (e) {

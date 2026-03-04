@@ -4,7 +4,7 @@
 
 export { createRestrictMiddleware } from "./middleware.js";
 export type { RestrictMiddlewareOptions, BuildMainKeyboard } from "./middleware.js";
-export { handleSecurityCallback, handleEstrategiasUserCallback } from "./callbacks.js";
+export { handleSecurityCallback, handleEstrategiasUserCallback, escapeMd } from "./callbacks.js";
 export type { SecurityCallbackDeps, EstrategiasUserCallbackDeps } from "./callbacks.js";
 export { handleSecurityMessage } from "./messageHandler.js";
 export type { SecurityMessageDeps } from "./messageHandler.js";
