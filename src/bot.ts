@@ -84,8 +84,16 @@ import {
   parseStrategyContextCallback,
   runStrategy,
   hasStrategyRunner,
+  getStrategy,
 } from "./strategies/index.js";
 import { STRATEGY_CONTEXT_CALLBACK_PREFIX } from "./strategies/types.js";
+import {
+  runConsensusAggregation,
+  CONSENSUS_SELECTABLE_IDS,
+  buildConsensusSelectionKeyboard,
+  buildConsensusSelectionMessage,
+} from "./strategies/consensus-multi.js";
+import type { StrategyContext } from "./strategies/types.js";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
@@ -105,6 +113,13 @@ function buildHelpText(planName: string): string {
 
 let hotThresholdDays = 5;
 const waitingCustomDateGame = new Map<number, GameMenu>();
+
+interface ConsensusSession {
+  context: StrategyContext;
+  selectedIds: Set<string>;
+  step: "selecting" | "waiting_count";
+}
+const consensusSessionMap = new Map<number, ConsensusSession>();
 
 /** Caché del scrape "Hoy" (10 min); solo la fuente PDF se precarga, el resto es on demand. */
 const HOY_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -270,6 +285,12 @@ const BUILT_IN_STRATEGIES: Array<{ id: string; label: string; description: strin
     label: "Análisis Posicional",
     description:
       "P3: centena/decena/unidad por posición. P4: pares [AB][CD] con decena y unidad de cada par. Frecuencia + gap por posición.",
+  },
+  {
+    id: "consensus_multi",
+    label: "Consenso Multi-Estrategia",
+    description:
+      "Cruza los candidatos de varias estrategias y devuelve los N números con mayor respaldo estadístico cruzado.",
   },
 ];
 
@@ -520,30 +541,127 @@ bot.on("callback_query:data", async (ctx) => {
 
   if (data.startsWith(STRATEGY_CONTEXT_CALLBACK_PREFIX)) {
     const parsed = parseStrategyContextCallback(data);
-    if (parsed && hasStrategyRunner(parsed.menuId)) {
-      await ctx.answerCallbackQuery({ text: "Calculando…" });
-      try {
-        const msg = await runStrategy(parsed.menuId, parsed.context, {
-          getP3Map,
-          getP4Map,
-        });
-        await ctx.editMessageText(msg, {
-          parse_mode: "Markdown",
-          reply_markup: new InlineKeyboard().text("◀️ Volver", "volver"),
-        });
-      } catch (err) {
-        console.error("Error runStrategy:", err);
-        await ctx.answerCallbackQuery({ text: "Error al calcular" }).catch(() => {});
-        try {
-          await ctx.editMessageText("❌ Error al ejecutar la estrategia. Vuelve a intentarlo.", {
-            reply_markup: buildMainKb(ctx.from?.id),
+    if (parsed) {
+      // ── Consenso: flujo interactivo en lugar de ejecución directa ──
+      if (parsed.menuId === "consensus_multi") {
+        await ctx.answerCallbackQuery();
+        const userId = ctx.from?.id;
+        if (userId) {
+          consensusSessionMap.set(userId, {
+            context: parsed.context,
+            selectedIds: new Set(),
+            step: "selecting",
           });
-        } catch (e) {
-          if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+          const msg = buildConsensusSelectionMessage(0, parsed.context);
+          const kb = buildConsensusSelectionKeyboard(new Set(), parsed.context);
+          try {
+            await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
+          } catch (e) {
+            if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+          }
         }
+        return;
+      }
+
+      if (hasStrategyRunner(parsed.menuId)) {
+        await ctx.answerCallbackQuery({ text: "Calculando…" });
+        try {
+          const msg = await runStrategy(parsed.menuId, parsed.context, {
+            getP3Map,
+            getP4Map,
+          });
+          await ctx.editMessageText(msg, {
+            parse_mode: "Markdown",
+            reply_markup: new InlineKeyboard().text("◀️ Volver", "volver"),
+          });
+        } catch (err) {
+          console.error("Error runStrategy:", err);
+          await ctx.answerCallbackQuery({ text: "Error al calcular" }).catch(() => {});
+          try {
+            await ctx.editMessageText("❌ Error al ejecutar la estrategia. Vuelve a intentarlo.", {
+              reply_markup: buildMainKb(ctx.from?.id),
+            });
+          } catch (e) {
+            if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+          }
+        }
+        return;
+      }
+    }
+  }
+
+  // ── Consenso: callbacks de selección ──────────────────────────────────────
+  if (data.startsWith("cns_t_") && ctx.from) {
+    const userId = ctx.from.id;
+    const session = consensusSessionMap.get(userId);
+    const stratId = data.slice("cns_t_".length);
+    if (
+      session &&
+      session.step === "selecting" &&
+      (CONSENSUS_SELECTABLE_IDS as readonly string[]).includes(stratId)
+    ) {
+      if (session.selectedIds.has(stratId)) {
+        session.selectedIds.delete(stratId);
+      } else {
+        session.selectedIds.add(stratId);
+      }
+      await ctx.answerCallbackQuery();
+      const msg = buildConsensusSelectionMessage(session.selectedIds.size, session.context);
+      const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context);
+      try {
+        await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
       }
       return;
     }
+  }
+
+  if (data === "cns_ok" && ctx.from) {
+    const userId = ctx.from.id;
+    const session = consensusSessionMap.get(userId);
+    if (session?.step === "selecting") {
+      if (session.selectedIds.size === 0) {
+        await ctx.answerCallbackQuery({ text: "Selecciona al menos 1 estrategia" });
+        return;
+      }
+      session.step = "waiting_count";
+      await ctx.answerCallbackQuery();
+      const names = [...session.selectedIds].map((id) => {
+        const meta = (CONSENSUS_SELECTABLE_IDS as readonly string[]).includes(id) ? id : id;
+        void meta;
+        return id.replace(/_/g, " ");
+      });
+      void names;
+      const count = session.selectedIds.size;
+      try {
+        await ctx.editMessageText(
+          `✅ *${count} estrategia${count > 1 ? "s" : ""} seleccionada${count > 1 ? "s" : ""}*\n\n` +
+            `¿Cuántos resultados quieres ver?\nEnvía un número del *1 al 20*.\n\n_Usa /cancel para cancelar._`,
+          {
+            parse_mode: "Markdown",
+            reply_markup: new InlineKeyboard().text("❌ Cancelar", "cns_x"),
+          }
+        );
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
+  }
+
+  if (data === "cns_x" && ctx.from) {
+    consensusSessionMap.delete(ctx.from.id);
+    await ctx.answerCallbackQuery({ text: "Cancelado" });
+    try {
+      await ctx.editMessageText("❌ Consenso cancelado.", {
+        parse_mode: "Markdown",
+        reply_markup: buildMainKb(ctx.from.id),
+      });
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
   }
 
   if (data.startsWith(EXTRA_MENU_CALLBACK_PREFIX)) {
@@ -606,6 +724,7 @@ bot.command("cancel", async (ctx) => {
   const userId = ctx.from?.id;
   if (userId) {
     waitingCustomDateGame.delete(userId);
+    consensusSessionMap.delete(userId);
     const wasInPlanFlow = creatingPlanFlow.has(userId) || editingPlanFlow.has(userId);
     clearAllFlows(userId);
     if (wasInPlanFlow && isOwner(userId)) {
@@ -634,6 +753,37 @@ bot.on("message:text", async (ctx) => {
     },
   });
   if (securityHandled) return;
+
+  // ── Consenso: entrada de cantidad de resultados ──────────────────────────
+  const consensusSession = userId ? consensusSessionMap.get(userId) : undefined;
+  if (userId && consensusSession?.step === "waiting_count") {
+    consensusSessionMap.delete(userId);
+    const count = parseInt(text, 10);
+    if (Number.isNaN(count) || count < 1 || count > 20) {
+      await ctx.reply("❌ Número no válido (debe ser entre 1 y 20). Usa /start para volver.", {
+        reply_markup: buildMainKb(userId),
+      });
+      return;
+    }
+    try {
+      const map =
+        consensusSession.context.mapSource === "p3" ? await getP3Map() : await getP4Map();
+      const msg = await runConsensusAggregation(
+        consensusSession.context,
+        [...consensusSession.selectedIds],
+        count,
+        map,
+        getStrategy
+      );
+      await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: buildMainKb(userId) });
+    } catch (err) {
+      console.error("Error en consenso:", err);
+      await ctx.reply("❌ Error al calcular el consenso. Vuelve a intentarlo.", {
+        reply_markup: buildMainKb(userId),
+      });
+    }
+    return;
+  }
 
   const game = userId ? waitingCustomDateGame.get(userId) : undefined;
   if (!userId || game === undefined) return;

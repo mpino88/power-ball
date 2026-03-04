@@ -145,4 +145,12 @@ export const freqAnalysis: StrategyDefinition = {
     );
     return formatMessage(stats, totalOccurrences, totalDraws, context.mapSource, context.period);
   },
+  async getCandidates(context: StrategyContext, map: DateDrawsMap): Promise<number[]> {
+    const { stats } = computeFrequency(map, context.period, context.mapSource);
+    return stats
+      .filter((s) => s.count > 0)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 20)
+      .map((s) => s.num);
+  },
 };

@@ -184,4 +184,12 @@ export const gapDue: StrategyDefinition = {
     );
     return formatMessage(stats, latestDateStr, latestDate, context.mapSource, context.period);
   },
+  async getCandidates(context: StrategyContext, map: DateDrawsMap): Promise<number[]> {
+    const { stats } = computeGaps(map, context.period, context.mapSource);
+    return stats
+      .filter((s) => s.appearances >= 3 && s.dueFactor >= 1.0)
+      .sort((a, b) => b.dueFactor - a.dueFactor)
+      .slice(0, 20)
+      .map((s) => s.num);
+  },
 };

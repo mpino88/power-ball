@@ -183,4 +183,38 @@ export const calendarPattern: StrategyDefinition = {
     const patterns = computeCalendarPatterns(map, context.period, context.mapSource);
     return formatMessage(patterns, context.mapSource, context.period);
   },
+  async getCandidates(context: StrategyContext, map: DateDrawsMap): Promise<number[]> {
+    const { byDow, byMonth, byDom, byDowMonth, latestDate } = computeCalendarPatterns(
+      map,
+      context.period,
+      context.mapSource
+    );
+    const nextDate = latestDate ? new Date(latestDate.getTime() + 86_400_000) : new Date();
+    const dow = nextDate.getDay();
+    const month = nextDate.getMonth() + 1;
+    const dom = nextDate.getDate();
+    const dmKey = `${dow}_${month}`;
+
+    const pickTop = (cmap: Map<number, number>, n: number): number[] =>
+      [...cmap.entries()]
+        .filter(([, c]) => c > 0)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, n)
+        .map(([num]) => num);
+
+    const seen = new Set<number>();
+    const result: number[] = [];
+    for (const num of [
+      ...pickTop(byDowMonth.get(dmKey) ?? new Map(), 10),
+      ...pickTop(byDow.get(dow) ?? new Map(), 10),
+      ...pickTop(byMonth.get(month) ?? new Map(), 10),
+      ...pickTop(byDom.get(dom) ?? new Map(), 10),
+    ]) {
+      if (!seen.has(num)) {
+        seen.add(num);
+        result.push(num);
+      }
+    }
+    return result.slice(0, 20);
+  },
 };

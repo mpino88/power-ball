@@ -32,6 +32,11 @@ export interface StrategyDefinition {
   buildContextKeyboard(menuId: string): InlineKeyboard;
   /** Ejecuta la estrategia con el mapa ya cargado según context.mapSource. */
   run(context: StrategyContext, map: DateDrawsMap): Promise<string>;
+  /**
+   * (Opcional) Retorna los N mejores candidatos de esta estrategia como lista
+   * de números 00-99. Usado por Consenso Multi-Estrategia para el cruce de datos.
+   */
+  getCandidates?(context: StrategyContext, map: DateDrawsMap): Promise<number[]>;
 }
 
 export const STRATEGY_CONTEXT_CALLBACK_PREFIX = "strat_";

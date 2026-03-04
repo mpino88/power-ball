@@ -164,4 +164,12 @@ export const trendMomentum: StrategyDefinition = {
     const result = computeMomentum(map, context.period, context.mapSource);
     return formatMessage(result, context.mapSource, context.period);
   },
+  async getCandidates(context: StrategyContext, map: DateDrawsMap): Promise<number[]> {
+    const { stats } = computeMomentum(map, context.period, context.mapSource);
+    return stats
+      .filter((s) => s.countAll >= 3 && s.momentum >= 1.0)
+      .sort((a, b) => b.momentum - a.momentum)
+      .slice(0, 20)
+      .map((s) => s.num);
+  },
 };

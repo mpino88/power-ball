@@ -12,6 +12,7 @@ import { calendarPattern } from "./calendar-pattern.js";
 import { transitionFollow } from "./transition-follow.js";
 import { trendMomentum } from "./trend-momentum.js";
 import { positionalAnalysis } from "./positional-analysis.js";
+import { consensusMulti } from "./consensus-multi.js";
 
 export type { DateDrawsMap, StrategyContext, StrategyDefinition, StrategyMapSource, StrategyPeriod } from "./types.js";
 export { parseStrategyContextCallback, STRATEGY_CONTEXT_CALLBACK_PREFIX } from "./types.js";
@@ -64,3 +65,4 @@ registerStrategy(calendarPattern);
 registerStrategy(transitionFollow);
 registerStrategy(trendMomentum);
 registerStrategy(positionalAnalysis);
+registerStrategy(consensusMulti);

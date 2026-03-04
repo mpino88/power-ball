@@ -151,4 +151,20 @@ export const transitionFollow: StrategyDefinition = {
     const result = computeTransitions(map, context.period, context.mapSource);
     return formatMessage(result, context.mapSource, context.period);
   },
+  async getCandidates(context: StrategyContext, map: DateDrawsMap): Promise<number[]> {
+    const { matrix, lastDraw } = computeTransitions(map, context.period, context.mapSource);
+    const lastNums = twoDigitNumbers(lastDraw, context.mapSource);
+    const combined = new Map<number, number>();
+    for (const from of lastNums) {
+      const row = matrix.get(from) ?? new Map<number, number>();
+      const sorted = [...row.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+      for (const [to, count] of sorted) {
+        combined.set(to, (combined.get(to) ?? 0) + count);
+      }
+    }
+    return [...combined.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 20)
+      .map(([num]) => num);
+  },
 };

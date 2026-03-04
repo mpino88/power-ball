@@ -145,4 +145,20 @@ export const maxPerWeekDay: StrategyDefinition = {
     const result = computeCounts(map, context.period, context.mapSource);
     return formatMessage(result, context.mapSource, context.period);
   },
+  async getCandidates(context: StrategyContext, map: DateDrawsMap): Promise<number[]> {
+    const counts = computeCounts(map, context.period, context.mapSource);
+    const key = context.period === "m" ? "m" : "e";
+    const minLen = context.mapSource === "p4" ? 4 : 3;
+    const sortedDates = sortDateKeys(
+      Object.keys(map).filter((d) => {
+        const draw = map[d]?.[key];
+        return draw != null && draw.length >= minLen;
+      })
+    );
+    const latestKey = sortedDates.at(-1);
+    const latestDate = latestKey ? mmddyyToDate(latestKey) : null;
+    const nextDate = latestDate ? new Date(latestDate.getTime() + 86_400_000) : new Date();
+    const targetDay = nextDate.getDay() as DayOfWeek;
+    return getTop10PerDay(counts, targetDay).map((item) => item.num);
+  },
 };
