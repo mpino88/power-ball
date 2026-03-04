@@ -105,8 +105,13 @@ function formatMessage(result: CountMap, mapSource: "p3" | "p4", period: "m" | "
 
   const lines: string[] = [
     `📊 *Más salidores x día de la semana* — ${mapLabel} · ${periodLabel}`,
-    "Top 10 por día (formato #(count))\n",
+    "",
+    "📖 _Qué mide:_ los 10 números \\(00\\-99\\) que más han salido en cada día de la semana\\.",
+    "Formato _##\\(n\\)_ = número y veces que salió ese día · L=Lun · Ma=Mar · Mi=Mié · J=Jue · V=Vie · S=Sáb · D=Dom",
+    "→ Enfócate en la columna del día que corresponde al PRÓXIMO sorteo estimado",
+    "",
     "```",
+    "Top 10 por día (formato #(count))",
   ];
 
   const dayToHeader: Record<DayOfWeek, string> = { 0: "D", 1: "L", 2: "Ma", 3: "Mi", 4: "J", 5: "V", 6: "S" };

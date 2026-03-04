@@ -16,6 +16,8 @@ import {
   isOwner,
   initUserConfig,
   addPlanRequest,
+  addAllowed,
+  setExtraMenus,
   requestPlanChange,
   reloadConfigFromStorage,
   setSheetMenuLabelResolver,
@@ -43,6 +45,7 @@ import {
   getCustomMenus,
   getMenuCreatedBy,
   getMenuSubscribers,
+  seedCustomMenus,
 } from "./custom-menus.js";
 import { initPlans, initPlansFromSheet, setPlanSheetPersist, getPlans, getPlanById, getPlanByTitle } from "./plans.js";
 import {
@@ -222,6 +225,84 @@ function registerExtraMenus(): void {
     }
   );
 }
+
+// ─── Built-in strategies catalog ─────────────────────────────────────────────
+// Every strategy that has a StrategyDefinition registered in the engine should
+// appear here. The seed runs once at startup and is idempotent (skips existing).
+const BUILT_IN_STRATEGIES: Array<{ id: string; label: string; description: string }> = [
+  {
+    id: "max_per_week_day",
+    label: "Más salidores x día de la Semana",
+    description: "Números que más han salido por cada día de la semana (P3/P4, Día/Noche)",
+  },
+  {
+    id: "freq_analysis",
+    label: "Análisis de Frecuencia",
+    description:
+      "Top 20 más frecuentes y top 10 más fríos con probabilidad % e historial. P3/P4 · Día/Noche",
+  },
+  {
+    id: "gap_due",
+    label: "Números Debidos (Gap)",
+    description:
+      "Factor de deuda: días sin salir ÷ brecha promedio histórica. Detecta números atrasados. P3/P4 · Día/Noche",
+  },
+  {
+    id: "calendar_pattern",
+    label: "Patrón Calendario",
+    description:
+      "Números más probables según día de la semana, mes y día del mes. Predice basado en la próxima fecha estimada. P3/P4 · Día/Noche",
+  },
+  {
+    id: "transition_follow",
+    label: "Seguidor de Secuencias",
+    description:
+      "Cadena de Markov: dado el último sorteo, predice los números más probables para el siguiente. P3/P4 · Día/Noche",
+  },
+  {
+    id: "trend_momentum",
+    label: "Momentum de Tendencia",
+    description:
+      "Detecta números en alza/baja comparando frecuencia reciente (últimos 30 sorteos) vs histórica total. P3/P4 · Día/Noche",
+  },
+  {
+    id: "positional_analysis",
+    label: "Análisis Posicional",
+    description:
+      "P3: centena/decena/unidad por posición. P4: pares [AB][CD] con decena y unidad de cada par. Frecuencia + gap por posición.",
+  },
+];
+
+/**
+ * Siembra las estrategias built-in que no estén aún en el registro y las asigna
+ * al dueño del bot. Idempotente: solo actúa si hay diferencias.
+ */
+async function seedBuiltInStrategies(ownerId: number | null): Promise<void> {
+  const added = seedCustomMenus(BUILT_IN_STRATEGIES);
+  if (added > 0) {
+    console.log(`[seed] ${added} estrategia(s) nueva(s) registrada(s) en el catálogo.`);
+  }
+
+  if (ownerId === null) {
+    console.warn("[seed] BOT_OWNER_ID no definido; no se asignan estrategias al dueño.");
+    return;
+  }
+
+  const allIds = BUILT_IN_STRATEGIES.map((s) => s.id);
+  const current = getUserAssignedMenuIds(ownerId);
+  const missing = allIds.filter((id) => !current.includes(id));
+
+  if (missing.length === 0) return;
+
+  // Ensure the owner appears in config.allowed so their menus persisten in the Sheet.
+  await addAllowed(ownerId);
+  await setExtraMenus(ownerId, [...current, ...missing]);
+  console.log(
+    `[seed] ${missing.length} estrategia(s) asignada(s) al dueño (userId=${ownerId}): ${missing.join(", ")}`
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 const bot = new Bot(BOT_TOKEN);
 
@@ -887,6 +968,10 @@ async function main(): Promise<void> {
   if (getStorageBackend() !== "sheet") {
     initPlans();
   }
+
+  // Seed built-in strategies and assign them to the owner before registering menus.
+  await seedBuiltInStrategies(getOwnerId());
+
   await normalizeUserMenusAfterLoad();
   await bot.init();
 

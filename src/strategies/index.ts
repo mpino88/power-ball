@@ -6,6 +6,12 @@
 import { InlineKeyboard } from "grammy";
 import type { DateDrawsMap, StrategyContext, StrategyDefinition } from "./types.js";
 import { maxPerWeekDay } from "./max-per-week-day.js";
+import { freqAnalysis } from "./freq-analysis.js";
+import { gapDue } from "./gap-due.js";
+import { calendarPattern } from "./calendar-pattern.js";
+import { transitionFollow } from "./transition-follow.js";
+import { trendMomentum } from "./trend-momentum.js";
+import { positionalAnalysis } from "./positional-analysis.js";
 
 export type { DateDrawsMap, StrategyContext, StrategyDefinition, StrategyMapSource, StrategyPeriod } from "./types.js";
 export { parseStrategyContextCallback, STRATEGY_CONTEXT_CALLBACK_PREFIX } from "./types.js";
@@ -52,3 +58,9 @@ export async function runStrategy(
 
 // —— Registro de estrategias (añadir una línea por cada nueva estrategia) ——
 registerStrategy(maxPerWeekDay);
+registerStrategy(freqAnalysis);
+registerStrategy(gapDue);
+registerStrategy(calendarPattern);
+registerStrategy(transitionFollow);
+registerStrategy(trendMomentum);
+registerStrategy(positionalAnalysis);
