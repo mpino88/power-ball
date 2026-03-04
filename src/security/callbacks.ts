@@ -712,7 +712,7 @@ export async function handleEstrategiasUserCallback(
     }
     keyboard = new InlineKeyboard();
     for (const m of publicList) {
-      keyboard.text(`📥 Solicitar: ${m.label}`, `estrategias_request_${m.id}`).row();
+      keyboard.text(`🛒 Comprar: ${m.label}`, `estrategias_request_${m.id}`).row();
     }
     keyboard.text("◀️ Volver a Gestionar", "estrategias_manage");
     return { result, keyboard };
