@@ -305,7 +305,7 @@ bot.on("callback_query:data", async (ctx) => {
     return;
   }
 
-  if (ctx.from && isAllowed(ctx.from.id) && (data === "estrategias_manage" || data === "estrategias_list" || data === "estrategias_tienda" || data === "estrategias_tienda_mias" || data === "estrategias_tienda_venta" || data.startsWith("estrategias_request_") || data === "estrategias_visibility" || data.startsWith("estrategias_visibility_toggle_") || data === "estrategias_create" || data === "estrategias_delete" || data.startsWith("estrategias_delete_"))) {
+  if (ctx.from && isAllowed(ctx.from.id) && (data === "estrategias_manage" || data === "estrategias_list" || data === "estrategias_tienda" || data.startsWith("estrategias_request_") || data === "estrategias_visibility" || data.startsWith("estrategias_visibility_toggle_") || data === "estrategias_create" || data === "estrategias_delete" || data.startsWith("estrategias_delete_"))) {
     const estrategiasOut = await handleEstrategiasUserCallback(ctx, data, {
       getExtraMenuIds,
       getExtraMenuLabel,

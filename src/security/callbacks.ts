@@ -698,63 +698,23 @@ export async function handleEstrategiasUserCallback(
   }
 
   if (data === "estrategias_tienda") {
-    result = "🛒 *Tienda*\n\n*Mis estrategias*: las que creaste y las que has adquirido.\n*En venta*: estrategias públicas que puedes solicitar.";
-    keyboard = new InlineKeyboard()
-      .text("📋 Mis estrategias", "estrategias_tienda_mias")
-      .text("🛍 En venta", "estrategias_tienda_venta")
-      .row()
-      .text("◀️ Volver a Gestionar", "estrategias_manage");
-    return { result, keyboard };
-  }
-
-  if (data === "estrategias_tienda_mias") {
-    const planTitle = deps.getPlan?.(userId);
-    const plan = planTitle ? deps.getPlanByTitle?.(planTitle) : undefined;
-    const planMenuIds = new Set((plan && "menuIds" in plan ? plan.menuIds : undefined) ?? []);
-    const extraMenus = deps.getExtraMenus(userId);
-    const createdByMe = getCustomMenusCreatedBy(userId);
-    const createdIds = new Set(createdByMe.map((m) => m.id));
-    const acquiredIds = extraMenus.filter((id) => !planMenuIds.has(id));
-    const showIds = [...new Set([...createdIds, ...acquiredIds])].filter((id) =>
-      deps.getExtraMenuIds().includes(id)
-    );
-    if (showIds.length === 0) {
-      result = "📋 *Mis estrategias*\n\n_No tienes estrategias propias ni adquiridas._";
-      keyboard = new InlineKeyboard().text("◀️ Volver a Tienda", "estrategias_tienda");
-      return { result, keyboard };
-    }
-    result = "📋 *Mis estrategias*\n\nCreadas por ti y las que has adquirido (no incluye las de tu plan).\n\n";
-    for (const id of showIds) {
-      const label = deps.getExtraMenuLabel(id) ?? id;
-      const m = getCustomMenus().find((x) => x.id === id);
-      const price = m?.price;
-      const priceStr = price ? ` — ${escapeMd(price)}` : "";
-      const tag = createdIds.has(id) ? " _creada por ti_" : " _adquirida_";
-      result += `• ${escapeMd(label)} (\`${id}\`)${priceStr}${tag}\n`;
-    }
-    keyboard = new InlineKeyboard().text("◀️ Volver a Tienda", "estrategias_tienda");
-    return { result, keyboard };
-  }
-
-  if (data === "estrategias_tienda_venta") {
     const myIds = new Set(deps.getExtraMenus(userId));
     const publicList = getPublicStrategies().filter((m) => !myIds.has(m.id));
     if (publicList.length === 0) {
-      result = "🛍 *En venta*\n\n_No hay estrategias públicas disponibles o ya tienes todas._";
-      keyboard = new InlineKeyboard().text("◀️ Volver a Tienda", "estrategias_tienda");
+      result = "🛒 *Tienda*\n\n_No hay estrategias públicas disponibles o ya tienes todas._";
+      keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar", "estrategias_manage");
       return { result, keyboard };
     }
-    result = "🛍 *En venta*\n\nEstrategias públicas que puedes solicitar. Solo el administrador puede aprobar tu solicitud.\n\n";
+    result = "🛒 *Tienda*\n\nEstrategias públicas que puedes solicitar. Solo el administrador puede aprobar tu solicitud.\n\n";
     for (const m of publicList) {
       const priceStr = m.price ? ` — ${escapeMd(m.price)}` : "";
-      const authorTag = m.createdBy === userId ? " _creada por ti_" : " _creada por otro_";
-      result += `• ${escapeMd(m.label)} (\`${m.id}\`)${priceStr}${authorTag}\n`;
+      result += `• ${escapeMd(m.label)} (\`${m.id}\`)${priceStr}\n`;
     }
     keyboard = new InlineKeyboard();
     for (const m of publicList) {
       keyboard.text(`📥 Solicitar: ${m.label}`, `estrategias_request_${m.id}`).row();
     }
-    keyboard.text("◀️ Volver a Tienda", "estrategias_tienda");
+    keyboard.text("◀️ Volver a Gestionar", "estrategias_manage");
     return { result, keyboard };
   }
 
@@ -764,17 +724,17 @@ export async function handleEstrategiasUserCallback(
     const createdBy = deps.getMenuCreatedBy?.(menuId);
     if (userId === ownerId || createdBy === userId) {
       result = "Solo otros usuarios pueden solicitar esta estrategia.";
-      keyboard = new InlineKeyboard().text("◀️ Volver a En venta", "estrategias_tienda_venta");
+      keyboard = new InlineKeyboard().text("◀️ Volver a Tienda", "estrategias_tienda");
       return { result, keyboard };
     }
     if (!isCustomMenu(menuId) || getMenuVisibility(menuId) !== "public") {
       result = "Estrategia no disponible.";
-      keyboard = new InlineKeyboard().text("◀️ Volver a En venta", "estrategias_tienda_venta");
+      keyboard = new InlineKeyboard().text("◀️ Volver a Tienda", "estrategias_tienda");
       return { result, keyboard };
     }
     if (deps.getExtraMenus(userId).includes(menuId)) {
       result = "Ya tienes acceso a esta estrategia.";
-      keyboard = new InlineKeyboard().text("◀️ Volver a En venta", "estrategias_tienda_venta");
+      keyboard = new InlineKeyboard().text("◀️ Volver a Tienda", "estrategias_tienda");
       return { result, keyboard };
     }
     const added = await addStrategyRequest(userId, menuId);
@@ -782,7 +742,7 @@ export async function handleEstrategiasUserCallback(
     result = added
       ? `✅ Solicitud enviada: *${escapeMd(label)}* (\`${menuId}\`). El administrador la revisará.`
       : "Ya tenías una solicitud pendiente para esta estrategia.";
-    keyboard = new InlineKeyboard().text("◀️ Volver a En venta", "estrategias_tienda_venta");
+    keyboard = new InlineKeyboard().text("◀️ Volver a Tienda", "estrategias_tienda");
     return { result, keyboard };
   }
 
