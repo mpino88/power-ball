@@ -84,6 +84,24 @@ const STRATEGY_META: Record<string, StrategyMeta> = {
         ? `top 10 histórico para los ${DAY_NAMES[nextDate.getDay()]}s`
         : "top 10 por día de semana",
   },
+  positional_analysis: {
+    emoji: "🔢",
+    shortName: "Pos",
+    fullName: "Análisis Posicional",
+    candidateDesc: (ctx) =>
+      ctx.mapSource === "p3"
+        ? "pares más probables por combinación posicional (centena×decena, decena×unidad)"
+        : "top pares [AB] y [CD] más frecuentes por posición",
+  },
+  est_individuales: {
+    emoji: "🔥",
+    shortName: "Hot",
+    fullName: "Est. Individuales (Hot)",
+    candidateDesc: (ctx) =>
+      ctx.mapSource === "p3"
+        ? "top 10 números 00-99 más calientes (más cerca de su máximo histórico sin salir)"
+        : "solo aplica a P3 — sin candidatos para P4",
+  },
 };
 
 /**

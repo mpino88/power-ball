@@ -132,7 +132,7 @@ export function computeStatsCombined(
   };
 }
 
-function getTop10HottestIndividual(
+export function getTop10HottestIndividual(
   stats: GroupGap[]
 ): { num: number; maxGapDays: number; currentGapDays: number }[] {
   const withCur: { num: number; maxGapDays: number; currentGapDays: number }[] = [];

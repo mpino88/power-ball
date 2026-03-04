@@ -220,6 +220,8 @@ export function seedCustomMenus(
     label: string;
     description?: string;
     visibility?: StrategyVisibility;
+    /** undefined o 0 = dueño del bot; número = userId del creador. */
+    createdBy?: number;
   }>
 ): string[] {
   const newIds: string[] = [];
@@ -231,7 +233,7 @@ export function seedCustomMenus(
       label: item.label.trim() || normId,
       description: item.description?.trim() || undefined,
       status: "pendiente",
-      createdBy: undefined,
+      createdBy: item.createdBy === 0 ? undefined : item.createdBy,
       price: undefined,
       visibility: item.visibility ?? "private",
       subscribers: 0,

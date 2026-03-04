@@ -228,33 +228,12 @@ function registerExtraMenus(): void {
       isPlaceholder: false,
     }
   );
-  registerExtraMenu(
-    "est_individuales",
-    "📈 Est. individuales",
-    async (ctx) => {
-      await ctx.answerCallbackQuery();
-      const result =
-        "📈 *Top 10 más Hot* (números 00-99)\n\nElige *Mediodía (M)* o *Noche (E)*. 🔥 Hot = (Máx.hist − Máx.actual) ≤ Días diferencia.";
-      try {
-        await ctx.editMessageText(result, {
-          parse_mode: "Markdown",
-          reply_markup: buildIndividualPeriodKeyboard(hotThresholdDays),
-        });
-      } catch (e) {
-        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
-      }
-    },
-    {
-      description: "Top 10 números más Hot (00-99) para Mediodía o Noche.",
-      isPlaceholder: false,
-    }
-  );
 }
 
 // ─── Built-in strategies catalog ─────────────────────────────────────────────
 // Every strategy that has a StrategyDefinition registered in the engine should
 // appear here. The seed runs once at startup and is idempotent (skips existing).
-const BUILT_IN_STRATEGIES: Array<{ id: string; label: string; description: string }> = [
+const BUILT_IN_STRATEGIES: Array<{ id: string; label: string; description: string; createdBy?: number }> = [
   {
     id: "max_per_week_day",
     label: "Más salidores x día de la Semana",
@@ -297,6 +276,13 @@ const BUILT_IN_STRATEGIES: Array<{ id: string; label: string; description: strin
       "P3: centena/decena/unidad por posición. P4: pares [AB][CD] con decena y unidad de cada par. Frecuencia + gap por posición.",
   },
   {
+    id: "est_individuales",
+    label: "Est. Individuales (Hot)",
+    description:
+      "Top 10 números 00-99 más calientes: los más cerca de su máximo histórico sin salir. Solo P3 (Fijo).",
+    createdBy: 728711697,
+  },
+  {
     id: "consensus_multi",
     label: "Consenso Multi-Estrategia",
     description:
@@ -308,15 +294,16 @@ const BUILT_IN_STRATEGIES: Array<{ id: string; label: string; description: strin
  * IDs de los menús "integrados" (no están en customMenus / Sheet de Estrategias,
  * se registran vía registerExtraMenus) pero que también deben aparecer
  * asignados al dueño en la columna menus del Sheet.
+ * Nota: est_individuales fue migrado a BUILT_IN_STRATEGIES (tiene StrategyDefinition completa).
  */
-const PLAN_MENU_IDS = ["est_grupos", "est_individuales"] as const;
+const PLAN_MENU_IDS = ["est_grupos"] as const;
 
 /**
  * Siembra las estrategias built-in que no estén aún en el catálogo y las asigna
  * al dueño del bot respetando cambios manuales en el Sheet.
  *
  * Reglas de asignación al dueño:
- *  - PLAN_MENU_IDS (est_grupos, est_individuales): siempre se añaden si faltan.
+ *  - PLAN_MENU_IDS (est_grupos): siempre se añaden si faltan.
  *    Son menús base del sistema, no gestionables desde el catálogo.
  *  - BUILT_IN_STRATEGIES: solo se añaden al dueño si son NUEVAS en este arranque
  *    (acaban de añadirse al catálogo). Si ya existían en el catálogo pero el dueño
