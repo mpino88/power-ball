@@ -95,7 +95,8 @@ export function buildEstrategiasKeyboard(userId: number | undefined, deps: MainK
     const label = deps.getExtraMenuLabel(id);
     if (label) {
       const icon = getStrategyIcon(id, uid, ownerId, deps);
-      const count = deps.getMenuSubscribers?.(id) ?? 0;
+      const isOwner = ownerId !== null && uid === ownerId;
+      const count = isOwner ? (deps.getMenuSubscribers?.(id) ?? 0) : 0;
       const countSuffix = count > 0 ? ` 👤${count}` : "";
       kb.text(icon + label + countSuffix, EXTRA_MENU_CALLBACK_PREFIX + id).row();
     }
