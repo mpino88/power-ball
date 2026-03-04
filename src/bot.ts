@@ -237,10 +237,12 @@ bot.command("start", async (ctx) => {
 });
 
 bot.command("help", async (ctx) => {
-  await ctx.reply(HELP_TEXT, {
-    parse_mode: "Markdown",
-    reply_markup: buildMainKb(ctx.from?.id),
-  });
+  const kb = buildMainKb(ctx.from?.id);
+  const ownerId = getOwnerId();
+  if (ownerId) {
+    kb.row().url("📩 Contactar al administrador", `tg://user?id=${ownerId}`);
+  }
+  await ctx.reply(HELP_TEXT, { parse_mode: "Markdown", reply_markup: kb });
 });
 
 bot.command("admin", async (ctx) => {
@@ -383,6 +385,7 @@ bot.on("callback_query:data", async (ctx) => {
   const menuDeps = {
     ...mainKbDeps,
     helpText: HELP_TEXT,
+    ownerUserId: getOwnerId() ?? undefined,
     getHotThresholdDays: () => hotThresholdDays,
     setHotThresholdDays: (n: number) => {
       if (n >= 1 && n <= 30) hotThresholdDays = n;

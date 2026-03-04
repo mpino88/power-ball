@@ -18,6 +18,8 @@ import {
 
 export interface MenuHandlersDeps extends MainKeyboardDeps {
   helpText: string;
+  /** ID numérico del dueño (BOT_OWNER_ID). Si está definido, aparece botón de contacto directo en la ayuda. */
+  ownerUserId?: number;
   getHotThresholdDays: () => number;
   setHotThresholdDays: (n: number) => void;
   getP3Map: () => Promise<Record<string, { m?: number[]; e?: number[] }>>;
@@ -74,7 +76,11 @@ export async function handleMenuCallback(
   const mainKb = () => buildMainKeyboard(userId, deps);
 
   if (data === "help") {
-    return { result: "*❓ Ayuda*\n\n" + deps.helpText, keyboard: mainKb() };
+    const kb = mainKb();
+    if (deps.ownerUserId) {
+      kb.row().url("📩 Contactar al administrador", `tg://user?id=${deps.ownerUserId}`);
+    }
+    return { result: "*❓ Ayuda*\n\n" + deps.helpText, keyboard: kb };
   }
 
   if (data === "volver") {
