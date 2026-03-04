@@ -741,7 +741,12 @@ bot.on("callback_query:data", async (ctx) => {
     await ctx.answerCallbackQuery();
     try {
       await ctx.editMessageText(
-        "🔍 *Buscar en la Charada Cubana*\n\n_Escribe tu búsqueda en el chat y pulsa Enviar\\._\n\n_Usa /cancel para cancelar\\._",
+        "🔍 *Buscar en la Charada Cubana*\n\n" +
+          "✍️ *¿Qué quieres buscar?*\n\n" +
+          "• Escribe un *número* del `00` al `99` para ver su significado\\.\n" +
+          "• Escribe una *palabra* \\(ej\\: `gato`, `agua`, `muerte`\\) para encontrar todas las entradas que la contengan\\.\n\n" +
+          "👇 *Escribe tu búsqueda aquí abajo y pulsa Enviar*\n\n" +
+          "_Usa /cancel para cancelar\\._",
         {
           parse_mode: "MarkdownV2",
           reply_markup: new InlineKeyboard().text("❌ Cancelar búsqueda", "charada_cancel_search"),
@@ -750,16 +755,6 @@ bot.on("callback_query:data", async (ctx) => {
     } catch (e) {
       if (!(e as Error).message?.includes("message is not modified")) console.error(e);
     }
-    await ctx.reply(
-      "✍️ *¿Qué quieres buscar?*\n\n" +
-        "Escribe *un número* del `00` al `99` para ver su significado, " +
-        "o escribe *una palabra* (por ejemplo: `gato`, `agua`, `muerte`) para encontrar las entradas que la contengan\\.\n\n" +
-        "👇 *Escribe tu búsqueda aquí abajo y pulsa Enviar*",
-      {
-        parse_mode: "MarkdownV2",
-        reply_markup: new InlineKeyboard().text("❌ Cancelar búsqueda", "charada_cancel_search"),
-      }
-    );
     return;
   }
 
