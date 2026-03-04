@@ -837,13 +837,12 @@ export async function handleEstrategiasUserCallback(
       lines.push(`• ${icon}${escapeMd(label)} (\`${id}\`)${suffix}${countTag}`);
     }
     const legend = isOwnerUser
-      ? "\n_👤 propia · 👥 creada por un usuario · 👤N = usuarios con la estrategia_"
-      : "\n_📋 plan · ➕ adquirida · ✏️ propia_";
+      ? "\n\n_Leyenda: 👤 propia · 👥 creada por un usuario · 👤N = usuarios con la estrategia_"
+      : "\n\n_Leyenda: 📋 plan · ➕ adquirida · ✏️ propia_";
     result =
-      "📋 *Tus estrategias*" +
-      legend +
+      "*Tus estrategias*" +
       "\n\n" +
-      (lines.length ? lines.join("\n") : "_Ninguna asignada ni creada por ti._");
+      (lines.length ? lines.join("\n") + legend : "_Ninguna asignada ni creada por ti._");
     keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar", "estrategias_manage");
     return { result, keyboard };
   }
