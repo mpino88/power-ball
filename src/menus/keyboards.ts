@@ -80,28 +80,44 @@ export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboard
   return kb;
 }
 
-/** Teclado del submenú "➕ Estrategias": lista de menús extra (y custom) para este usuario + Volver. */
+/**
+ * Teclado del submenú "➕ Estrategias".
+ *
+ * - Dueño: ve solo las estrategias asignadas a él (columna menus del Sheet).
+ *   Su botón de gestión abre el panel de Seguridad (donde tiene acceso completo).
+ * - Usuarios normales: ven solo las estrategias en su getExtraMenus().
+ *   Su botón de gestión abre el panel de usuario (crear/eliminar/tienda propias).
+ */
 export function buildEstrategiasKeyboard(userId: number | undefined, deps: MainKeyboardDeps): InlineKeyboard {
   const ownerId = deps.getOwnerId();
+  const isOwnerUser = ownerId !== null && userId === ownerId;
   const extraIds = deps.getExtraMenuIds();
+
+  // Both owner and regular users see only their assigned strategies.
+  // Owner has all strategies assigned via seed, so they still see all 9.
   const showExtra = extraIds.filter((id) => {
     if (ownerId === null) return true;
-    if (userId === ownerId) return true;
     return deps.getExtraMenus(userId ?? 0).includes(id);
   });
+
   const kb = new InlineKeyboard();
   const uid = userId ?? 0;
   for (const id of showExtra) {
     const label = deps.getExtraMenuLabel(id);
     if (label) {
       const icon = getStrategyIcon(id, uid, ownerId, deps);
-      const isOwner = ownerId !== null && uid === ownerId;
-      const count = isOwner ? (deps.getMenuSubscribers?.(id) ?? 0) : 0;
+      const count = isOwnerUser ? (deps.getMenuSubscribers?.(id) ?? 0) : 0;
       const countSuffix = count > 0 ? ` 👤${count}` : "";
       kb.text(icon + label + countSuffix, EXTRA_MENU_CALLBACK_PREFIX + id).row();
     }
   }
-  kb.row().text("⚙️ Gestionar estrategias", "estrategias_manage");
+
+  if (isOwnerUser) {
+    // Owner manages everything from the Security panel.
+    kb.row().text("🔒 Gestionar en Seguridad", "security_open");
+  } else {
+    kb.row().text("⚙️ Gestionar estrategias", "estrategias_manage");
+  }
   kb.text("◀️ Volver", "volver");
   return kb;
 }

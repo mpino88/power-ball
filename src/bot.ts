@@ -274,8 +274,18 @@ const BUILT_IN_STRATEGIES: Array<{ id: string; label: string; description: strin
 ];
 
 /**
+ * IDs de los menús "integrados" (no están en customMenus / Sheet de Estrategias,
+ * se registran vía registerExtraMenus) pero que también deben aparecer
+ * asignados al dueño en la columna menus del Sheet.
+ */
+const PLAN_MENU_IDS = ["est_grupos", "est_individuales"] as const;
+
+/**
  * Siembra las estrategias built-in que no estén aún en el registro y las asigna
  * al dueño del bot. Idempotente: solo actúa si hay diferencias.
+ *
+ * - customMenus (pestaña "Estrategias"): solo los 7 built-in con StrategyDefinition.
+ * - Asignación al dueño (columna "menus"): los 7 anteriores + est_grupos + est_individuales.
  */
 async function seedBuiltInStrategies(ownerId: number | null): Promise<void> {
   const added = seedCustomMenus(BUILT_IN_STRATEGIES);
@@ -288,9 +298,13 @@ async function seedBuiltInStrategies(ownerId: number | null): Promise<void> {
     return;
   }
 
-  const allIds = BUILT_IN_STRATEGIES.map((s) => s.id);
+  // Todos los IDs que el dueño debe tener asignados: las 7 built-in + los 2 de planes.
+  const allOwnerIds = [
+    ...BUILT_IN_STRATEGIES.map((s) => s.id),
+    ...PLAN_MENU_IDS,
+  ];
   const current = getUserAssignedMenuIds(ownerId);
-  const missing = allIds.filter((id) => !current.includes(id));
+  const missing = allOwnerIds.filter((id) => !current.includes(id));
 
   if (missing.length === 0) return;
 
