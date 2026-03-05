@@ -50,6 +50,8 @@ function getStrategyIcon(
 /** Callback al pulsar "➕ Estrategias": abre el submenú de estrategias. */
 export const ESTRATEGIAS_OPEN_CALLBACK = "estrategias_open";
 
+const CONSENSUS_MENU_ID = "consensus_multi";
+
 export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboardDeps): InlineKeyboard {
   const kb = new InlineKeyboard()
     .text("🎯 Fijo (P3)", "menu_fijo")
@@ -62,13 +64,21 @@ export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboard
     .text("🃏 Charada Cubana", "charada_open");
   const ownerId = deps.getOwnerId();
   const extraIds = deps.getExtraMenuIds();
+  const userMenus = deps.getExtraMenus(userId ?? 0);
   const showExtra = extraIds.filter((id) => {
+    if (id === CONSENSUS_MENU_ID) return false;
     if (ownerId === null) return true;
     if (userId === ownerId) return true;
-    return deps.getExtraMenus(userId ?? 0).includes(id);
+    return userMenus.includes(id);
   });
+  const hasConsensus = extraIds.includes(CONSENSUS_MENU_ID) && (
+    ownerId === null || userId === ownerId || userMenus.includes(CONSENSUS_MENU_ID)
+  );
   if (showExtra.length > 0) {
     kb.row().text("➕ Estrategias", ESTRATEGIAS_OPEN_CALLBACK);
+  }
+  if (hasConsensus) {
+    kb.row().text("🤝 Consenso Multi-Estrategia", EXTRA_MENU_CALLBACK_PREFIX + CONSENSUS_MENU_ID);
   }
   if (ownerId === null || userId !== ownerId) {
     kb.row().text("❓ Ayuda", "help");
@@ -97,7 +107,9 @@ export function buildEstrategiasKeyboard(userId: number | undefined, deps: MainK
 
   // Both owner and regular users see only their assigned strategies.
   // Owner has all strategies assigned via seed, so they still see all 9.
+  // consensus_multi lives at main-menu level, so it's excluded here.
   const showExtra = extraIds.filter((id) => {
+    if (id === CONSENSUS_MENU_ID) return false;
     if (ownerId === null) return true;
     return deps.getExtraMenus(userId ?? 0).includes(id);
   });
