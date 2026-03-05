@@ -102,6 +102,54 @@ const STRATEGY_META: Record<string, StrategyMeta> = {
         ? "top 10 números 00-99 más calientes (más cerca de su máximo histórico sin salir)"
         : "solo aplica a P3 — sin candidatos para P4",
   },
+  markov_order2: {
+    emoji: "🔗",
+    shortName: "Mkv2",
+    fullName: "Markov Orden 2",
+    candidateDesc: () => "sucesores del par (penúltimo→último) según transiciones de 2 pasos",
+  },
+  max_gap_breach: {
+    emoji: "🚨",
+    shortName: "Récord",
+    fullName: "Récord de Ausencia Roto",
+    candidateDesc: () => "números que superan su brecha máxima histórica — urgencia máxima",
+  },
+  decade_family: {
+    emoji: "👨‍👩‍👧‍👦",
+    shortName: "Decena",
+    fullName: "Familias de Decenas",
+    candidateDesc: () => "top números de las familias con mayor momentum y deuda",
+  },
+  mirror_complement: {
+    emoji: "🪞",
+    shortName: "Espejo",
+    fullName: "Espejo y Complemento",
+    candidateDesc: () => "simétricos (espejo/complemento) del último sorteo con mayor correlación histórica",
+  },
+  terminal_analysis: {
+    emoji: "🔚",
+    shortName: "Terminal",
+    fullName: "Análisis de Terminales",
+    candidateDesc: () => "candidatos con el terminal (dígito final) de mayor momentum y deuda",
+  },
+  cycle_detector: {
+    emoji: "🔄",
+    shortName: "Ciclo",
+    fullName: "Detector de Ciclos",
+    candidateDesc: () => "números con ciclo detectado cuya fase ≥ 0.8 del ciclo dominante",
+  },
+  streak_analysis: {
+    emoji: "📉",
+    shortName: "Racha",
+    fullName: "Análisis de Rachas",
+    candidateDesc: () => "rachas calientes activas + rachas frías con mayor factor de deuda",
+  },
+  bayesian_score: {
+    emoji: "🎯",
+    shortName: "Bayes",
+    fullName: "Score Bayesiano",
+    candidateDesc: () => "top 20 números por score combinado 0-100 (6 señales ponderadas)",
+  },
 };
 
 /**

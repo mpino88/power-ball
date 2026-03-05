@@ -14,6 +14,14 @@ import { trendMomentum } from "./trend-momentum.js";
 import { positionalAnalysis } from "./positional-analysis.js";
 import { estIndividuales } from "./est-individuales.js";
 import { consensusMulti } from "./consensus-multi.js";
+import { markovOrder2 } from "./markov-order2.js";
+import { maxGapBreach } from "./max-gap-breach.js";
+import { decadeFamily } from "./decade-family.js";
+import { mirrorComplement } from "./mirror-complement.js";
+import { terminalAnalysis } from "./terminal-analysis.js";
+import { cycleDetector } from "./cycle-detector.js";
+import { streakAnalysis } from "./streak-analysis.js";
+import { bayesianScore } from "./bayesian-score.js";
 
 export type { DateDrawsMap, StrategyContext, StrategyDefinition, StrategyMapSource, StrategyPeriod } from "./types.js";
 export { parseStrategyContextCallback, STRATEGY_CONTEXT_CALLBACK_PREFIX } from "./types.js";
@@ -89,4 +97,14 @@ registerStrategy(transitionFollow);
 registerStrategy(trendMomentum);
 registerStrategy(positionalAnalysis);
 registerStrategy(estIndividuales);
+// —— Nuevas estrategias (v2) ——
+registerStrategy(markovOrder2);
+registerStrategy(maxGapBreach);
+registerStrategy(decadeFamily);
+registerStrategy(mirrorComplement);
+registerStrategy(terminalAnalysis);
+registerStrategy(cycleDetector);
+registerStrategy(streakAnalysis);
+registerStrategy(bayesianScore);
+// —— Meta-estrategia (siempre al final) ——
 registerStrategy(consensusMulti);

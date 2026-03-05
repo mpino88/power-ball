@@ -334,6 +334,63 @@ const BUILT_IN_STRATEGIES: Array<{ id: string; label: string; description: strin
       "Top 10 números 00-99 más calientes: los más cerca de su máximo histórico sin salir. Solo P3 (Fijo).",
     createdBy: 728711697,
   },
+  // —— Nuevas estrategias (v2) ——
+  {
+    id: "markov_order2",
+    label: "Markov Orden 2",
+    description:
+      "Cadena de Markov de segundo orden: dado el par (penúltimo → último sorteo), predice el siguiente. Captura dependencias de dos pasos que Markov-1 no puede detectar. P3/P4 · Día/Noche",
+    createdBy: 728711697,
+  },
+  {
+    id: "max_gap_breach",
+    label: "Récord de Ausencia Roto",
+    description:
+      "Detecta números cuya brecha actual supera su MÁXIMO histórico de ausencia: nunca antes habían tardado tanto en salir. El umbral más fuerte estadísticamente para urgencia de aparición. P3/P4 · Día/Noche",
+    createdBy: 728711697,
+  },
+  {
+    id: "decade_family",
+    label: "Familias de Decenas",
+    description:
+      "Agrupa los 100 números en 10 familias (D0=00-09, D1=10-19, …, D9=90-99). Identifica la familia con mayor momentum reciente y la más debida, luego proyecta los candidatos internos de cada familia candidata. P3/P4 · Día/Noche",
+    createdBy: 728711697,
+  },
+  {
+    id: "mirror_complement",
+    label: "Espejo y Complemento",
+    description:
+      "Estudia correlaciones entre un número y sus variantes simétricas: espejo (47↔74), complemento a 99 (23↔76) y complemento a 100 (23↔77). Dado el último sorteo, proyecta los simétricos con mayor probabilidad condicional histórica. P3/P4 · Día/Noche",
+    createdBy: 728711697,
+  },
+  {
+    id: "terminal_analysis",
+    label: "Análisis de Terminales",
+    description:
+      "Analiza el dígito de unidad (terminal 0-9) de los números sorteados. Identifica qué terminales están en alza (momentum) o atrasados (due) y proyecta los candidatos completos (00-99) que contienen ese terminal. P3/P4 · Día/Noche",
+    createdBy: 728711697,
+  },
+  {
+    id: "cycle_detector",
+    label: "Detector de Ciclos",
+    description:
+      "Detecta si un número tiene un ciclo de aparición predominante (cada N sorteos). Calcula la fase actual: fase ≈ 1.0 = el ciclo dice que toca ahora. Trabaja en conteo de sorteos (no días) para mayor precisión. P3/P4 · Día/Noche",
+    createdBy: 728711697,
+  },
+  {
+    id: "streak_analysis",
+    label: "Análisis de Rachas",
+    description:
+      "Analiza rachas calientes (sorteos consecutivos apareciendo) y frías (ausencias consecutivas). Detecta inercia activa y presión acumulada. Diferencia clave vs Momentum: trabaja en sorteos consecutivos y analiza continuidad, no solo ratio de frecuencia. P3/P4 · Día/Noche",
+    createdBy: 728711697,
+  },
+  {
+    id: "bayesian_score",
+    label: "Score Bayesiano",
+    description:
+      "Combina 6 señales estadísticas (Frecuencia 15%, Gap 20%, Momentum 20%, Ciclo 15%, Markov 20%, Racha 10%) en un score continuo 0-100. Ventaja vs Consenso: score cuantitativo (no votación binaria) con mayor capacidad discriminatoria entre candidatos. P3/P4 · Día/Noche",
+    createdBy: 728711697,
+  },
   {
     id: "consensus_multi",
     label: "Consenso Multi-Estrategia",
