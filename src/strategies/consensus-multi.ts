@@ -192,8 +192,8 @@ export async function runConsensusAggregation(
   count: number,
   map: DateDrawsMap,
   getStrategy: StrategyGetter
-): Promise<string> {
-  if (selectedIds.length === 0) return "❌ No se seleccionó ninguna estrategia.";
+): Promise<{ message: string; rankedNums: number[] }> {
+  if (selectedIds.length === 0) return { message: "❌ No se seleccionó ninguna estrategia.", rankedNums: [] };
 
   // Compute next estimated date from latest entry in map
   const dates = validDateKeys(map, context.period, context.mapSource);
@@ -307,7 +307,8 @@ export async function runConsensusAggregation(
   lines.push("```");
 
   const full = lines.join("\n");
-  return full.length > 4000 ? full.slice(0, 3990) + "\n\n_… (recortado)_" : full;
+  const message = full.length > 4000 ? full.slice(0, 3990) + "\n\n_… (recortado)_" : full;
+  return { message, rankedNums: ranked.map(([num]) => num) };
 }
 
 // ─── StrategyDefinition ──────────────────────────────────────────────────────

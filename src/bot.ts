@@ -92,7 +92,7 @@ import {
   getStrategy,
   getConsensusSelectableIds,
 } from "./strategies/index.js";
-import { filterMapByCutoff } from "./strategies/utils.js";
+import { filterMapByCutoff, getNextDrawResult, buildTestingVerificationBlock } from "./strategies/utils.js";
 import { STRATEGY_CONTEXT_CALLBACK_PREFIX } from "./strategies/types.js";
 import {
   runConsensusAggregation,
@@ -698,14 +698,38 @@ bot.on("callback_query:data", async (ctx) => {
       if (hasStrategyRunner(parsed.menuId)) {
         await ctx.answerCallbackQuery({ text: "Calculando…" });
         try {
+          const userId = ctx.from?.id;
           const msg = await runStrategy(parsed.menuId, parsed.context, {
-            getP3Map: () => getStrategyP3Map(ctx.from?.id),
-            getP4Map: () => getStrategyP4Map(ctx.from?.id),
+            getP3Map: () => getStrategyP3Map(userId),
+            getP4Map: () => getStrategyP4Map(userId),
           });
           await ctx.editMessageText(msg, {
             parse_mode: "Markdown",
             reply_markup: new InlineKeyboard().text("◀️ Volver", "volver"),
           });
+          // Verificación testing: solo para dueños con fecha de corte activa
+          if (userId && isOwner(userId)) {
+            const cutoff = await getTestingCutoff();
+            if (cutoff) {
+              try {
+                const isP3 = parsed.context.mapSource === "p3";
+                const fullMap = isP3 ? await getP3Map() : (await getP4Map()) as DateDrawsMap;
+                const nextResult = getNextDrawResult(fullMap, cutoff, parsed.context.period, parsed.context.mapSource);
+                if (nextResult) {
+                  const strat = getStrategy(parsed.menuId);
+                  let candidates: number[] = [];
+                  if (strat?.getCandidates) {
+                    const filteredMap = isP3 ? await getStrategyP3Map(userId) : await getStrategyP4Map(userId);
+                    candidates = await strat.getCandidates(parsed.context, filteredMap);
+                  }
+                  const verifBlock = buildTestingVerificationBlock(nextResult, candidates, parsed.context);
+                  await ctx.reply(verifBlock, { parse_mode: "Markdown" });
+                }
+              } catch (verifErr) {
+                console.error("[testing-verif] Error al generar verificación:", verifErr);
+              }
+            }
+          }
         } catch (err) {
           console.error("Error runStrategy:", err);
           await ctx.answerCallbackQuery({ text: "Error al calcular" }).catch(() => {});
@@ -989,9 +1013,9 @@ bot.on("message:text", async (ctx) => {
       return;
     }
     try {
-      const map =
-        consensusSession.context.mapSource === "p3" ? await getStrategyP3Map(userId) : await getStrategyP4Map(userId);
-      const msg = await runConsensusAggregation(
+      const isP3 = consensusSession.context.mapSource === "p3";
+      const map = isP3 ? await getStrategyP3Map(userId) : await getStrategyP4Map(userId);
+      const { message: msg, rankedNums } = await runConsensusAggregation(
         consensusSession.context,
         [...consensusSession.selectedIds],
         count,
@@ -999,6 +1023,22 @@ bot.on("message:text", async (ctx) => {
         getStrategy
       );
       await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: buildMainKb(userId) });
+      // Verificación testing: solo para dueños con fecha de corte activa
+      if (isOwner(userId)) {
+        const cutoff = await getTestingCutoff();
+        if (cutoff) {
+          try {
+            const fullMap = isP3 ? await getP3Map() : (await getP4Map()) as DateDrawsMap;
+            const nextResult = getNextDrawResult(fullMap, cutoff, consensusSession.context.period, consensusSession.context.mapSource);
+            if (nextResult) {
+              const verifBlock = buildTestingVerificationBlock(nextResult, rankedNums, consensusSession.context);
+              await ctx.reply(verifBlock, { parse_mode: "Markdown" });
+            }
+          } catch (verifErr) {
+            console.error("[testing-verif] Error al generar verificación consenso:", verifErr);
+          }
+        }
+      }
     } catch (err) {
       console.error("Error en consenso:", err);
       await ctx.reply("❌ Error al calcular el consenso. Vuelve a intentarlo.", {

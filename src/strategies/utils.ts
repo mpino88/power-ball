@@ -3,7 +3,7 @@
  * y ordenamiento cronológico de claves del mapa de conocimientos.
  */
 
-import type { DateDrawsMap, StrategyMapSource, StrategyPeriod } from "./types.js";
+import type { DateDrawsMap, StrategyContext, StrategyMapSource, StrategyPeriod } from "./types.js";
 
 /** Convierte clave "MM/DD/YY" a Date. Retorna null si el formato es inválido. */
 export function mmddyyToDate(key: string): Date | null {
@@ -138,3 +138,84 @@ export const MONTH_NAMES = [
   "Ene", "Feb", "Mar", "Abr", "May", "Jun",
   "Jul", "Ago", "Sep", "Oct", "Nov", "Dic",
 ] as const;
+
+/**
+ * Encuentra el primer sorteo estrictamente posterior a cutoffDateStr en el mapa completo
+ * (sin filtrar) para el período y fuente dados.
+ * Útil en modo testing para obtener el resultado "oculto" al que apuntaban los candidatos.
+ */
+export function getNextDrawResult(
+  fullMap: DateDrawsMap,
+  cutoffDateStr: string,
+  period: StrategyPeriod,
+  mapSource: StrategyMapSource
+): { date: string; numbers: number[] } | null {
+  const cutoff = mmddyyToDate(cutoffDateStr);
+  if (!cutoff) return null;
+  const minLen = mapSource === "p4" ? 4 : 3;
+  const futureKeys = sortDateKeys(
+    Object.keys(fullMap).filter((k) => {
+      const d = mmddyyToDate(k);
+      if (!d || d <= cutoff) return false;
+      const draw = fullMap[k]?.[period];
+      return draw != null && draw.length >= minLen;
+    })
+  );
+  if (futureKeys.length === 0) return null;
+  const dateStr = futureKeys[0]!;
+  return { date: dateStr, numbers: fullMap[dateStr]![period]! };
+}
+
+/**
+ * Construye el bloque de verificación testing que se muestra solo al dueño.
+ * Compara los candidatos predichos por la estrategia con el sorteo real siguiente
+ * al corte y señala si alguno coincide.
+ *
+ * Los candidatos son números 00-99 (pares de dígitos). Para P3 [a,b,c] el
+ * comparable es b*10+c; para P4 [a,b,c,d] son a*10+b y c*10+d.
+ */
+export function buildTestingVerificationBlock(
+  nextResult: { date: string; numbers: number[] },
+  candidates: number[],
+  context: StrategyContext
+): string {
+  const { date, numbers } = nextResult;
+  const d = mmddyyToDate(date);
+  const dayLabel = d ? `${DAY_NAMES[d.getDay()]}, ${MONTH_NAMES[d.getMonth()]}` : "";
+  const periodLabel = context.period === "m" ? "☀️ Mediodía" : "🌙 Noche";
+  const mapLabel = context.mapSource === "p3" ? "P3" : "P4";
+
+  const drawStr = numbers.join("-");
+  const actuals = twoDigitNumbers(numbers, context.mapSource);
+
+  const hitLines: string[] = [];
+  for (const actual of actuals) {
+    const pos = candidates.indexOf(actual);
+    const numStr = String(actual).padStart(2, "0");
+    if (pos >= 0) {
+      hitLines.push(`✅ \`${numStr}\` presente en candidatos _(pos. #${pos + 1})_`);
+    } else {
+      hitLines.push(`❌ \`${numStr}\` no estaba en la lista de candidatos`);
+    }
+  }
+
+  if (actuals.length === 0) {
+    hitLines.push("_(sorteo sin dígitos comparables)_");
+  }
+
+  const lines: string[] = [
+    "",
+    "─────────────────────────────────────",
+    `🧪 *Verificación Testing* — ${mapLabel} · ${periodLabel}`,
+    `📅 Sorteo siguiente al corte: *${date}*${dayLabel ? ` (${dayLabel})` : ""}`,
+    `🎰 Resultado real: \`${drawStr}\``,
+    ...hitLines,
+  ];
+
+  if (candidates.length > 0) {
+    const candStr = candidates.slice(0, 20).map((n) => String(n).padStart(2, "0")).join(" ");
+    lines.push(`_Top candidatos: ${candStr}_`);
+  }
+
+  return lines.join("\n");
+}
