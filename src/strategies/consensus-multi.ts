@@ -170,38 +170,127 @@ function getStrategyMeta(id: string, ctx: StrategyContext, nextDate: Date | null
   };
 }
 
+// ─── Grupos predefinidos ─────────────────────────────────────────────────────
+//
+// Grupos de estrategias compatibles (sin señales conflictivas) para usar en
+// el Consenso. Ver análisis completo en el chat de diseño del sistema.
+//
+// Regla: ningún grupo incluye pares de alta redundancia:
+//   · gap_due ↔ max_gap_breach (misma señal, umbral distinto)
+//   · transition_follow ↔ markov_order2 (Markov-1 contenido en Markov-2)
+//   · calendar_pattern ↔ max_per_week_day (este es subconjunto del anterior)
+//   · bayesian_score ↔ sus 6 señales internas (freq/gap/momentum/ciclo/markov/racha)
+
+export interface ConsensusGroup {
+  id: string;
+  label: string;
+  description: string;
+  emoji: string;
+  /** IDs de estrategias que forman el grupo (se filtra a las seleccionables en tiempo de ejecución). */
+  ids: readonly string[];
+}
+
+export const CONSENSUS_GROUPS: ConsensusGroup[] = [
+  {
+    id: "a",
+    emoji: "🇦",
+    label: "Clásico Balanceado",
+    description: "5 señales ortogonales sin solapamiento: Frecuencia · Deuda · Calendario · Markov-1 · Posicional",
+    ids: ["freq_analysis", "gap_due", "calendar_pattern", "transition_follow", "positional_analysis"],
+  },
+  {
+    id: "b",
+    emoji: "🇧",
+    label: "Señales Recientes",
+    description: "Énfasis en el momento actual: Momentum · Markov-2 · Decenas · Terminal · Rachas",
+    ids: ["trend_momentum", "markov_order2", "decade_family", "terminal_analysis", "streak_analysis"],
+  },
+  {
+    id: "c",
+    emoji: "🇨",
+    label: "Ruptura y Extremos",
+    description: "Señales de alta urgencia y eventos excepcionales: RécordRoto · Ciclos · Espejo · Calendario",
+    ids: ["max_gap_breach", "cycle_detector", "mirror_complement", "calendar_pattern"],
+  },
+  {
+    id: "d",
+    emoji: "🇩",
+    label: "Meta + Complementos",
+    description: "Bayesiano (cubre 6 señales) + sus 4 puntos ciegos: Calendario · Posicional · Decenas · Espejo",
+    ids: ["bayesian_score", "calendar_pattern", "positional_analysis", "decade_family", "mirror_complement"],
+  },
+];
+
+/** Detecta si el conjunto de IDs seleccionados coincide exactamente con algún grupo (filtrado a seleccionables). */
+function detectActiveGroup(
+  selectedIds: Set<string>,
+  selectableIds: string[]
+): ConsensusGroup | null {
+  for (const g of CONSENSUS_GROUPS) {
+    const groupIds = g.ids.filter((id) => selectableIds.includes(id));
+    if (groupIds.length === 0) continue;
+    if (groupIds.length !== selectedIds.size) continue;
+    if (groupIds.every((id) => selectedIds.has(id))) return g;
+  }
+  return null;
+}
+
 // ─── UI helpers ──────────────────────────────────────────────────────────────
 
 /**
  * Construye el mensaje de selección de estrategias.
+ * Detecta automáticamente si hay un grupo activo y muestra su descripción.
+ * @param selectedIds Set de IDs actualmente seleccionados.
  * @param selectableIds Lista dinámica de IDs seleccionables (de getConsensusSelectableIds).
  */
 export function buildConsensusSelectionMessage(
-  selectedCount: number,
+  selectedIds: Set<string>,
   context: StrategyContext,
   selectableIds: string[]
 ): string {
   const mapLabel = context.mapSource === "p3" ? "P3 (Fijos)" : "P4 (Corridos)";
   const periodLabel = context.period === "m" ? "☀️ Mediodía" : "🌙 Noche";
+  const selectedCount = selectedIds.size;
   const total = selectableIds.length;
 
-  const lines = [
+  const activeGroup = detectActiveGroup(selectedIds, selectableIds);
+
+  const lines: string[] = [
     `🤝 *Consenso Multi-Estrategia* — ${mapLabel} · ${periodLabel}`,
     "",
-    `Selecciona las estrategias a cruzar _(${selectedCount}/${total} seleccionadas)_:`,
+    `Elige un *grupo predefinido* o selecciona estrategias individuales _(${selectedCount}/${total})_:`,
     "",
-    "📖 _Cómo funciona:_ cada estrategia aportará su lista de candidatos.",
-    "Los números que más estrategias avalen serán los resultados finales.",
+    `${CONSENSUS_GROUPS[0]!.emoji} *Grupo A — ${CONSENSUS_GROUPS[0]!.label}*`,
+    `_${CONSENSUS_GROUPS[0]!.description}_`,
+    `${CONSENSUS_GROUPS[1]!.emoji} *Grupo B — ${CONSENSUS_GROUPS[1]!.label}*`,
+    `_${CONSENSUS_GROUPS[1]!.description}_`,
+    `${CONSENSUS_GROUPS[2]!.emoji} *Grupo C — ${CONSENSUS_GROUPS[2]!.label}*`,
+    `_${CONSENSUS_GROUPS[2]!.description}_`,
+    `${CONSENSUS_GROUPS[3]!.emoji} *Grupo D — ${CONSENSUS_GROUPS[3]!.label}*`,
+    `_${CONSENSUS_GROUPS[3]!.description}_`,
     "",
-    selectedCount === 0
-      ? "⬜ Ninguna seleccionada — elige al menos 1."
-      : `✅ ${selectedCount} estrategia(s) activa(s). Pulsa *Listo* para continuar.`,
   ];
+
+  if (activeGroup) {
+    const names = activeGroup.ids
+      .filter((id) => selectableIds.includes(id))
+      .map((id) => STRATEGY_META[id]?.shortName ?? id)
+      .join(" · ");
+    lines.push(`✅ *Grupo ${activeGroup.id.toUpperCase()} activo* — ${names}`);
+    lines.push("_Puedes ajustar individualmente abajo si lo deseas._");
+  } else if (selectedCount === 0) {
+    lines.push("⬜ Ninguna seleccionada — elige un grupo o activa estrategias individuales.");
+  } else {
+    lines.push(`✅ *${selectedCount}* estrategia(s) seleccionada(s) — sin grupo predefinido.`);
+    lines.push("Pulsa *Listo* para continuar.");
+  }
+
   return lines.join("\n");
 }
 
 /**
- * Construye el teclado de selección de estrategias.
+ * Construye el teclado de selección de estrategias con grupos predefinidos y botón Seleccionar Todo.
+ * @param selectedIds Set de IDs actualmente seleccionados.
  * @param selectableIds Lista dinámica de IDs seleccionables (de getConsensusSelectableIds).
  */
 export function buildConsensusSelectionKeyboard(
@@ -210,6 +299,26 @@ export function buildConsensusSelectionKeyboard(
   selectableIds: string[]
 ): InlineKeyboard {
   const kb = new InlineKeyboard();
+  const activeGroup = detectActiveGroup(selectedIds, selectableIds);
+
+  // ── Fila 1 y 2: Grupos A/B y C/D ──────────────────────────────────────────
+  const gMark = (id: string) => (activeGroup?.id === id ? "✅" : "◻️");
+  kb
+    .text(`${gMark("a")} 🇦 Grupo A`, "cns_g_a")
+    .text(`${gMark("b")} 🇧 Grupo B`, "cns_g_b")
+    .row()
+    .text(`${gMark("c")} 🇨 Grupo C`, "cns_g_c")
+    .text(`${gMark("d")} 🇩 Grupo D`, "cns_g_d")
+    .row();
+
+  // ── Fila 3: Seleccionar Todo / Limpiar ─────────────────────────────────────
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id));
+  kb
+    .text(allSelected ? "✅ Todas seleccionadas" : "☑️ Seleccionar todo", "cns_all")
+    .text("🗑 Limpiar", "cns_none")
+    .row();
+
+  // ── Estrategias individuales ───────────────────────────────────────────────
   for (const id of selectableIds) {
     const meta = getStrategyMeta(id, context, null);
     const selected = selectedIds.has(id);
@@ -217,6 +326,7 @@ export function buildConsensusSelectionKeyboard(
     kb.text(`${mark} ${meta.emoji} ${meta.fullName}`, `cns_t_${id}`).row();
   }
 
+  // ── Listo / Cancelar ──────────────────────────────────────────────────────
   const count = selectedIds.size;
   const listoLabel =
     count === 0

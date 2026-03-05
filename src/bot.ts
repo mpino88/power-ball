@@ -98,6 +98,7 @@ import {
   runConsensusAggregation,
   buildConsensusSelectionKeyboard,
   buildConsensusSelectionMessage,
+  CONSENSUS_GROUPS,
 } from "./strategies/consensus-multi.js";
 import type { StrategyContext } from "./strategies/types.js";
 import {
@@ -744,8 +745,9 @@ bot.on("callback_query:data", async (ctx) => {
             step: "selecting",
           });
           const selectableIds = getConsensusSelectableIds();
-          const msg = buildConsensusSelectionMessage(0, parsed.context, selectableIds);
-          const kb = buildConsensusSelectionKeyboard(new Set(), parsed.context, selectableIds);
+          const emptySet = new Set<string>();
+          const msg = buildConsensusSelectionMessage(emptySet, parsed.context, selectableIds);
+          const kb = buildConsensusSelectionKeyboard(emptySet, parsed.context, selectableIds);
           try {
             await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
           } catch (e) {
@@ -819,7 +821,72 @@ bot.on("callback_query:data", async (ctx) => {
       }
       await ctx.answerCallbackQuery();
       const selectableIds = getConsensusSelectableIds();
-      const msg = buildConsensusSelectionMessage(session.selectedIds.size, session.context, selectableIds);
+      const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds);
+      const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds);
+      try {
+        await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
+  }
+
+  // ── Consenso: cargar grupo predefinido ────────────────────────────────────
+  if (data.startsWith("cns_g_") && ctx.from) {
+    const userId = ctx.from.id;
+    const session = consensusSessionMap.get(userId);
+    if (session && session.step === "selecting") {
+      const groupId = data.slice("cns_g_".length);
+      const group = CONSENSUS_GROUPS.find((g) => g.id === groupId);
+      if (group) {
+        const selectableIds = getConsensusSelectableIds();
+        // Reemplaza la selección actual con las estrategias del grupo (solo las seleccionables)
+        const groupSelectable = group.ids.filter((id) => selectableIds.includes(id));
+        session.selectedIds = new Set(groupSelectable);
+        await ctx.answerCallbackQuery({ text: `Grupo ${groupId.toUpperCase()} cargado (${groupSelectable.length} estrategias)` });
+        const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds);
+        const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds);
+        try {
+          await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
+        } catch (e) {
+          if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+        }
+      } else {
+        await ctx.answerCallbackQuery({ text: "Grupo no encontrado" });
+      }
+      return;
+    }
+  }
+
+  // ── Consenso: seleccionar todo ────────────────────────────────────────────
+  if (data === "cns_all" && ctx.from) {
+    const userId = ctx.from.id;
+    const session = consensusSessionMap.get(userId);
+    if (session && session.step === "selecting") {
+      const selectableIds = getConsensusSelectableIds();
+      session.selectedIds = new Set(selectableIds);
+      await ctx.answerCallbackQuery({ text: `${selectableIds.length} estrategias seleccionadas` });
+      const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds);
+      const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds);
+      try {
+        await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
+  }
+
+  // ── Consenso: limpiar selección ───────────────────────────────────────────
+  if (data === "cns_none" && ctx.from) {
+    const userId = ctx.from.id;
+    const session = consensusSessionMap.get(userId);
+    if (session && session.step === "selecting") {
+      session.selectedIds = new Set();
+      await ctx.answerCallbackQuery({ text: "Selección limpiada" });
+      const selectableIds = getConsensusSelectableIds();
+      const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds);
       const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds);
       try {
         await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
