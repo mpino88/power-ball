@@ -197,7 +197,9 @@ export async function runConsensusAggregation(
 
   // Compute next estimated date from latest entry in map
   const dates = validDateKeys(map, context.period, context.mapSource);
+  const firstKey = dates[0];
   const latestKey = dates.at(-1);
+  const rangeStr = firstKey && latestKey ? `${firstKey} – ${latestKey}` : (latestKey ?? "Sin datos");
   const latestDate = latestKey ? mmddyyToDate(latestKey) : null;
   const nextDate = latestDate ? new Date(latestDate.getTime() + 86_400_000) : null;
 
@@ -249,7 +251,7 @@ export async function runConsensusAggregation(
   // Header
   lines.push(`🎯 *Consenso Multi-Estrategia* — ${mapLabel} · ${periodLabel}`);
   lines.push(`Cruce de *${total}* estrategia${total > 1 ? "s" : ""} · Top *${count}* resultado${count > 1 ? "s" : ""}`);
-  lines.push(`Último: ${latestStr} · Próx. estimado: ${nextStr}`);
+  lines.push(`Período: ${rangeStr} · Último: ${latestStr} · Próx. estimado: ${nextStr}`);
   lines.push("");
 
   // Dynamic methodology explanation

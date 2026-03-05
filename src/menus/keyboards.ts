@@ -77,7 +77,7 @@ export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboard
     }
   }
   if (ownerId !== null && userId === ownerId) {
-    kb.row().text("🔒 Seguridad", "security_open");
+    kb.row().text("🔒 Seguridad", "security_open").text("🧪 Testing", "testing_open");
   }
   return kb;
 }
@@ -177,4 +177,31 @@ export function buildDiasDiferenciaKeyboardIndividual(): InlineKeyboard {
     .text("10", "stats_individual_days_10")
     .row()
     .text("◀️ Volver", "stats_individual_back");
+}
+
+/**
+ * Teclado del menú Testing (solo dueño).
+ * currentDate = fecha activa "MM/DD/YY" o null si no hay corte.
+ */
+export function buildTestingKeyboard(currentDate: string | null): InlineKeyboard {
+  const kb = new InlineKeyboard()
+    .text("📅 Cambiar fecha", "testing_cambiar");
+  if (currentDate) {
+    kb.text("🗑 Eliminar", "testing_eliminar");
+  }
+  kb.row().text("◀️ Volver", "volver");
+  return kb;
+}
+
+/** Construye el mensaje de contexto para el menú Testing. */
+export function buildTestingMessage(currentDate: string | null): string {
+  const status = currentDate
+    ? `✅ *Activo* — fecha de corte: \`${currentDate}\`\nLas estrategias usarán solo sorteos _hasta_ esa fecha.`
+    : `⭕ *Inactivo* — se usa la base de conocimientos completa.`;
+  return (
+    `🧪 *Modo Testing*\n\n` +
+    `${status}\n\n` +
+    `Pulsa *Cambiar fecha* para fijar un corte o *Eliminar* para quitar el filtro.\n` +
+    `_Los cambios manuales en el Sheet también se reflejan (caché de 5 min)._`
+  );
 }

@@ -1083,3 +1083,72 @@ export function isOwner(userId: number): boolean {
   const owner = getOwnerId();
   return owner !== null && userId === owner;
 }
+
+const TESTING_SHEET_INDEX = 4;
+
+/**
+ * Guarda (o elimina) la fecha de corte en la celda A2 de la pestaña "Testing".
+ * Crea la pestaña si no existe aún.
+ * Pasa null para borrar la celda (sin corte = base completa).
+ */
+export async function saveTestingCutoffDate(date: string | null): Promise<void> {
+  const sheetId = getSheetId();
+  if (!sheetId) return;
+  const auth = getSheetAuth();
+  if (!auth) return;
+  try {
+    const doc = new GoogleSpreadsheet(sheetId, auth);
+    await doc.loadInfo();
+    let sheet = doc.sheetsByIndex[TESTING_SHEET_INDEX];
+    if (!sheet) {
+      sheet = await doc.addSheet({
+        title: "Testing",
+        gridProperties: { rowCount: 10, columnCount: 2 },
+      });
+      await sheet.loadCells("A1");
+      const header = sheet.getCellByA1("A1");
+      header.value = "Fecha de corte (MM/DD/YY)";
+      await sheet.saveUpdatedCells();
+      console.log("[user-config] Testing: pestaña 'Testing' creada (5ª pestaña).");
+    }
+    await sheet.loadCells("A2");
+    const cell = sheet.getCellByA1("A2");
+    cell.value = date ?? "";
+    await sheet.saveUpdatedCells();
+    console.log(`[user-config] Testing: fecha ${date ? `actualizada → ${date}` : "eliminada"}.`);
+  } catch (e) {
+    console.error("[user-config] Error al guardar fecha de testing en Sheet:", (e as Error)?.message ?? e);
+    throw e;
+  }
+}
+
+/**
+ * Lee la fecha de corte desde la pestaña "Testing" (5ª pestaña, índice 4) del Sheet.
+ * La celda A2 puede contener una fecha en formato MM/DD/YY o estar vacía.
+ * - Si está vacía o la pestaña no existe → retorna null (se usa la base completa).
+ * - Si tiene una fecha válida → retorna el string "MM/DD/YY" para filtrar el mapa.
+ * Solo aplica cuando el backend es Google Sheet.
+ */
+export async function loadTestingCutoffDate(): Promise<string | null> {
+  const sheetId = getSheetId();
+  if (!sheetId) return null;
+  const auth = getSheetAuth();
+  if (!auth) return null;
+  try {
+    const doc = new GoogleSpreadsheet(sheetId, auth);
+    await doc.loadInfo();
+    const sheet = doc.sheetsByIndex[TESTING_SHEET_INDEX];
+    if (!sheet) return null;
+    await sheet.loadCells("A2");
+    const cell = sheet.getCellByA1("A2");
+    const raw = String(cell.value ?? "").trim();
+    if (!raw) return null;
+    // Validar formato MM/DD/YY
+    if (/^\d{1,2}\/\d{1,2}\/\d{2}$/.test(raw)) return raw;
+    console.warn("[user-config] Testing: valor en A2 no es MM/DD/YY válido:", raw);
+    return null;
+  } catch (e) {
+    console.error("[user-config] Error al leer fecha de testing desde Sheet:", (e as Error)?.message ?? e);
+    return null;
+  }
+}

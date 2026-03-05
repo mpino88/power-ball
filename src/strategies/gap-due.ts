@@ -22,6 +22,7 @@ import {
   truncateMsg,
   validDateKeys,
   DAY_NAMES,
+  getDateRangeStr,
 } from "./utils.js";
 
 interface GapStat {
@@ -118,7 +119,8 @@ function formatMessage(
   latestDateStr: string,
   latestDate: Date | null,
   mapSource: "p3" | "p4",
-  period: "m" | "e"
+  period: "m" | "e",
+  rangeStr: string
 ): string {
   const periodLabel = period === "m" ? "☀️ Mediodía" : "🌙 Noche";
   const mapLabel = mapSource === "p3" ? "P3 (Fijos)" : "P4 (Corridos)";
@@ -144,7 +146,7 @@ function formatMessage(
 
   const lines: string[] = [
     `📊 *Números Debidos (Gap Analysis)* — ${mapLabel} · ${periodLabel}`,
-    `Último: ${latestDateStr} · Próx. estimado: ${nextDateStr}`,
+    `Período: ${rangeStr} · Último: ${latestDateStr} · Próx. estimado: ${nextDateStr}`,
     "",
     "📖 _Qué mide:_ cuánto tiempo lleva sin salir cada número respecto a su ritmo histórico\\.",
     "_DíasSin_ ÷ _Prom_ = _Factor_ · Factor >1x = lleva más del promedio sin aparecer",
@@ -182,7 +184,8 @@ export const gapDue: StrategyDefinition = {
       context.period,
       context.mapSource
     );
-    return formatMessage(stats, latestDateStr, latestDate, context.mapSource, context.period);
+    const rangeStr = getDateRangeStr(map, context.period, context.mapSource);
+    return formatMessage(stats, latestDateStr, latestDate, context.mapSource, context.period, rangeStr);
   },
   async getCandidates(context: StrategyContext, map: DateDrawsMap): Promise<number[]> {
     const { stats } = computeGaps(map, context.period, context.mapSource);

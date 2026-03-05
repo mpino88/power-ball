@@ -15,6 +15,7 @@ import {
   twoDigitNumbers,
   truncateMsg,
   validDateKeys,
+  getDateRangeStr,
 } from "./utils.js";
 
 interface NumStat {
@@ -82,7 +83,8 @@ function formatMessage(
   totalOccurrences: number,
   totalDraws: number,
   mapSource: "p3" | "p4",
-  period: "m" | "e"
+  period: "m" | "e",
+  rangeStr: string
 ): string {
   const periodLabel = period === "m" ? "☀️ Mediodía" : "🌙 Noche";
   const mapLabel = mapSource === "p3" ? "P3 (Fijos)" : "P4 (Corridos)";
@@ -96,7 +98,7 @@ function formatMessage(
 
   const lines: string[] = [
     `📊 *Análisis de Frecuencia* — ${mapLabel} · ${periodLabel}`,
-    `Sorteos: ${totalDraws} · Apariciones totales: ${totalOccurrences}`,
+    `Sorteos: ${totalDraws} · Período: ${rangeStr} · Apariciones totales: ${totalOccurrences}`,
     "",
     "📖 _Qué mide:_ cuántas veces salió cada número en toda la historia disponible\\.",
     "_Count_ = apariciones · _Prob%_ = probabilidad histórica · _Días sin_ = días desde última salida",
@@ -143,7 +145,8 @@ export const freqAnalysis: StrategyDefinition = {
       context.period,
       context.mapSource
     );
-    return formatMessage(stats, totalOccurrences, totalDraws, context.mapSource, context.period);
+    const rangeStr = getDateRangeStr(map, context.period, context.mapSource);
+    return formatMessage(stats, totalOccurrences, totalDraws, context.mapSource, context.period, rangeStr);
   },
   async getCandidates(context: StrategyContext, map: DateDrawsMap): Promise<number[]> {
     const { stats } = computeFrequency(map, context.period, context.mapSource);

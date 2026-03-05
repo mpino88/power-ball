@@ -15,7 +15,7 @@
 
 import type { StrategyContext, StrategyDefinition, DateDrawsMap } from "./types.js";
 import { buildDefaultContextKeyboard, getDefaultContextMessage } from "./context-menu.js";
-import { mmddyyToDate, twoDigitNumbers, truncateMsg, validDateKeys } from "./utils.js";
+import { mmddyyToDate, twoDigitNumbers, truncateMsg, validDateKeys, getDateRangeStr } from "./utils.js";
 
 interface TransitionResult {
   matrix: Map<number, Map<number, number>>;
@@ -72,7 +72,8 @@ function computeTransitions(
 function formatMessage(
   { matrix, lastDraw, lastDateStr }: TransitionResult,
   mapSource: "p3" | "p4",
-  period: "m" | "e"
+  period: "m" | "e",
+  rangeStr: string
 ): string {
   const periodLabel = period === "m" ? "☀️ Mediodía" : "🌙 Noche";
   const mapLabel = mapSource === "p3" ? "P3 (Fijos)" : "P4 (Corridos)";
@@ -82,7 +83,7 @@ function formatMessage(
 
   const lines: string[] = [
     `📊 *Seguidor de Secuencias* — ${mapLabel} · ${periodLabel}`,
-    `Último sorteo (${lastDateStr}): ${drawStr}`,
+    `Período: ${rangeStr} · Último sorteo (${lastDateStr}): ${drawStr}`,
     "",
     "📖 _Qué mide:_ Cadena de Markov — dado que X salió, ¿qué número Y apareció en el sorteo SIGUIENTE?",
     "_nx \\(p%\\)_ = Y apareció n veces después de X, con p% de probabilidad histórica de transición",
@@ -149,7 +150,8 @@ export const transitionFollow: StrategyDefinition = {
   buildContextKeyboard: buildDefaultContextKeyboard,
   async run(context: StrategyContext, map: DateDrawsMap): Promise<string> {
     const result = computeTransitions(map, context.period, context.mapSource);
-    return formatMessage(result, context.mapSource, context.period);
+    const rangeStr = getDateRangeStr(map, context.period, context.mapSource);
+    return formatMessage(result, context.mapSource, context.period, rangeStr);
   },
   async getCandidates(context: StrategyContext, map: DateDrawsMap): Promise<number[]> {
     const { matrix, lastDraw } = computeTransitions(map, context.period, context.mapSource);

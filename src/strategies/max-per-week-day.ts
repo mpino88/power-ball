@@ -7,7 +7,7 @@
 import type { StrategyContext, StrategyDefinition } from "./types.js";
 import type { DateDrawsMap } from "./types.js";
 import { buildDefaultContextKeyboard, getDefaultContextMessage } from "./context-menu.js";
-import { twoDigitNumbers } from "./utils.js";
+import { twoDigitNumbers, getDateRangeStr } from "./utils.js";
 
 /** Día de la semana: 0=Dom, 1=Lun, …, 6=Sáb. */
 type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -84,7 +84,7 @@ function getTop10PerDay(result: CountMap, day: DayOfWeek): { num: number; count:
 }
 
 /** Un solo mensaje con bloques separados: L Ma Mi | J | V S D para distinguir bien la data. */
-function formatMessage(result: CountMap, mapSource: "p3" | "p4", period: "m" | "e"): string {
+function formatMessage(result: CountMap, mapSource: "p3" | "p4", period: "m" | "e", rangeStr: string): string {
   const periodLabel = period === "m" ? "☀️ Mediodía (M)" : "🌙 Noche (E)";
   const mapLabel = mapSource === "p3" ? "P3 (Fijos)" : "P4 (Corridos)";
 
@@ -92,6 +92,7 @@ function formatMessage(result: CountMap, mapSource: "p3" | "p4", period: "m" | "
 
   const lines: string[] = [
     `📊 *Más salidores x día de la semana* — ${mapLabel} · ${periodLabel}`,
+    `Período: ${rangeStr}`,
     "",
     "📖 _Qué mide:_ los 10 números \\(00\\-99\\) que más han salido en cada día de la semana\\.",
     "Formato _##\\(n\\)_ = número y veces que salió ese día · L=Lun · Ma=Mar · Mi=Mié · J=Jue · V=Vie · S=Sáb · D=Dom",
@@ -130,7 +131,8 @@ export const maxPerWeekDay: StrategyDefinition = {
   buildContextKeyboard: buildDefaultContextKeyboard,
   async run(context: StrategyContext, map: DateDrawsMap): Promise<string> {
     const result = computeCounts(map, context.period, context.mapSource);
-    return formatMessage(result, context.mapSource, context.period);
+    const rangeStr = getDateRangeStr(map, context.period, context.mapSource);
+    return formatMessage(result, context.mapSource, context.period, rangeStr);
   },
   async getCandidates(context: StrategyContext, map: DateDrawsMap): Promise<number[]> {
     const counts = computeCounts(map, context.period, context.mapSource);

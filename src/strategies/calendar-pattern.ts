@@ -22,6 +22,7 @@ import {
   validDateKeys,
   DAY_NAMES,
   MONTH_NAMES,
+  getDateRangeStr,
 } from "./utils.js";
 
 type CountMap = Map<number, number>;
@@ -112,7 +113,8 @@ function section(
 function formatMessage(
   { byDow, byMonth, byDom, byDowMonth, latestDateStr, latestDate }: CalendarPatterns,
   mapSource: "p3" | "p4",
-  period: "m" | "e"
+  period: "m" | "e",
+  rangeStr: string
 ): string {
   const periodLabel = period === "m" ? "☀️ Mediodía" : "🌙 Noche";
   const mapLabel = mapSource === "p3" ? "P3 (Fijos)" : "P4 (Corridos)";
@@ -130,7 +132,7 @@ function formatMessage(
 
   const lines: string[] = [
     `📊 *Patrón Calendario* — ${mapLabel} · ${periodLabel}`,
-    `Último: ${latestDateStr} · Próx. estimado: ${nextDateLabel}`,
+    `Período: ${rangeStr} · Último: ${latestDateStr} · Próx. estimado: ${nextDateLabel}`,
     "",
     "📖 _Qué mide:_ qué números salen más según el contexto de la PRÓXIMA fecha estimada\\.",
     "_4 dimensiones_: ①\\(día semana\\+mes\\) combinación exacta · ② día semana · ③ mes · ④ día del mes",
@@ -181,7 +183,8 @@ export const calendarPattern: StrategyDefinition = {
   buildContextKeyboard: buildDefaultContextKeyboard,
   async run(context: StrategyContext, map: DateDrawsMap): Promise<string> {
     const patterns = computeCalendarPatterns(map, context.period, context.mapSource);
-    return formatMessage(patterns, context.mapSource, context.period);
+    const rangeStr = getDateRangeStr(map, context.period, context.mapSource);
+    return formatMessage(patterns, context.mapSource, context.period, rangeStr);
   },
   async getCandidates(context: StrategyContext, map: DateDrawsMap): Promise<number[]> {
     const { byDow, byMonth, byDom, byDowMonth, latestDate } = computeCalendarPatterns(

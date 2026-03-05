@@ -13,6 +13,7 @@
 import type { StrategyContext, StrategyDefinition, DateDrawsMap } from "./types.js";
 import { buildDefaultContextKeyboard, getDefaultContextMessage } from "./context-menu.js";
 import { computeStatsCombined, getTop10HottestIndividual, buildIndividualTop10Message } from "../stats-p3.js";
+import { getDateRangeStr } from "./utils.js";
 
 const DEFAULT_DIAS_DIFERENCIA = 5;
 
@@ -31,7 +32,9 @@ export const estIndividuales: StrategyDefinition = {
       );
     }
     const period = context.period === "m" ? "M" : "E";
-    return buildIndividualTop10Message(map, DEFAULT_DIAS_DIFERENCIA, period);
+    const rangeStr = getDateRangeStr(map, context.period, context.mapSource);
+    const msg = buildIndividualTop10Message(map, DEFAULT_DIAS_DIFERENCIA, period);
+    return `${msg}\n_Período: ${rangeStr}_`;
   },
 
   async getCandidates(context: StrategyContext, map: DateDrawsMap): Promise<number[]> {

@@ -11,6 +11,8 @@ export {
   buildIndividualPeriodKeyboard,
   buildDiasDiferenciaKeyboard,
   buildDiasDiferenciaKeyboardIndividual,
+  buildTestingKeyboard,
+  buildTestingMessage,
   ESTRATEGIAS_OPEN_CALLBACK,
 } from "./keyboards.js";
 export type { MainKeyboardDeps } from "./keyboards.js";

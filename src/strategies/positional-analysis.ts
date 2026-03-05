@@ -22,7 +22,7 @@
 
 import type { StrategyContext, StrategyDefinition, DateDrawsMap } from "./types.js";
 import { buildDefaultContextKeyboard, getDefaultContextMessage } from "./context-menu.js";
-import { mmddyyToDate, truncateMsg, validDateKeys, p3Positions, p4Pairs, DAY_NAMES, MONTH_NAMES } from "./utils.js";
+import { mmddyyToDate, truncateMsg, validDateKeys, p3Positions, p4Pairs, DAY_NAMES, MONTH_NAMES, getDateRangeStr } from "./utils.js";
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -180,10 +180,11 @@ function analyzeP3(map: DateDrawsMap, period: "m" | "e"): string {
   const POS_LABELS = ["Centena (pos.1)", "Decena  (pos.2)", "Unidad  (pos.3)"];
   const totalDraws = dates.length;
   const periodLabel = period === "m" ? "☀️ Mediodía" : "🌙 Noche";
+  const rangeStr = dates.length > 0 ? `${dates[0]!} – ${dates[dates.length - 1]!}` : "Sin datos";
 
   const lines: string[] = [
     `📊 *Análisis Posicional* — P3 (Fijos) · ${periodLabel}`,
-    `Sorteos: ${totalDraws} · Último: ${latestDateStr} · Próx. estimado: ${nextDateLabel}`,
+    `Sorteos: ${totalDraws} · Período: ${rangeStr} · Último: ${latestDateStr} · Próx. estimado: ${nextDateLabel}`,
     "",
     "📖 _Qué mide:_ cada dígito del sorteo \\[C\\]\\[D\\]\\[U\\] analizado de forma independiente por posición\\.",
     "_Prob%_ = probabilidad en esa posición · _Factor_ = Gap\\-deuda \\(>1x = dígito atrasado en esa posición\\)",
@@ -296,10 +297,11 @@ function analyzeP4(map: DateDrawsMap, period: "m" | "e"): string {
   const PAIR_LABELS = ["Par 1  [A·B] → dígitos 1-2", "Par 2  [C·D] → dígitos 3-4"];
   const totalDraws = dates.length;
   const periodLabel = period === "m" ? "☀️ Mediodía" : "🌙 Noche";
+  const rangeStr = dates.length > 0 ? `${dates[0]!} – ${dates[dates.length - 1]!}` : "Sin datos";
 
   const lines: string[] = [
     `📊 *Análisis Posicional* — P4 (Corridos) · ${periodLabel}`,
-    `Sorteos: ${totalDraws} · Formato: \\[AB\\]\\[CD\\] · Último: ${latestDateStr} · Próx: ${nextDateLabel}`,
+    `Sorteos: ${totalDraws} · Período: ${rangeStr} · Último: ${latestDateStr} · Próx: ${nextDateLabel}`,
     "",
     "📖 _Qué mide:_ el sorteo \\[ABCD\\] se divide en 2 pares NO solapados: Par1=\\[AB\\] y Par2=\\[CD\\]\\.",
     "Para cada par: top números 00\\-99 + análisis de su _Decena_ \\(dígito izq\\.\\) y su _Unidad_ \\(dígito der\\.\\)",

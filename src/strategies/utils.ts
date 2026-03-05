@@ -78,6 +78,42 @@ export function truncateMsg(text: string): string {
 }
 
 /**
+ * Retorna el rango de fechas del mapa como "MM/DD/YY – MM/DD/YY".
+ * Útil para mostrar en cada salida de estrategia qué período de datos se usó.
+ */
+export function getDateRangeStr(
+  map: DateDrawsMap,
+  period: StrategyPeriod,
+  mapSource: StrategyMapSource
+): string {
+  const dates = validDateKeys(map, period, mapSource);
+  if (dates.length === 0) return "Sin datos";
+  const from = dates[0]!;
+  const to = dates[dates.length - 1]!;
+  return from === to ? from : `${from} – ${to}`;
+}
+
+/**
+ * Filtra un DateDrawsMap para incluir solo las fechas ≤ cutoffDateStr.
+ * Útil para modo testing: simular el análisis como si solo se conociera
+ * la historia hasta esa fecha.
+ * Si la fecha de corte es inválida, retorna el mapa completo sin modificar.
+ */
+export function filterMapByCutoff(
+  map: DateDrawsMap,
+  cutoffDateStr: string
+): DateDrawsMap {
+  const cutoff = mmddyyToDate(cutoffDateStr);
+  if (!cutoff) return map;
+  const result: DateDrawsMap = {};
+  for (const [key, value] of Object.entries(map)) {
+    const d = mmddyyToDate(key);
+    if (d && d <= cutoff) result[key] = value;
+  }
+  return result;
+}
+
+/**
  * Para P3: extrae los 3 dígitos del sorteo como [centena, decena, unidad].
  * Retorna null si el sorteo no tiene al menos 3 dígitos.
  */

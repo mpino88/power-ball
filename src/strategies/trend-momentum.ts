@@ -18,7 +18,7 @@
 
 import type { StrategyContext, StrategyDefinition, DateDrawsMap } from "./types.js";
 import { buildDefaultContextKeyboard, getDefaultContextMessage } from "./context-menu.js";
-import { twoDigitNumbers, truncateMsg, validDateKeys } from "./utils.js";
+import { twoDigitNumbers, truncateMsg, validDateKeys, getDateRangeStr } from "./utils.js";
 
 const RECENT_WINDOW = 30;
 
@@ -88,7 +88,8 @@ function computeMomentum(
 function formatMessage(
   { stats, totalAll, totalRecent, latestDateStr }: MomentumResult,
   mapSource: "p3" | "p4",
-  period: "m" | "e"
+  period: "m" | "e",
+  rangeStr: string
 ): string {
   const periodLabel = period === "m" ? "☀️ Mediodía" : "🌙 Noche";
   const mapLabel = mapSource === "p3" ? "P3 (Fijos)" : "P4 (Corridos)";
@@ -114,7 +115,7 @@ function formatMessage(
 
   const lines: string[] = [
     `📊 *Momentum de Tendencia* — ${mapLabel} · ${periodLabel}`,
-    `Histórico: ${totalAll} sorteos · Reciente: últimos ${totalRecent} sorteos · Último: ${latestDateStr}`,
+    `Período: ${rangeStr} · Histórico: ${totalAll} sorteos · Reciente: últimos ${totalRecent} · Último: ${latestDateStr}`,
     "",
     "📖 _Qué mide:_ detecta cambios de comportamiento recientes vs la tendencia histórica total\\.",
     "_Rec\\._ = freq\\. últimos 30 · _Hist\\._ = freq\\. total · _Momento_ = Rec÷Hist \\(>1x = en alza\\)",
@@ -162,7 +163,8 @@ export const trendMomentum: StrategyDefinition = {
   buildContextKeyboard: buildDefaultContextKeyboard,
   async run(context: StrategyContext, map: DateDrawsMap): Promise<string> {
     const result = computeMomentum(map, context.period, context.mapSource);
-    return formatMessage(result, context.mapSource, context.period);
+    const rangeStr = getDateRangeStr(map, context.period, context.mapSource);
+    return formatMessage(result, context.mapSource, context.period, rangeStr);
   },
   async getCandidates(context: StrategyContext, map: DateDrawsMap): Promise<number[]> {
     const { stats } = computeMomentum(map, context.period, context.mapSource);
