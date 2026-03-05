@@ -29,20 +29,28 @@ export function sortDateKeys(keys: string[]): string[] {
 }
 
 /**
- * Extrae pares de dígitos consecutivos de un sorteo:
- * - P3 [a,b,c]   → [ab, bc]
- * - P4 [a,b,c,d] → [ab, bc, cd]
+ * Extrae pares de dígitos NO solapados de un sorteo:
+ * - P3 [a,b,c]   → [bc]        (decena+unidad; la centena se analiza aparte con p3Centena)
+ * - P4 [a,b,c,d] → [ab, cd]    (Par1=AB, Par2=CD; sin solaparse en el dígito central)
  */
 export function twoDigitNumbers(draw: number[], mapSource: StrategyMapSource): number[] {
   if (mapSource === "p3") {
     if (draw.length < 3) return [];
-    const [a, b, c] = [draw[0]!, draw[1]!, draw[2]!];
-    return [a * 10 + b, b * 10 + c];
+    const [, b, c] = [draw[0]!, draw[1]!, draw[2]!];
+    return [b! * 10 + c!];
   } else {
     if (draw.length < 4) return [];
     const [a, b, c, d] = [draw[0]!, draw[1]!, draw[2]!, draw[3]!];
-    return [a * 10 + b, b * 10 + c, c * 10 + d];
+    return [a * 10 + b, c * 10 + d];
   }
+}
+
+/**
+ * Extrae la centena (primer dígito) de un sorteo P3.
+ * Retorna null si el draw tiene menos de 3 dígitos.
+ */
+export function p3Centena(draw: number[]): number | null {
+  return draw.length >= 3 ? draw[0]! : null;
 }
 
 /** Formatea una Date como "MM/DD/YY". */

@@ -7,6 +7,7 @@
 import type { StrategyContext, StrategyDefinition } from "./types.js";
 import type { DateDrawsMap } from "./types.js";
 import { buildDefaultContextKeyboard, getDefaultContextMessage } from "./context-menu.js";
+import { twoDigitNumbers } from "./utils.js";
 
 /** Día de la semana: 0=Dom, 1=Lun, …, 6=Sáb. */
 type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -41,18 +42,6 @@ function sortDateKeys(keys: string[]): string[] {
   });
 }
 
-function twoDigitNumbersFromP3(draw: number[]): number[] {
-  if (draw.length < 3) return [];
-  const [a, b, c] = [draw[0]!, draw[1]!, draw[2]!];
-  return [a * 10 + b, b * 10 + c];
-}
-
-function twoDigitNumbersFromP4(draw: number[]): number[] {
-  if (draw.length < 4) return [];
-  const [a, b, c, d] = [draw[0]!, draw[1]!, draw[2]!, draw[3]!];
-  return [a * 10 + b, b * 10 + c, c * 10 + d];
-}
-
 function computeCounts(map: DateDrawsMap, period: "m" | "e", mapSource: "p3" | "p4"): CountMap {
   const key = period === "m" ? "m" : "e";
   const minLen = mapSource === "p4" ? 4 : 3;
@@ -70,15 +59,13 @@ function computeCounts(map: DateDrawsMap, period: "m" | "e", mapSource: "p3" | "
     count.set(n, dayMap);
   }
 
-  const getNumbers = mapSource === "p4" ? twoDigitNumbersFromP4 : twoDigitNumbersFromP3;
-
   for (const dateStr of datesWithDraw) {
     const draw = map[dateStr]?.[key];
     if (!draw || draw.length < minLen) continue;
     const date = mmddyyToDate(dateStr);
     if (!date) continue;
     const dayOfWeek = date.getDay() as DayOfWeek;
-    for (const num of getNumbers(draw)) {
+    for (const num of twoDigitNumbers(draw, mapSource)) {
       if (num >= 0 && num <= 99) count.get(num)!.set(dayOfWeek, (count.get(num)!.get(dayOfWeek) ?? 0) + 1);
     }
   }
