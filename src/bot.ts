@@ -598,6 +598,9 @@ bot.on("callback_query:data", async (ctx) => {
 
   if (data === ESTRATEGIAS_OPEN_CALLBACK) {
     await ctx.answerCallbackQuery();
+    // Siempre recarga desde el Sheet antes de mostrar el menú para que refleje
+    // exactamente las estrategias asignadas al usuario (especialmente al dueño).
+    await reloadConfigFromStorage();
     const result = "➕ *Estrategias*\n\nElige una estrategia o gestiona las tuyas:";
     const keyboard = buildEstrategiasKeyboard(ctx.from?.id, mainKbDeps);
     try {
