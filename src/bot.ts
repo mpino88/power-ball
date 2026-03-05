@@ -8,6 +8,7 @@ import { Bot, InlineKeyboard } from "grammy";
 import type { Update } from "grammy/types";
 import {
   getOwnerId,
+  getOwnerIds,
   isAllowed,
   getExtraMenus,
   getPlan,
@@ -221,6 +222,7 @@ async function getCachedScrapeToday(): Promise<{
 
 const mainKbDeps = {
   getOwnerId,
+  isOwner,
   getExtraMenus,
   getExtraMenuIds,
   getExtraMenuLabel,
@@ -361,35 +363,37 @@ const PLAN_MENU_IDS = ["est_grupos"] as const;
  *  - La carga previa desde el Sheet en initUserConfig() ya reflejó el estado actual
  *    del dueño; aquí solo completamos lo genuinamente nuevo.
  */
-async function seedBuiltInStrategies(ownerId: number | null): Promise<void> {
+async function seedBuiltInStrategies(ownerIds: number[]): Promise<void> {
   // newIds = IDs que NO estaban en el catálogo y se acaban de insertar ahora.
   const newIds = seedCustomMenus(BUILT_IN_STRATEGIES);
   if (newIds.length > 0) {
     console.log(`[seed] ${newIds.length} estrategia(s) nueva(s) en catálogo: ${newIds.join(", ")}`);
   }
 
-  if (ownerId === null) {
+  if (ownerIds.length === 0) {
     console.warn("[seed] BOT_OWNER_ID no definido; no se asignan estrategias al dueño.");
     return;
   }
 
-  const current = getUserAssignedMenuIds(ownerId);
+  for (const ownerId of ownerIds) {
+    const current = getUserAssignedMenuIds(ownerId);
 
-  // Candidatos a añadir al dueño:
-  //  · Estrategias recién creadas en el catálogo (genuinamente nuevas para este arranque)
-  //  · PLAN_MENU_IDS que no tenga aún (son intransferibles al catálogo)
-  const toAdd = [
-    ...newIds,
-    ...(PLAN_MENU_IDS as readonly string[]),
-  ].filter((id) => !current.includes(id));
+    // Candidatos a añadir al dueño:
+    //  · Estrategias recién creadas en el catálogo (genuinamente nuevas para este arranque)
+    //  · PLAN_MENU_IDS que no tenga aún (son intransferibles al catálogo)
+    const toAdd = [
+      ...newIds,
+      ...(PLAN_MENU_IDS as readonly string[]),
+    ].filter((id) => !current.includes(id));
 
-  if (toAdd.length === 0) return;
+    if (toAdd.length === 0) continue;
 
-  await addAllowed(ownerId);
-  await setExtraMenus(ownerId, [...current, ...toAdd]);
-  console.log(
-    `[seed] ${toAdd.length} estrategia(s) añadida(s) al dueño (userId=${ownerId}): ${toAdd.join(", ")}`
-  );
+    await addAllowed(ownerId);
+    await setExtraMenus(ownerId, [...current, ...toAdd]);
+    console.log(
+      `[seed] ${toAdd.length} estrategia(s) añadida(s) al dueño (userId=${ownerId}): ${toAdd.join(", ")}`
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -557,6 +561,7 @@ bot.on("callback_query:data", async (ctx) => {
       getPlanByTitle,
       getMenuCreatedBy,
       getOwnerId,
+      isOwner,
       buildMainKeyboard: buildMainKb,
     });
     if (estrategiasOut) {
@@ -1364,7 +1369,7 @@ async function main(): Promise<void> {
   }
 
   // Seed built-in strategies and assign them to the owner before registering menus.
-  await seedBuiltInStrategies(getOwnerId());
+  await seedBuiltInStrategies(getOwnerIds());
 
   await normalizeUserMenusAfterLoad();
   await bot.init();

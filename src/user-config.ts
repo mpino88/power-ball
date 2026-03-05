@@ -667,17 +667,26 @@ export async function reloadConfigFromStorage(): Promise<void> {
   }
 }
 
+/** Devuelve todos los IDs de dueño definidos en BOT_OWNER_ID (puede ser uno o varios separados por coma). */
+export function getOwnerIds(): number[] {
+  const raw = process.env.BOT_OWNER_ID;
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((s) => parseInt(s.trim(), 10))
+    .filter((n) => !Number.isNaN(n));
+}
+
+/** Devuelve el primer ID de dueño (o null si no está configurado). Para compatibilidad con usos que requieren un único ID. */
 export function getOwnerId(): number | null {
-  const id = process.env.BOT_OWNER_ID;
-  if (!id) return null;
-  const n = parseInt(id, 10);
-  return Number.isNaN(n) ? null : n;
+  const ids = getOwnerIds();
+  return ids.length > 0 ? ids[0] : null;
 }
 
 export function isAllowed(userId: number): boolean {
-  const owner = getOwnerId();
-  if (owner === null) return true;
-  if (userId === owner) return true;
+  const owners = getOwnerIds();
+  if (owners.length === 0) return true;
+  if (owners.includes(userId)) return true;
   return config.allowed.includes(userId);
 }
 
@@ -1080,8 +1089,8 @@ export async function approveStrategyRequest(userId: number, menuId: string): Pr
 }
 
 export function isOwner(userId: number): boolean {
-  const owner = getOwnerId();
-  return owner !== null && userId === owner;
+  const owners = getOwnerIds();
+  return owners.length > 0 && owners.includes(userId);
 }
 
 const TESTING_SHEET_INDEX = 4;

@@ -13,6 +13,7 @@ import {
   getPlanStatus,
   getPendingPlan,
   getOwnerId,
+  isOwner,
   addAllowed,
   removeAllowed,
   setUserInfo,
@@ -138,9 +139,8 @@ export async function handleSecurityCallback(
       "Toda la info del usuario. Usa *Agregar acceso* o *Quitar acceso* para gestionar.\n\n" +
       (lines.length ? lines.join("\n\n") : "_Ningún usuario con acceso_ (solo tú como dueño).");
     keyboard = new InlineKeyboard().text("➕ Agregar acceso", "admin_add").row();
-    const ownerId = getOwnerId();
     for (const uid of slice) {
-      if (ownerId !== null && uid === ownerId) continue;
+      if (isOwner(uid)) continue;
       const label = getUsername(uid) ? `➖ Quitar ${getUsername(uid)}` : `➖ Quitar ${uid}`;
       keyboard.text(label.length > 64 ? `➖ Quitar ${uid}` : label, `admin_revoke_${uid}`).row();
     }
@@ -663,6 +663,7 @@ export interface EstrategiasUserCallbackDeps {
   getPlanByTitle?: (title: string) => { menuIds?: string[] } | undefined;
   getMenuCreatedBy?: (menuId: string) => number | undefined;
   getOwnerId: () => number | null;
+  isOwner: (userId: number) => boolean;
   buildMainKeyboard: (userId: number | undefined) => InlineKeyboard;
 }
 
@@ -720,9 +721,8 @@ export async function handleEstrategiasUserCallback(
 
   if (data.startsWith("estrategias_request_")) {
     const menuId = data.replace("estrategias_request_", "");
-    const ownerId = deps.getOwnerId();
     const createdBy = deps.getMenuCreatedBy?.(menuId);
-    if (userId === ownerId || createdBy === userId) {
+    if (deps.isOwner(userId) || createdBy === userId) {
       result = "Solo otros usuarios pueden solicitar esta estrategia.";
       keyboard = new InlineKeyboard().text("◀️ Volver a Tienda", "estrategias_tienda");
       return { result, keyboard };
@@ -747,8 +747,7 @@ export async function handleEstrategiasUserCallback(
   }
 
   if (data === "estrategias_visibility") {
-    const ownerId = deps.getOwnerId();
-    const isOwnerUser = ownerId !== null && userId === ownerId;
+    const isOwnerUser = deps.isOwner(userId);
     const list = isOwnerUser ? getCustomMenus() : getCustomMenusCreatedBy(userId);
     if (list.length === 0) {
       result = "🌐 *Visibilidad*\n\n_No tienes estrategias propias que puedas publicar._";
@@ -772,8 +771,7 @@ export async function handleEstrategiasUserCallback(
 
   if (data.startsWith("estrategias_visibility_toggle_")) {
     const menuId = data.replace("estrategias_visibility_toggle_", "");
-    const ownerId = deps.getOwnerId();
-    const isOwnerUser = ownerId !== null && userId === ownerId;
+    const isOwnerUser = deps.isOwner(userId);
     if (!canChangeVisibility(menuId, userId, isOwnerUser)) {
       result = "No puedes cambiar la visibilidad de esta estrategia.";
       keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar", "estrategias_manage");
@@ -800,12 +798,11 @@ export async function handleEstrategiasUserCallback(
     const allIds = getExtraMenuIds();
     const assignedSet = new Set(assignedIds);
     const createdSet = new Set(createdByMe.map((m) => m.id));
-    const ownerId = deps.getOwnerId();
-    const isOwnerUser = ownerId !== null && userId === ownerId;
+    const isOwnerUser = deps.isOwner(userId);
     const getIcon = (menuId: string): string => {
       const createdBy = deps.getMenuCreatedBy?.(menuId);
       if (isOwnerUser) {
-        if (createdBy === undefined || createdBy === 0 || createdBy === ownerId) return "👤 ";
+        if (createdBy === undefined || createdBy === 0 || deps.isOwner(createdBy)) return "👤 ";
         return "👥 ";
       }
       if (createdBy === userId) return "✏️ ";
@@ -856,8 +853,7 @@ export async function handleEstrategiasUserCallback(
   }
 
   if (data === "estrategias_delete") {
-    const ownerId = deps.getOwnerId();
-    const isOwnerUser = ownerId !== null && userId === ownerId;
+    const isOwnerUser = deps.isOwner(userId);
     const list = isOwnerUser
       ? getCustomMenus()
       : deps.getUserAssignedMenuIds(userId).filter((id) => deps.getExtraMenuIds().includes(id));
@@ -883,7 +879,7 @@ export async function handleEstrategiasUserCallback(
 
   if (data.startsWith("estrategias_delete_pick_")) {
     const menuId = data.replace("estrategias_delete_pick_", "");
-    const isOwnerUser = deps.getOwnerId() !== null && userId === deps.getOwnerId();
+    const isOwnerUser = deps.isOwner(userId);
     const canProceed = isOwnerUser
       ? canDeleteCustomMenu(menuId, userId, true)
       : deps.getUserAssignedMenuIds(userId).includes(menuId);
@@ -908,7 +904,7 @@ export async function handleEstrategiasUserCallback(
   if (data.startsWith("estrategias_delete_confirm_")) {
     const menuId = data.replace("estrategias_delete_confirm_", "");
     deletingMenuFlow.delete(userId);
-    const isOwnerUser = deps.getOwnerId() !== null && userId === deps.getOwnerId();
+    const isOwnerUser = deps.isOwner(userId);
     const canProceed = isOwnerUser
       ? canDeleteCustomMenu(menuId, userId, true)
       : deps.getUserAssignedMenuIds(userId).includes(menuId);

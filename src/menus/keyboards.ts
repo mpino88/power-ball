@@ -3,7 +3,7 @@
  */
 
 import { InlineKeyboard } from "grammy";
-import type { getOwnerId as GetOwnerId, getExtraMenus as GetExtraMenus } from "../user-config.js";
+import type { getOwnerId as GetOwnerId, isOwner as IsOwner, getExtraMenus as GetExtraMenus } from "../user-config.js";
 import type {
   getExtraMenuIds as GetExtraMenuIds,
   getExtraMenuLabel as GetExtraMenuLabel,
@@ -13,6 +13,7 @@ import type { GameMenu } from "./types.js";
 
 export interface MainKeyboardDeps {
   getOwnerId: typeof GetOwnerId;
+  isOwner: typeof IsOwner;
   getExtraMenus: (userId: number) => string[];
   getExtraMenuIds: typeof GetExtraMenuIds;
   getExtraMenuLabel: typeof GetExtraMenuLabel;
@@ -28,13 +29,13 @@ export interface MainKeyboardDeps {
 function getStrategyIcon(
   menuId: string,
   userId: number,
-  ownerId: number | null,
+  isOwnerFn: (id: number) => boolean,
   deps: MainKeyboardDeps
 ): string {
   const createdBy = deps.getMenuCreatedBy?.(menuId);
-  const isOwner = ownerId !== null && userId === ownerId;
+  const isOwner = isOwnerFn(userId);
   if (isOwner) {
-    if (createdBy === undefined || createdBy === 0 || createdBy === ownerId) return "👤 "; /* propia del dueño */
+    if (createdBy === undefined || createdBy === 0 || isOwnerFn(createdBy)) return "👤 "; /* propia del dueño */
     return "👥 "; /* creada por un usuario */
   }
   if (createdBy === userId) return "✏️ "; /* propia (creada por ti) */
@@ -63,16 +64,17 @@ export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboard
     .row()
     .text("🃏 Charada Cubana", "charada_open");
   const ownerId = deps.getOwnerId();
+  const uid = userId ?? 0;
   const extraIds = deps.getExtraMenuIds();
-  const userMenus = deps.getExtraMenus(userId ?? 0);
+  const userMenus = deps.getExtraMenus(uid);
   const showExtra = extraIds.filter((id) => {
     if (id === CONSENSUS_MENU_ID) return false;
     if (ownerId === null) return true;
-    if (userId === ownerId) return true;
+    if (deps.isOwner(uid)) return true;
     return userMenus.includes(id);
   });
   const hasConsensus = extraIds.includes(CONSENSUS_MENU_ID) && (
-    ownerId === null || userId === ownerId || userMenus.includes(CONSENSUS_MENU_ID)
+    ownerId === null || deps.isOwner(uid) || userMenus.includes(CONSENSUS_MENU_ID)
   );
   if (showExtra.length > 0) {
     kb.row().text("➕ Estrategias", ESTRATEGIAS_OPEN_CALLBACK);
@@ -80,13 +82,13 @@ export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboard
   if (hasConsensus) {
     kb.row().text("🤝 Consenso Multi-Estrategia", EXTRA_MENU_CALLBACK_PREFIX + CONSENSUS_MENU_ID);
   }
-  if (ownerId === null || userId !== ownerId) {
+  if (ownerId === null || !deps.isOwner(uid)) {
     kb.row().text("❓ Ayuda", "help");
-    if (ownerId !== null && userId !== ownerId) {
+    if (ownerId !== null && !deps.isOwner(uid)) {
       kb.row().text("📋 Cambiar plan", "cambiar_plan_open");
     }
   }
-  if (ownerId !== null && userId === ownerId) {
+  if (ownerId !== null && deps.isOwner(uid)) {
     kb.row().text("🔒 Seguridad", "security_open").text("🧪 Testing", "testing_open");
   }
   return kb;
@@ -102,7 +104,8 @@ export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboard
  */
 export function buildEstrategiasKeyboard(userId: number | undefined, deps: MainKeyboardDeps): InlineKeyboard {
   const ownerId = deps.getOwnerId();
-  const isOwnerUser = ownerId !== null && userId === ownerId;
+  const uid = userId ?? 0;
+  const isOwnerUser = deps.isOwner(uid);
   const extraIds = deps.getExtraMenuIds();
 
   // Both owner and regular users see only their assigned strategies.
@@ -111,15 +114,14 @@ export function buildEstrategiasKeyboard(userId: number | undefined, deps: MainK
   const showExtra = extraIds.filter((id) => {
     if (id === CONSENSUS_MENU_ID) return false;
     if (ownerId === null) return true;
-    return deps.getExtraMenus(userId ?? 0).includes(id);
+    return deps.getExtraMenus(uid).includes(id);
   });
 
   const kb = new InlineKeyboard();
-  const uid = userId ?? 0;
   for (const id of showExtra) {
     const label = deps.getExtraMenuLabel(id);
     if (label) {
-      const icon = getStrategyIcon(id, uid, ownerId, deps);
+      const icon = getStrategyIcon(id, uid, deps.isOwner, deps);
       const count = isOwnerUser ? (deps.getMenuSubscribers?.(id) ?? 0) : 0;
       const countSuffix = count > 0 ? ` 👤${count}` : "";
       kb.text(icon + label + countSuffix, EXTRA_MENU_CALLBACK_PREFIX + id).row();
