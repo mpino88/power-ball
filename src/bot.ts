@@ -1006,8 +1006,8 @@ bot.on("message:text", async (ctx) => {
   if (userId && consensusSession?.step === "waiting_count") {
     consensusSessionMap.delete(userId);
     const count = parseInt(text, 10);
-    if (Number.isNaN(count) || count < 1 || count > 20) {
-      await ctx.reply("❌ Número no válido (debe ser entre 1 y 20). Usa /start para volver.", {
+    if (Number.isNaN(count) || count < 1 || count > 50) {
+      await ctx.reply("❌ Número no válido (debe ser entre 1 y 50). Usa /start para volver.", {
         reply_markup: buildMainKb(userId),
       });
       return;
