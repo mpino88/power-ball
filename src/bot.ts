@@ -108,12 +108,14 @@ import {
 } from "./strategies/parle.js";
 import {
   runProgressiveAnalysis,
+  countDatesInRange,
   buildProgressiveContextKeyboard,
   buildProgressiveStrategyMessage,
   buildProgressiveStrategyKeyboard,
   buildProgressiveResultMessage,
   PROGRESSIVE_TOP_N,
   PROGRESSIVE_MAX_DATES,
+  PROGRESSIVE_WARN_THRESHOLD,
   type ProgressiveSession,
 } from "./strategies/progressive.js";
 import type { StrategyContext } from "./strategies/types.js";
@@ -1036,61 +1038,128 @@ bot.on("callback_query:data", async (ctx) => {
       }
     }
 
-    // Ejecutar análisis
-    if (data === "prog_run") {
+    // Solicitar ejecución → estima fechas, pide confirmación si es necesario
+    if (data === "prog_run" || data === "prog_confirm") {
       const session = progressiveSessionMap.get(userId);
-      if (session?.step === "strategies" && session.context && session.startDate && session.endDate) {
-        const strategyIds = [...session.selectedIds];
+      const validStep = session?.step === "strategies" || session?.step === "confirm";
+      if (validStep && session!.context && session!.startDate && session!.endDate) {
+        const strategyIds = [...session!.selectedIds];
         if (strategyIds.length < 2) {
           await ctx.answerCallbackQuery({ text: "⚠️ Selecciona al menos 2 estrategias." });
           return;
         }
 
-        await ctx.answerCallbackQuery({ text: "Iniciando análisis…" });
+        // Si venimos de "prog_run" (primer intento), calculamos cuántas fechas hay
+        if (data === "prog_run") {
+          await ctx.answerCallbackQuery();
+          const isP3 = session!.context!.mapSource === "p3";
+          const fullMap = isP3 ? await getP3Map() : (await getP4Map()) as DateDrawsMap;
+          const estimated = countDatesInRange(
+            fullMap, session!.startDate!, session!.endDate!, session!.context!
+          );
+          session!.estimatedDates = estimated;
 
-        // Mensaje de progreso editable
+          // Si supera el umbral de advertencia, pedimos confirmación
+          if (estimated > PROGRESSIVE_WARN_THRESHOLD) {
+            const capped = Math.min(estimated, PROGRESSIVE_MAX_DATES);
+            const secsEst = Math.ceil((capped * strategyIds.length * 2) / 1000);
+            session!.step = "confirm";
+            const mapLabel = session!.context!.mapSource === "p3" ? "P3" : "P4";
+            const periodLabel = session!.context!.period === "m" ? "☀️ Mediodía" : "🌙 Noche";
+            try {
+              await ctx.editMessageText(
+                `📈 *Análisis Progresivo* — ${mapLabel} · ${periodLabel}\n\n` +
+                  `📅 \`${session!.startDate}\` → \`${session!.endDate}\`\n` +
+                  `🔢 *${estimated}* fechas válidas en el rango` +
+                  (estimated > PROGRESSIVE_MAX_DATES
+                    ? ` _(se analizarán las primeras ${PROGRESSIVE_MAX_DATES})_`
+                    : ``) +
+                  `\n📊 ${strategyIds.length} estrategias · ${strategyIds.length} subconjuntos\n` +
+                  `⏱ Tiempo estimado: *~${secsEst} seg*\n\n` +
+                  `¿Confirmas el análisis?`,
+                {
+                  parse_mode: "Markdown",
+                  reply_markup: new InlineKeyboard()
+                    .text("✅ Confirmar", "prog_confirm")
+                    .text("❌ Cancelar", "prog_cancel"),
+                }
+              );
+            } catch (e) {
+              if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+            }
+            return;
+          }
+          // Por debajo del umbral: ejecuta directamente (no hace falta cargar fullMap de nuevo)
+          // prog_confirm se encargará de la ejecución
+          session!.step = "confirm";
+          // Fall-through: ejecutar de inmediato enviando la respuesta a prog_confirm
+        }
+
+        // Ejecutar (desde prog_confirm o desde prog_run < umbral)
+        await ctx.answerCallbackQuery({ text: "Iniciando análisis…" });
+        progressiveSessionMap.delete(userId);
+
+        const isP3 = session!.context!.mapSource === "p3";
+        const fullMap = isP3 ? await getP3Map() : (await getP4Map()) as DateDrawsMap;
+        const estimatedDates = session!.estimatedDates ?? 0;
+        const capped = Math.min(estimatedDates || PROGRESSIVE_MAX_DATES, PROGRESSIVE_MAX_DATES);
+
+        const mapLabelShort = session!.context!.mapSource === "p3" ? "P3" : "P4";
+        const periodLabelShort = session!.context!.period === "m" ? "☀️" : "🌙";
+
+        // Mensaje de progreso (editable)
         const progressMsg = await ctx.reply(
-          `⏳ *Analizando…*\n\n` +
-            `📊 ${strategyIds.length} estrategia${strategyIds.length !== 1 ? "s" : ""} · ` +
-            `${strategyIds.length} subconjunto${strategyIds.length !== 1 ? "s" : ""} cumulativos\n` +
-            `📅 \`${session.startDate}\` → \`${session.endDate}\`\n\n` +
-            `_Esto puede tardar unos segundos…_`,
+          `⏳ *Analizando…* ${mapLabelShort} · ${periodLabelShort}\n\n` +
+            `📅 \`${session!.startDate}\` → \`${session!.endDate}\`\n` +
+            `🔢 ${capped} fechas · ${strategyIds.length} estrategias · ${strategyIds.length} subconjuntos\n\n` +
+            `▓░░░░░░░░░  0%`,
           { parse_mode: "Markdown" }
         );
 
-        progressiveSessionMap.delete(userId);
+        const chatId = progressMsg.chat.id;
+        const msgId = progressMsg.message_id;
+
+        // Barra de progreso 10 bloques
+        const bar = (pct: number): string => {
+          const filled = Math.floor(pct / 10);
+          return "▓".repeat(filled) + "░".repeat(10 - filled) + `  ${pct}%`;
+        };
 
         try {
-          const isP3 = session.context.mapSource === "p3";
-          const fullMap = isP3 ? await getP3Map() : (await getP4Map()) as DateDrawsMap;
-
           const result = await runProgressiveAnalysis({
-            startDate: session.startDate,
-            endDate: session.endDate,
+            startDate: session!.startDate!,
+            endDate: session!.endDate!,
             strategyIds,
-            context: session.context,
+            context: session!.context!,
             topN: PROGRESSIVE_TOP_N,
             fullMap,
             getStrategy,
+            onProgress: async (pct) => {
+              try {
+                await ctx.api.editMessageText(
+                  chatId,
+                  msgId,
+                  `⏳ *Analizando…* ${mapLabelShort} · ${periodLabelShort}\n\n` +
+                    `📅 \`${session!.startDate}\` → \`${session!.endDate}\`\n` +
+                    `🔢 ${capped} fechas · ${strategyIds.length} estrategias\n\n` +
+                    `${bar(pct)}`,
+                  { parse_mode: "Markdown" }
+                );
+              } catch { /* ignorar errores de rate limit en actualizaciones de progreso */ }
+            },
           });
 
           const strategyLabels = strategyIds.map((id) => STRATEGY_LABEL_BY_ID.get(id) ?? id);
-
           const resultMsg = buildProgressiveResultMessage(result, strategyLabels);
 
-          await ctx.api.editMessageText(
-            progressMsg.chat.id,
-            progressMsg.message_id,
-            resultMsg,
-            { parse_mode: "Markdown" }
-          );
+          await ctx.api.editMessageText(chatId, msgId, resultMsg, { parse_mode: "Markdown" });
         } catch (err) {
           console.error("[progressive] Error:", err);
-          await ctx.api.editMessageText(
-            progressMsg.chat.id,
-            progressMsg.message_id,
-            "❌ Error al ejecutar el análisis progresivo. Revisa los logs."
-          );
+          try {
+            await ctx.api.editMessageText(
+              chatId, msgId, "❌ Error al ejecutar el análisis progresivo. Revisa los logs."
+            );
+          } catch { /* ignore */ }
         }
         return;
       }

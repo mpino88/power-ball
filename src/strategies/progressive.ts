@@ -23,8 +23,18 @@ import { CONSENSUS_GROUPS } from "./consensus-multi.js";
 /** Número de candidatos del top a verificar por defecto. */
 export const PROGRESSIVE_TOP_N = 10;
 
-/** Cap de seguridad: máximo de fechas de corte a iterar. */
-export const PROGRESSIVE_MAX_DATES = 500;
+/**
+ * Cap de seguridad: máximo de fechas de corte a iterar.
+ * ~365 sorteos/año × periodo (M ó E) → 2500 cubre ~6-7 años de datos diarios.
+ * Si el rango supera este límite, se analiza solo el primer tramo y se notifica.
+ */
+export const PROGRESSIVE_MAX_DATES = 2500;
+
+/**
+ * Umbral a partir del cual se muestra una advertencia de tiempo estimado antes de
+ * confirmar la ejecución. Por debajo de este umbral se lanza directamente.
+ */
+export const PROGRESSIVE_WARN_THRESHOLD = 400;
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -45,17 +55,21 @@ export interface ProgressiveResult {
   context: StrategyContext;
   startDate: string;
   endDate: string;
-  /** Fechas de corte efectivamente iteradas. */
+  /** Fechas de corte efectivamente iteradas (≤ PROGRESSIVE_MAX_DATES). */
   datesAnalyzed: number;
+  /** Total de fechas válidas en el rango ANTES del cap — para informar al usuario. */
+  totalInRange: number;
   topN: number;
 }
 
 export interface ProgressiveSession {
-  step: "context" | "start_date" | "end_date" | "strategies";
+  step: "context" | "start_date" | "end_date" | "strategies" | "confirm";
   context?: StrategyContext;
   startDate?: string;
   endDate?: string;
   selectedIds: Set<string>;
+  /** Número de fechas válidas en el rango (calculado al confirmar). */
+  estimatedDates?: number;
 }
 
 export interface ProgressiveParams {
@@ -67,6 +81,35 @@ export interface ProgressiveParams {
   topN: number;
   fullMap: DateDrawsMap;
   getStrategy: (id: string) => StrategyDefinition | undefined;
+  /**
+   * Callback de progreso: recibe el porcentaje completado (0-100).
+   * Se invoca cada 10% para permitir actualizar la UI sin saturar la API.
+   */
+  onProgress?: (pct: number) => Promise<void>;
+}
+
+/**
+ * Calcula cuántas fechas válidas hay en el rango antes de correr el análisis.
+ * Útil para estimar tiempo y pedir confirmación al usuario.
+ */
+export function countDatesInRange(
+  fullMap: DateDrawsMap,
+  startDate: string,
+  endDate: string,
+  context: StrategyContext
+): number {
+  const startDt = mmddyyToDate(startDate);
+  const endDt = mmddyyToDate(endDate);
+  if (!startDt || !endDt) return 0;
+  const startTime = startDt.getTime();
+  const endTime = endDt.getTime();
+  const minLen = context.mapSource === "p4" ? 4 : 3;
+  return Object.keys(fullMap).filter((k) => {
+    const t = mmddyyToDate(k)?.getTime() ?? 0;
+    if (t < startTime || t > endTime) return false;
+    const draw = fullMap[k]?.[context.period];
+    return draw != null && draw.length >= minLen;
+  }).length;
 }
 
 // ── Motor ─────────────────────────────────────────────────────────────────────
@@ -87,7 +130,7 @@ function topNSet(votes: Map<number, number>, topN: number): Set<number> {
 export async function runProgressiveAnalysis(
   params: ProgressiveParams
 ): Promise<ProgressiveResult> {
-  const { startDate, endDate, strategyIds, context, topN, fullMap, getStrategy } = params;
+  const { startDate, endDate, strategyIds, context, topN, fullMap, getStrategy, onProgress } = params;
 
   const startDt = mmddyyToDate(startDate);
   const endDt = mmddyyToDate(endDate);
@@ -116,9 +159,11 @@ export async function runProgressiveAnalysis(
   const validIdx = new Map<string, number>(allValidDates.map((d, i) => [d, i]));
 
   // ── Paso 3: Fechas de corte a iterar ────────────────────────────────────
-  const cutoffDates = allValidDates
-    .filter((d) => { const t = keyTime.get(d)!; return t >= startTime && t <= endTime; })
-    .slice(0, PROGRESSIVE_MAX_DATES);
+  const datesInRange = allValidDates.filter(
+    (d) => { const t = keyTime.get(d)!; return t >= startTime && t <= endTime; }
+  );
+  const totalInRange = datesInRange.length;
+  const cutoffDates = datesInRange.slice(0, PROGRESSIVE_MAX_DATES);
 
   // ── Paso 4: Mapa filtrado INCREMENTAL ───────────────────────────────────
   // En lugar de reconstruir el mapa completo en cada iteración (O(m×N)),
@@ -142,6 +187,10 @@ export async function runProgressiveAnalysis(
   }));
 
   // ── Loop principal ───────────────────────────────────────────────────────
+  const total = cutoffDates.length;
+  let processed = 0;
+  let lastReportedPct = -1;
+
   for (const cutoffDate of cutoffDates) {
     const cutoffTime = keyTime.get(cutoffDate)!;
 
@@ -186,6 +235,16 @@ export async function runProgressiveAnalysis(
       const top = topNSet(votes, topN);
       if (actuals.some((a) => top.has(a))) { subset.hits++; } else { subset.misses++; }
     }
+
+    processed++;
+    if (onProgress && total > 0) {
+      const pct = Math.floor((processed / total) * 100);
+      // Notifica cada 10% para no saturar la API de Telegram
+      if (pct >= lastReportedPct + 10) {
+        lastReportedPct = pct;
+        await onProgress(pct);
+      }
+    }
   }
 
   for (const s of subsets) {
@@ -193,7 +252,7 @@ export async function runProgressiveAnalysis(
     s.hitRate = tot > 0 ? s.hits / tot : 0;
   }
 
-  return { subsets, context, startDate, endDate, datesAnalyzed: cutoffDates.length, topN };
+  return { subsets, context, startDate, endDate, datesAnalyzed: cutoffDates.length, totalInRange, topN };
 }
 
 // ── Mensajes y teclados ───────────────────────────────────────────────────────
@@ -308,10 +367,15 @@ export function buildProgressiveResultMessage(
   const periodLabel = result.context.period === "m" ? "☀️ Mediodía" : "🌙 Noche";
   const mapLabel = result.context.mapSource === "p3" ? "P3 (Fijos)" : "P4 (Corridos)";
 
+  const cappedNote =
+    result.totalInRange > result.datesAnalyzed
+      ? ` _(${result.datesAnalyzed} de ${result.totalInRange} en el rango)_`
+      : ``;
+
   const lines: string[] = [
     `📊 *Análisis Progresivo* — ${mapLabel} · ${periodLabel}`,
     `📅 \`${result.startDate}\` → \`${result.endDate}\``,
-    `🔢 *${result.datesAnalyzed}* fechas · Top *${result.topN}* candidatos`,
+    `🔢 *${result.datesAnalyzed}* fechas analizadas${cappedNote} · Top *${result.topN}*`,
     ``,
     `*Leyenda:*`,
   ];
@@ -346,8 +410,12 @@ export function buildProgressiveResultMessage(
     }
   }
 
-  if (result.datesAnalyzed >= PROGRESSIVE_MAX_DATES) {
-    lines.push(``, `_⚠️ Limitado a ${PROGRESSIVE_MAX_DATES} fechas de corte._`);
+  if (result.totalInRange > result.datesAnalyzed) {
+    lines.push(
+      ``,
+      `_⚠️ Se analizaron las primeras ${result.datesAnalyzed} fechas del rango ` +
+        `(cap de ${PROGRESSIVE_MAX_DATES}). Ajusta el rango para analizar el resto._`
+    );
   }
 
   const full = lines.join("\n");
