@@ -167,6 +167,17 @@ const parleConsensusCache = new Map<number, { nums: number[]; context: StrategyC
 const progressiveSessionMap = new Map<number, ProgressiveSession>();
 
 /**
+ * Retorna los IDs de estrategias seleccionables en Consenso Multi-Estrategia
+ * filtrados por los menús que el usuario tiene activos (plan + asignados).
+ * Los owners ven todas las estrategias registradas.
+ */
+function getAccessibleStrategyIds(userId: number): string[] {
+  const all = getConsensusSelectableIds();
+  const userMenus = new Set(getExtraMenus(userId));
+  return all.filter((id) => userMenus.has(id));
+}
+
+/**
  * Usuarios esperando ingreso de texto para el análisis progresivo.
  * "start" = esperando fecha inicial, "end" = esperando fecha final.
  */
@@ -781,7 +792,7 @@ bot.on("callback_query:data", async (ctx) => {
             selectedIds: new Set(),
             step: "selecting",
           });
-          const selectableIds = getConsensusSelectableIds();
+          const selectableIds = getAccessibleStrategyIds(userId);
           const emptySet = new Set<string>();
           const msg = buildConsensusSelectionMessage(emptySet, parsed.context, selectableIds);
           const kb = buildConsensusSelectionKeyboard(emptySet, parsed.context, selectableIds);
@@ -934,7 +945,7 @@ bot.on("callback_query:data", async (ctx) => {
       const session = progressiveSessionMap.get(userId);
       if (session?.step === "strategies") {
         const stratId = data.slice("prog_st_".length);
-        const selectableIds = getConsensusSelectableIds();
+        const selectableIds = getAccessibleStrategyIds(userId);
         if (selectableIds.includes(stratId)) {
           if (session.selectedIds.has(stratId)) {
             session.selectedIds.delete(stratId);
@@ -967,7 +978,7 @@ bot.on("callback_query:data", async (ctx) => {
         const groupId = data.slice("prog_g_".length);
         const group = CONSENSUS_GROUPS.find((g) => g.id === groupId);
         if (group) {
-          const selectableIds = getConsensusSelectableIds();
+          const selectableIds = getAccessibleStrategyIds(userId);
           const groupSelectable = group.ids.filter((id) => selectableIds.includes(id));
           session.selectedIds = new Set(groupSelectable);
           await ctx.answerCallbackQuery({
@@ -995,7 +1006,7 @@ bot.on("callback_query:data", async (ctx) => {
     if (data === "prog_all") {
       const session = progressiveSessionMap.get(userId);
       if (session?.step === "strategies") {
-        const selectableIds = getConsensusSelectableIds();
+        const selectableIds = getAccessibleStrategyIds(userId);
         session.selectedIds = new Set(selectableIds);
         await ctx.answerCallbackQuery({ text: `${selectableIds.length} estrategias seleccionadas` });
         const msg = buildProgressiveStrategyMessage(
@@ -1021,7 +1032,7 @@ bot.on("callback_query:data", async (ctx) => {
       if (session?.step === "strategies") {
         session.selectedIds = new Set();
         await ctx.answerCallbackQuery({ text: "Selección limpiada" });
-        const selectableIds = getConsensusSelectableIds();
+        const selectableIds = getAccessibleStrategyIds(userId);
         const msg = buildProgressiveStrategyMessage(
           session.selectedIds,
           session.context!,
@@ -1233,14 +1244,14 @@ bot.on("callback_query:data", async (ctx) => {
     const userId = ctx.from.id;
     const session = consensusSessionMap.get(userId);
     const stratId = data.slice("cns_t_".length);
-    if (session && session.step === "selecting" && getConsensusSelectableIds().includes(stratId)) {
+    if (session && session.step === "selecting" && getAccessibleStrategyIds(userId).includes(stratId)) {
       if (session.selectedIds.has(stratId)) {
         session.selectedIds.delete(stratId);
       } else {
         session.selectedIds.add(stratId);
       }
       await ctx.answerCallbackQuery();
-      const selectableIds = getConsensusSelectableIds();
+      const selectableIds = getAccessibleStrategyIds(userId);
       const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds);
       const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds);
       try {
@@ -1260,7 +1271,7 @@ bot.on("callback_query:data", async (ctx) => {
       const groupId = data.slice("cns_g_".length);
       const group = CONSENSUS_GROUPS.find((g) => g.id === groupId);
       if (group) {
-        const selectableIds = getConsensusSelectableIds();
+        const selectableIds = getAccessibleStrategyIds(userId);
         // Reemplaza la selección actual con las estrategias del grupo (solo las seleccionables)
         const groupSelectable = group.ids.filter((id) => selectableIds.includes(id));
         session.selectedIds = new Set(groupSelectable);
@@ -1284,7 +1295,7 @@ bot.on("callback_query:data", async (ctx) => {
     const userId = ctx.from.id;
     const session = consensusSessionMap.get(userId);
     if (session && session.step === "selecting") {
-      const selectableIds = getConsensusSelectableIds();
+      const selectableIds = getAccessibleStrategyIds(userId);
       session.selectedIds = new Set(selectableIds);
       await ctx.answerCallbackQuery({ text: `${selectableIds.length} estrategias seleccionadas` });
       const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds);
@@ -1305,7 +1316,7 @@ bot.on("callback_query:data", async (ctx) => {
     if (session && session.step === "selecting") {
       session.selectedIds = new Set();
       await ctx.answerCallbackQuery({ text: "Selección limpiada" });
-      const selectableIds = getConsensusSelectableIds();
+      const selectableIds = getAccessibleStrategyIds(userId);
       const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds);
       const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds);
       try {
@@ -1584,7 +1595,7 @@ bot.on("message:text", async (ctx) => {
       session.step = "strategies";
       waitingProgressiveDate.delete(userId);
 
-      const selectableIds = getConsensusSelectableIds();
+      const selectableIds = getAccessibleStrategyIds(userId);
       const msg = buildProgressiveStrategyMessage(
         session.selectedIds,
         session.context!,
