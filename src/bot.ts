@@ -100,6 +100,12 @@ import {
   buildConsensusSelectionMessage,
   CONSENSUS_GROUPS,
 } from "./strategies/consensus-multi.js";
+import {
+  buildParleMessage,
+  buildParleCallback,
+  parseParleCallback,
+  PARLE_CNS_CALLBACK,
+} from "./strategies/parle.js";
 import type { StrategyContext } from "./strategies/types.js";
 import {
   buildCharadaMenuKeyboard,
@@ -137,6 +143,12 @@ const consensusSessionMap = new Map<number, ConsensusSession>();
 
 /** Usuarios que están esperando introducir una búsqueda en la Charada. */
 const waitingCharadaSearch = new Map<number, true>();
+
+/**
+ * Caché de números para el parlé del Consenso Multi-Estrategia.
+ * Se sobrescribe en cada resultado de consenso; expira al calcular uno nuevo.
+ */
+const parleConsensusCache = new Map<number, { nums: number[]; context: StrategyContext }>();
 
 /**
  * Caché de la fecha de corte de testing (5 min).
@@ -765,9 +777,21 @@ bot.on("callback_query:data", async (ctx) => {
             getP3Map: () => getStrategyP3Map(userId),
             getP4Map: () => getStrategyP4Map(userId),
           });
+          // Añade "Hacer parlé" si la estrategia tiene getCandidates
+          const stratDef = getStrategy(parsed.menuId);
+          const resultKb = new InlineKeyboard();
+          if (stratDef?.getCandidates) {
+            const parleCallback = buildParleCallback(
+              parsed.menuId,
+              parsed.context.mapSource,
+              parsed.context.period
+            );
+            resultKb.text("🎰 Hacer parlé", parleCallback).row();
+          }
+          resultKb.text("◀️ Volver", "volver");
           await ctx.editMessageText(msg, {
             parse_mode: "Markdown",
-            reply_markup: new InlineKeyboard().text("◀️ Volver", "volver"),
+            reply_markup: resultKb,
           });
           // Verificación testing: solo para dueños con fecha de corte activa
           if (userId && isOwner(userId)) {
@@ -805,6 +829,63 @@ bot.on("callback_query:data", async (ctx) => {
         }
         return;
       }
+    }
+  }
+
+  // ── Parlé: combinaciones de 2 sin repetición ──────────────────────────────
+  if (data === PARLE_CNS_CALLBACK && ctx.from) {
+    const userId = ctx.from.id;
+    const cached = parleConsensusCache.get(userId);
+    if (!cached) {
+      await ctx.answerCallbackQuery({ text: "⚠️ Sin resultado de consenso reciente." });
+      return;
+    }
+    await ctx.answerCallbackQuery({ text: "Generando parlés…" });
+    const parleMsg = buildParleMessage(cached.nums, "Consenso Multi-Estrategia", cached.context);
+    await ctx.reply(parleMsg, {
+      parse_mode: "Markdown",
+      reply_markup: new InlineKeyboard().text("🏠 Inicio", "volver"),
+    });
+    return;
+  }
+
+  if (data.startsWith("parle_") && ctx.from) {
+    const userId = ctx.from.id;
+    const parsed = parseParleCallback(data);
+    if (parsed) {
+      const strat = getStrategy(parsed.menuId);
+      if (!strat?.getCandidates) {
+        await ctx.answerCallbackQuery({ text: "Esta estrategia no soporta parlé." });
+        return;
+      }
+      await ctx.answerCallbackQuery({ text: "Generando parlés…" });
+      try {
+        const isP3 = parsed.context.mapSource === "p3";
+        const filteredMap = isP3
+          ? await getStrategyP3Map(userId)
+          : await getStrategyP4Map(userId);
+        const candidates = await strat.getCandidates(parsed.context, filteredMap);
+        if (candidates.length < 2) {
+          await ctx.reply(
+            "⚠️ No hay suficientes candidatos para generar combinaciones parlé.",
+            { reply_markup: new InlineKeyboard().text("◀️ Volver", "volver") }
+          );
+          return;
+        }
+        const stratLabel =
+          BUILT_IN_STRATEGIES.find((s) => s.id === parsed.menuId)?.label ?? parsed.menuId;
+        const parleMsg = buildParleMessage(candidates, stratLabel, parsed.context);
+        await ctx.reply(parleMsg, {
+          parse_mode: "Markdown",
+          reply_markup: new InlineKeyboard().text("◀️ Volver", "volver"),
+        });
+      } catch (err) {
+        console.error("[parle] Error:", err);
+        await ctx.reply("❌ Error al generar las combinaciones parlé.", {
+          reply_markup: new InlineKeyboard().text("◀️ Volver", "volver"),
+        });
+      }
+      return;
     }
   }
 
@@ -1149,7 +1230,16 @@ bot.on("message:text", async (ctx) => {
         map,
         getStrategy
       );
-      await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: buildMainKb(userId) });
+      // Guarda los números del consenso para el botón "Hacer parlé"
+      if (rankedNums.length >= 2) {
+        parleConsensusCache.set(userId, { nums: rankedNums, context: consensusSession.context });
+      }
+      const consensusKb = new InlineKeyboard();
+      if (rankedNums.length >= 2) {
+        consensusKb.text("🎰 Hacer parlé", PARLE_CNS_CALLBACK).row();
+      }
+      consensusKb.text("🏠 Inicio", "volver");
+      await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: consensusKb });
       // Verificación testing: solo para dueños con fecha de corte activa
       if (isOwner(userId)) {
         const cutoff = await getTestingCutoff();
