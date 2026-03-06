@@ -119,7 +119,7 @@ export async function handleSecurityCallback(
     keyboard = buildSecurityKeyboard();
   } else if (data === "security_main") {
     clearAllFlows(ctx.from.id);
-    result = "👋 Elige juego y luego el período:";
+    result = "🎰 *Florida Lottery* — Pick 3 y Pick 4\n\nSelecciona una opción del menú:";
     keyboard = deps.buildMainKeyboard(ctx.from.id);
   } else if (data === "admin_list") {
     await reloadConfigFromStorage();

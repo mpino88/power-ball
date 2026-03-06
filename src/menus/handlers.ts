@@ -92,14 +92,14 @@ export async function handleMenuCallback(
 
   if (data === "volver") {
     return {
-      result: "👋 Elige juego y luego el período:",
+      result: "🎰 *Florida Lottery* — Pick 3 y Pick 4\n\nSelecciona una opción del menú:",
       keyboard: mainKb(),
     };
   }
 
   if (data === CONSULTAR_DATOS_CALLBACK) {
     return {
-      result: "🔎 *Consultar Datos*\n\nElige qué deseas consultar:",
+      result: "👋 Resultados Fijo (P3) y Corrido (P4) de Florida Lottery.\n\nElige juego y luego el período:",
       keyboard: buildConsultarDatosKeyboard(),
     };
   }
