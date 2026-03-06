@@ -7,6 +7,7 @@
  */
 
 import { InlineKeyboard } from "grammy";
+import { CONSULTAR_DATOS_CALLBACK } from "./menus/keyboards.js";
 
 // ─── Datos ───────────────────────────────────────────────────────────────────
 // Clave: número 0-99 (0 = 00 = charada 100)
@@ -225,7 +226,7 @@ export function buildCharadaMenuKeyboard(): InlineKeyboard {
     .text("📋 Catálogo", "charada_cat_0")
     .text("🔍 Buscar", "charada_buscar")
     .row()
-    .text("◀️ Volver", "volver");
+    .text("◀️ Volver", CONSULTAR_DATOS_CALLBACK);
 }
 
 /** Teclado de navegación del catálogo paginado. */

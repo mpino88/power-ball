@@ -9,10 +9,12 @@ import type { GameMenu } from "./types.js";
 import {
   buildMainKeyboard,
   buildSubmenuKeyboard,
+  buildConsultarDatosKeyboard,
   buildEstadisticasKeyboard,
   buildIndividualPeriodKeyboard,
   buildDiasDiferenciaKeyboard,
   buildDiasDiferenciaKeyboardIndividual,
+  CONSULTAR_DATOS_CALLBACK,
   type MainKeyboardDeps,
 } from "./keyboards.js";
 
@@ -95,6 +97,13 @@ export async function handleMenuCallback(
     };
   }
 
+  if (data === CONSULTAR_DATOS_CALLBACK) {
+    return {
+      result: "🔎 *Consultar Datos*\n\nElige qué deseas consultar:",
+      keyboard: buildConsultarDatosKeyboard(),
+    };
+  }
+
   if (data === "menu_fijo") {
     return {
       result: "🎯 *Fijo* (P3)\n\nElige período (☀️ Mediodía y 🌙 Noche):",
@@ -123,7 +132,7 @@ export async function handleMenuCallback(
         .url("🎯 Fijos (P3)", P3_PDF)
         .url("🎲 Corridos (P4)", P4_PDF)
         .row()
-        .text("◀️ Volver", "volver"),
+        .text("◀️ Volver", CONSULTAR_DATOS_CALLBACK),
     };
   }
 

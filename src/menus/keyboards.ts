@@ -51,10 +51,12 @@ function getStrategyIcon(
 /** Callback al pulsar "➕ Estrategias": abre el submenú de estrategias. */
 export const ESTRATEGIAS_OPEN_CALLBACK = "estrategias_open";
 
-const CONSENSUS_MENU_ID = "consensus_multi";
+/** Callback al pulsar "Consultar Datos": abre el submenú de consulta. */
+export const CONSULTAR_DATOS_CALLBACK = "consultar_datos_open";
 
-export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboardDeps): InlineKeyboard {
-  const kb = new InlineKeyboard()
+/** Submenú "Consultar Datos" con las 5 opciones de consulta. */
+export function buildConsultarDatosKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
     .text("🎯 Fijo (P3)", "menu_fijo")
     .text("🎲 Corrido (P4)", "menu_corrido")
     .row()
@@ -62,7 +64,16 @@ export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboard
     .row()
     .text("📚 Base de datos", "menu_basedatos")
     .row()
-    .text("🃏 Charada Cubana", "charada_open");
+    .text("🃏 Charada Cubana", "charada_open")
+    .row()
+    .text("◀️ Volver", "volver");
+}
+
+const CONSENSUS_MENU_ID = "consensus_multi";
+
+export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboardDeps): InlineKeyboard {
+  const kb = new InlineKeyboard()
+    .text("🔎 Consultar Datos", CONSULTAR_DATOS_CALLBACK);
   const ownerId = deps.getOwnerId();
   const uid = userId ?? 0;
   const extraIds = deps.getExtraMenuIds();
@@ -148,7 +159,7 @@ export function buildSubmenuKeyboard(game: GameMenu): InlineKeyboard {
     .row()
     .text("📅 Escoger fecha", `${prefix}_fecha`)
     .row()
-    .text("◀️ Volver", "volver");
+    .text("◀️ Volver", CONSULTAR_DATOS_CALLBACK);
 }
 
 export function buildEstadisticasKeyboard(threshold: number): InlineKeyboard {
