@@ -911,7 +911,7 @@ bot.on("callback_query:data", async (ctx) => {
       try {
         await ctx.editMessageText(
           `✅ *${count} estrategia${count > 1 ? "s" : ""} seleccionada${count > 1 ? "s" : ""}*\n\n` +
-            `¿Cuántos resultados quieres ver?\nEnvía un número del *1 al 20*.\n\n_Usa /cancel para cancelar._`,
+            `¿Cuántos resultados quieres ver?\nEnvía un número del *1 al 50*.\n\n_Usa /cancel para cancelar._`,
           {
             parse_mode: "Markdown",
             reply_markup: new InlineKeyboard().text("❌ Cancelar", "cns_x"),
