@@ -92,7 +92,7 @@ import {
   getStrategy,
   getConsensusSelectableIds,
 } from "./strategies/index.js";
-import { filterMapByCutoff, getNextDrawResult, buildTestingVerificationBlock } from "./strategies/utils.js";
+import { filterMapByCutoff, getNextDrawResult, buildTestingVerificationBlock, mmddyyToDate } from "./strategies/utils.js";
 import { STRATEGY_CONTEXT_CALLBACK_PREFIX } from "./strategies/types.js";
 import {
   runConsensusAggregation,
@@ -106,6 +106,16 @@ import {
   parseParleCallback,
   PARLE_CNS_CALLBACK,
 } from "./strategies/parle.js";
+import {
+  runProgressiveAnalysis,
+  buildProgressiveContextKeyboard,
+  buildProgressiveStrategyMessage,
+  buildProgressiveStrategyKeyboard,
+  buildProgressiveResultMessage,
+  PROGRESSIVE_TOP_N,
+  PROGRESSIVE_MAX_DATES,
+  type ProgressiveSession,
+} from "./strategies/progressive.js";
 import type { StrategyContext } from "./strategies/types.js";
 import {
   buildCharadaMenuKeyboard,
@@ -149,6 +159,15 @@ const waitingCharadaSearch = new Map<number, true>();
  * Se sobrescribe en cada resultado de consenso; expira al calcular uno nuevo.
  */
 const parleConsensusCache = new Map<number, { nums: number[]; context: StrategyContext }>();
+
+/** Sesiones activas del Análisis Progresivo (solo para el dueño del bot). */
+const progressiveSessionMap = new Map<number, ProgressiveSession>();
+
+/**
+ * Usuarios esperando ingreso de texto para el análisis progresivo.
+ * "start" = esperando fecha inicial, "end" = esperando fecha final.
+ */
+const waitingProgressiveDate = new Map<number, "start" | "end">();
 
 /**
  * Caché de la fecha de corte de testing (5 min).
@@ -411,6 +430,9 @@ const BUILT_IN_STRATEGIES: Array<{ id: string; label: string; description: strin
       "Cruza los candidatos de varias estrategias y devuelve los N números con mayor respaldo estadístico cruzado.",
   },
 ];
+
+/** Índice O(1) para obtener el label de cualquier estrategia por id. */
+const STRATEGY_LABEL_BY_ID = new Map(BUILT_IN_STRATEGIES.map((s) => [s.id, s.label]));
 
 /**
  * IDs de los menús "integrados" (no están en customMenus / Sheet de Estrategias,
@@ -832,6 +854,249 @@ bot.on("callback_query:data", async (ctx) => {
     }
   }
 
+  // ── Análisis Progresivo ────────────────────────────────────────────────────
+  if (data.startsWith("prog_") && ctx.from && isOwner(ctx.from.id)) {
+    const userId = ctx.from.id;
+
+    // Cancelar en cualquier momento
+    if (data === "prog_cancel") {
+      progressiveSessionMap.delete(userId);
+      waitingProgressiveDate.delete(userId);
+      await ctx.answerCallbackQuery({ text: "Cancelado" });
+      const current = await loadTestingCutoffDate();
+      try {
+        await ctx.editMessageText(buildTestingMessage(current), {
+          parse_mode: "Markdown",
+          reply_markup: buildTestingKeyboard(current),
+        });
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
+
+    // Abrir menú progresivo desde Testing
+    if (data === "prog_open") {
+      progressiveSessionMap.set(userId, { step: "context", selectedIds: new Set() });
+      await ctx.answerCallbackQuery();
+      try {
+        await ctx.editMessageText(
+          `📈 *Análisis Progresivo*\n\n` +
+            `_Back-testing iterativo: recorre un rango de fechas y mide cuántas veces cada combinación de estrategias acierta el siguiente sorteo._\n\n` +
+            `Elige el tipo de datos a analizar:`,
+          { parse_mode: "Markdown", reply_markup: buildProgressiveContextKeyboard() }
+        );
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
+
+    // Selección de contexto (P3/P4 · M/E)
+    if (data.startsWith("prog_ctx_")) {
+      const parts = data.slice("prog_ctx_".length).split("_");
+      const mapSource = parts[0] as "p3" | "p4";
+      const period = parts[1] as "m" | "e";
+      if ((mapSource === "p3" || mapSource === "p4") && (period === "m" || period === "e")) {
+        const session = progressiveSessionMap.get(userId) ?? { step: "context" as const, selectedIds: new Set<string>() };
+        session.context = { mapSource, period };
+        session.step = "start_date";
+        progressiveSessionMap.set(userId, session);
+        waitingProgressiveDate.set(userId, "start");
+
+        const mapLabel = mapSource === "p3" ? "P3 (Fijos)" : "P4 (Corridos)";
+        const periodLabel = period === "m" ? "☀️ Mediodía" : "🌙 Noche";
+        await ctx.answerCallbackQuery();
+        try {
+          await ctx.editMessageText(
+            `📈 *Análisis Progresivo* — ${mapLabel} · ${periodLabel}\n\n` +
+              `📅 Ingresa la *fecha inicial* (primer corte a analizar).\n` +
+              `Formato: \`MM/DD/YY\` _(ej: \`01/01/25\`)_\n\n` +
+              `_El análisis usará datos hasta esa fecha inclusive y verificará el siguiente sorteo real._\n\n` +
+              `_/cancel para cancelar._`,
+            {
+              parse_mode: "Markdown",
+              reply_markup: new InlineKeyboard().text("❌ Cancelar", "prog_cancel"),
+            }
+          );
+        } catch (e) {
+          if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+        }
+        return;
+      }
+    }
+
+    // Toggle de estrategia individual
+    if (data.startsWith("prog_st_")) {
+      const session = progressiveSessionMap.get(userId);
+      if (session?.step === "strategies") {
+        const stratId = data.slice("prog_st_".length);
+        const selectableIds = getConsensusSelectableIds();
+        if (selectableIds.includes(stratId)) {
+          if (session.selectedIds.has(stratId)) {
+            session.selectedIds.delete(stratId);
+          } else {
+            session.selectedIds.add(stratId);
+          }
+          await ctx.answerCallbackQuery();
+          const msg = buildProgressiveStrategyMessage(
+            session.selectedIds,
+            session.context!,
+            selectableIds,
+            session.startDate!,
+            session.endDate!
+          );
+          const kb = buildProgressiveStrategyKeyboard(session.selectedIds, selectableIds);
+          try {
+            await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
+          } catch (e) {
+            if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+          }
+          return;
+        }
+      }
+    }
+
+    // Cargar grupo predefinido
+    if (data.startsWith("prog_g_")) {
+      const session = progressiveSessionMap.get(userId);
+      if (session?.step === "strategies") {
+        const groupId = data.slice("prog_g_".length);
+        const group = CONSENSUS_GROUPS.find((g) => g.id === groupId);
+        if (group) {
+          const selectableIds = getConsensusSelectableIds();
+          const groupSelectable = group.ids.filter((id) => selectableIds.includes(id));
+          session.selectedIds = new Set(groupSelectable);
+          await ctx.answerCallbackQuery({
+            text: `Grupo ${groupId.toUpperCase()} cargado (${groupSelectable.length} estrategias)`,
+          });
+          const msg = buildProgressiveStrategyMessage(
+            session.selectedIds,
+            session.context!,
+            selectableIds,
+            session.startDate!,
+            session.endDate!
+          );
+          const kb = buildProgressiveStrategyKeyboard(session.selectedIds, selectableIds);
+          try {
+            await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
+          } catch (e) {
+            if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+          }
+          return;
+        }
+      }
+    }
+
+    // Seleccionar todas
+    if (data === "prog_all") {
+      const session = progressiveSessionMap.get(userId);
+      if (session?.step === "strategies") {
+        const selectableIds = getConsensusSelectableIds();
+        session.selectedIds = new Set(selectableIds);
+        await ctx.answerCallbackQuery({ text: `${selectableIds.length} estrategias seleccionadas` });
+        const msg = buildProgressiveStrategyMessage(
+          session.selectedIds,
+          session.context!,
+          selectableIds,
+          session.startDate!,
+          session.endDate!
+        );
+        const kb = buildProgressiveStrategyKeyboard(session.selectedIds, selectableIds);
+        try {
+          await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
+        } catch (e) {
+          if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+        }
+        return;
+      }
+    }
+
+    // Limpiar selección
+    if (data === "prog_none") {
+      const session = progressiveSessionMap.get(userId);
+      if (session?.step === "strategies") {
+        session.selectedIds = new Set();
+        await ctx.answerCallbackQuery({ text: "Selección limpiada" });
+        const selectableIds = getConsensusSelectableIds();
+        const msg = buildProgressiveStrategyMessage(
+          session.selectedIds,
+          session.context!,
+          selectableIds,
+          session.startDate!,
+          session.endDate!
+        );
+        const kb = buildProgressiveStrategyKeyboard(session.selectedIds, selectableIds);
+        try {
+          await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
+        } catch (e) {
+          if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+        }
+        return;
+      }
+    }
+
+    // Ejecutar análisis
+    if (data === "prog_run") {
+      const session = progressiveSessionMap.get(userId);
+      if (session?.step === "strategies" && session.context && session.startDate && session.endDate) {
+        const strategyIds = [...session.selectedIds];
+        if (strategyIds.length < 2) {
+          await ctx.answerCallbackQuery({ text: "⚠️ Selecciona al menos 2 estrategias." });
+          return;
+        }
+
+        await ctx.answerCallbackQuery({ text: "Iniciando análisis…" });
+
+        // Mensaje de progreso editable
+        const progressMsg = await ctx.reply(
+          `⏳ *Analizando…*\n\n` +
+            `📊 ${strategyIds.length} estrategia${strategyIds.length !== 1 ? "s" : ""} · ` +
+            `${strategyIds.length} subconjunto${strategyIds.length !== 1 ? "s" : ""} cumulativos\n` +
+            `📅 \`${session.startDate}\` → \`${session.endDate}\`\n\n` +
+            `_Esto puede tardar unos segundos…_`,
+          { parse_mode: "Markdown" }
+        );
+
+        progressiveSessionMap.delete(userId);
+
+        try {
+          const isP3 = session.context.mapSource === "p3";
+          const fullMap = isP3 ? await getP3Map() : (await getP4Map()) as DateDrawsMap;
+
+          const result = await runProgressiveAnalysis({
+            startDate: session.startDate,
+            endDate: session.endDate,
+            strategyIds,
+            context: session.context,
+            topN: PROGRESSIVE_TOP_N,
+            fullMap,
+            getStrategy,
+          });
+
+          const strategyLabels = strategyIds.map((id) => STRATEGY_LABEL_BY_ID.get(id) ?? id);
+
+          const resultMsg = buildProgressiveResultMessage(result, strategyLabels);
+
+          await ctx.api.editMessageText(
+            progressMsg.chat.id,
+            progressMsg.message_id,
+            resultMsg,
+            { parse_mode: "Markdown" }
+          );
+        } catch (err) {
+          console.error("[progressive] Error:", err);
+          await ctx.api.editMessageText(
+            progressMsg.chat.id,
+            progressMsg.message_id,
+            "❌ Error al ejecutar el análisis progresivo. Revisa los logs."
+          );
+        }
+        return;
+      }
+    }
+  }
+
   // ── Parlé: combinaciones de 2 sin repetición ──────────────────────────────
   if (data === PARLE_CNS_CALLBACK && ctx.from) {
     const userId = ctx.from.id;
@@ -872,8 +1137,7 @@ bot.on("callback_query:data", async (ctx) => {
           );
           return;
         }
-        const stratLabel =
-          BUILT_IN_STRATEGIES.find((s) => s.id === parsed.menuId)?.label ?? parsed.menuId;
+        const stratLabel = STRATEGY_LABEL_BY_ID.get(parsed.menuId) ?? parsed.menuId;
         const parleMsg = buildParleMessage(candidates, stratLabel, parsed.context);
         await ctx.reply(parleMsg, {
           parse_mode: "Markdown",
@@ -1154,6 +1418,8 @@ bot.command("cancel", async (ctx) => {
     consensusSessionMap.delete(userId);
     waitingCharadaSearch.delete(userId);
     waitingTestingDate.delete(userId);
+    progressiveSessionMap.delete(userId);
+    waitingProgressiveDate.delete(userId);
     const wasInPlanFlow = creatingPlanFlow.has(userId) || editingPlanFlow.has(userId);
     clearAllFlows(userId);
     if (wasInPlanFlow && isOwner(userId)) {
@@ -1182,6 +1448,80 @@ bot.on("message:text", async (ctx) => {
     },
   });
   if (securityHandled) return;
+
+  // ── Progresivo: entrada de fechas inicial/final (solo dueño) ─────────────
+  if (userId && isOwner(userId) && waitingProgressiveDate.has(userId)) {
+    const which = waitingProgressiveDate.get(userId)!;
+    const session = progressiveSessionMap.get(userId);
+
+    if (!session) {
+      waitingProgressiveDate.delete(userId);
+      return;
+    }
+
+    const key = parseUserDateToMMDDYY(text);
+    if (!key) {
+      await ctx.reply(
+        "❌ Fecha no válida. Usa el formato `MM/DD/YY` (ej: `01/01/25`).",
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    if (which === "start") {
+      session.startDate = key;
+      session.step = "end_date";
+      waitingProgressiveDate.set(userId, "end");
+
+      const mapSource = session.context!.mapSource;
+      const period = session.context!.period;
+      const mapLabel = mapSource === "p3" ? "P3 (Fijos)" : "P4 (Corridos)";
+      const periodLabel = period === "m" ? "☀️ Mediodía" : "🌙 Noche";
+
+      await ctx.reply(
+        `📈 *Análisis Progresivo* — ${mapLabel} · ${periodLabel}\n\n` +
+          `✅ Fecha inicial: \`${key}\`\n\n` +
+          `📅 Ahora ingresa la *fecha final* del análisis.\n` +
+          `Formato: \`MM/DD/YY\` _(ej: \`12/31/25\`)_\n\n` +
+          `_/cancel para cancelar._`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: new InlineKeyboard().text("❌ Cancelar", "prog_cancel"),
+        }
+      );
+      return;
+    }
+
+    if (which === "end") {
+      // Valida que endDate > startDate
+      const startDt = mmddyyToDate(session.startDate!);
+      const endDt = mmddyyToDate(key);
+
+      if (!startDt || !endDt || endDt <= startDt) {
+        await ctx.reply(
+          `❌ La fecha final debe ser posterior a la inicial (\`${session.startDate}\`).`,
+          { parse_mode: "Markdown" }
+        );
+        return;
+      }
+
+      session.endDate = key;
+      session.step = "strategies";
+      waitingProgressiveDate.delete(userId);
+
+      const selectableIds = getConsensusSelectableIds();
+      const msg = buildProgressiveStrategyMessage(
+        session.selectedIds,
+        session.context!,
+        selectableIds,
+        session.startDate!,
+        session.endDate!
+      );
+      const kb = buildProgressiveStrategyKeyboard(session.selectedIds, selectableIds);
+      await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: kb });
+      return;
+    }
+  }
 
   // ── Testing: entrada de fecha de corte (solo dueño) ───────────────────────
   if (userId && isOwner(userId) && waitingTestingDate.has(userId)) {

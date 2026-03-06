@@ -203,7 +203,10 @@ export function buildTestingKeyboard(currentDate: string | null): InlineKeyboard
   if (currentDate) {
     kb.text("🗑 Eliminar", "testing_eliminar");
   }
-  kb.row().text("◀️ Volver", "volver");
+  kb.row()
+    .text("📈 Progresivo", "prog_open")
+    .row()
+    .text("◀️ Volver", "volver");
   return kb;
 }
 

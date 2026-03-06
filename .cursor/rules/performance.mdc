@@ -1,0 +1,77 @@
+---
+description: Maximizar rendimiento en costo computacional y tiempo de procesamiento
+alwaysApply: true
+---
+
+# Performance First
+
+Toda decisión de código prioriza eficiencia. Aplica en TypeScript, bot handlers, strategy engine y cualquier capa.
+
+## Async: paralelizar siempre que sea posible
+
+```typescript
+// ❌ secuencial — innecesariamente lento
+const p3 = await getP3Map();
+const p4 = await getP4Map();
+
+// ✅ paralelo
+const [p3, p4] = await Promise.all([getP3Map(), getP4Map()]);
+```
+
+## Iterar una sola vez — evitar múltiples pasadas sobre la misma colección
+
+```typescript
+// ❌ dos pasadas
+const hits = items.filter(x => x.hit).length;
+const total = items.length;
+
+// ✅ una pasada
+let hits = 0;
+for (const x of items) { if (x.hit) hits++; }
+const total = items.length;
+```
+
+## Lookups O(1) — Map/Set sobre array.find/includes en hot paths
+
+```typescript
+// ❌ O(n) en cada consulta
+const label = BUILT_IN_STRATEGIES.find(s => s.id === id)?.label;
+
+// ✅ O(1) — construye el índice una sola vez fuera del loop
+const labelById = new Map(BUILT_IN_STRATEGIES.map(s => [s.id, s.label]));
+const label = labelById.get(id);
+```
+
+## Filtrar temprano — reducir datos antes de procesarlos
+
+```typescript
+// ❌ procesa todo y descarta al final
+const result = allDates.map(d => heavyCompute(d)).filter(r => r.valid);
+
+// ✅ descarta antes del trabajo pesado
+const result = allDates.filter(d => isValid(d)).map(d => heavyCompute(d));
+```
+
+## Caché de resultados costosos con TTL
+
+- Usar `Map<key, { value, at }>` para cómputos que se repiten con los mismos inputs.
+- Invalidar explícitamente al mutar los datos subyacentes (no depender solo de TTL).
+
+## Estrategias (getCandidates) — siempre en paralelo cuando se llaman N veces
+
+```typescript
+// ✅ paralelo — única forma correcta de llamar múltiples getCandidates
+const allCandidates = await Promise.all(
+  ids.map(id => getStrategy(id)?.getCandidates(ctx, map) ?? Promise.resolve([]))
+);
+```
+
+## Evitar reconstruir estructuras grandes dentro de loops
+
+Precalcula fuera del loop cualquier cosa que no cambie entre iteraciones (e.g., índices, sets de IDs válidos, mapas filtrados que no varían).
+
+## Telegram API — minimizar round-trips
+
+- Preferir `editMessageText` sobre `delete + reply` cuando el contenido es actualización del mismo mensaje.
+- No llamar `answerCallbackQuery` más de una vez por evento.
+- Agrupar múltiples envíos en uno solo cuando el contenido lo permite.

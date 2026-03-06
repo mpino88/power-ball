@@ -21,11 +21,12 @@ export function mmddyyToDate(key: string): Date | null {
 
 /** Ordena claves del mapa cronológicamente (más antiguo primero). */
 export function sortDateKeys(keys: string[]): string[] {
-  return [...keys].sort((a, b) => {
-    const da = mmddyyToDate(a)?.getTime() ?? 0;
-    const db = mmddyyToDate(b)?.getTime() ?? 0;
-    return da - db;
-  });
+  // Parsea cada fecha una sola vez (Schwartzian transform) en lugar de reparsear
+  // en cada comparación del sort (que ocurre O(n log n) veces).
+  return keys
+    .map((k) => ({ k, t: mmddyyToDate(k)?.getTime() ?? 0 }))
+    .sort((a, b) => a.t - b.t)
+    .map((x) => x.k);
 }
 
 /**
@@ -152,17 +153,19 @@ export function getNextDrawResult(
 ): { date: string; numbers: number[] } | null {
   const cutoff = mmddyyToDate(cutoffDateStr);
   if (!cutoff) return null;
+  const cutoffTime = cutoff.getTime();
   const minLen = mapSource === "p4" ? 4 : 3;
-  const futureKeys = sortDateKeys(
-    Object.keys(fullMap).filter((k) => {
-      const d = mmddyyToDate(k);
-      if (!d || d <= cutoff) return false;
+  // Parsea cada fecha una sola vez, filtra y ordena en una pasada
+  const future = Object.keys(fullMap)
+    .map((k) => ({ k, t: mmddyyToDate(k)?.getTime() ?? 0 }))
+    .filter(({ k, t }) => {
+      if (t <= cutoffTime) return false;
       const draw = fullMap[k]?.[period];
       return draw != null && draw.length >= minLen;
     })
-  );
-  if (futureKeys.length === 0) return null;
-  const dateStr = futureKeys[0]!;
+    .sort((a, b) => a.t - b.t);
+  if (future.length === 0) return null;
+  const dateStr = future[0]!.k;
   return { date: dateStr, numbers: fullMap[dateStr]![period]! };
 }
 
