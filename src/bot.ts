@@ -116,6 +116,7 @@ import {
   PROGRESSIVE_TOP_N,
   PROGRESSIVE_MAX_DATES,
   PROGRESSIVE_WARN_THRESHOLD,
+  PROGRESSIVE_MAX_STRATEGIES,
   type ProgressiveSession,
 } from "./strategies/progressive.js";
 import type { StrategyContext } from "./strategies/types.js";
@@ -1062,7 +1063,10 @@ bot.on("callback_query:data", async (ctx) => {
           // Si supera el umbral de advertencia, pedimos confirmación
           if (estimated > PROGRESSIVE_WARN_THRESHOLD) {
             const capped = Math.min(estimated, PROGRESSIVE_MAX_DATES);
-            const secsEst = Math.ceil((capped * strategyIds.length * 2) / 1000);
+            const n = Math.min(strategyIds.length, PROGRESSIVE_MAX_STRATEGIES);
+            const numCombos = (1 << n) - 1;
+            // Tiempo estimado: dominado por getCandidates (N × dates × ~2ms)
+            const secsEst = Math.ceil((capped * n * 2) / 1000);
             session!.step = "confirm";
             const mapLabel = session!.context!.mapSource === "p3" ? "P3" : "P4";
             const periodLabel = session!.context!.period === "m" ? "☀️ Mediodía" : "🌙 Noche";
@@ -1074,7 +1078,7 @@ bot.on("callback_query:data", async (ctx) => {
                   (estimated > PROGRESSIVE_MAX_DATES
                     ? ` _(se analizarán las primeras ${PROGRESSIVE_MAX_DATES})_`
                     : ``) +
-                  `\n📊 ${strategyIds.length} estrategias · ${strategyIds.length} subconjuntos\n` +
+                  `\n📊 ${n} estrategias · *${numCombos}* combinaciones posibles\n` +
                   `⏱ Tiempo estimado: *~${secsEst} seg*\n\n` +
                   `¿Confirmas el análisis?`,
                 {
@@ -1106,12 +1110,14 @@ bot.on("callback_query:data", async (ctx) => {
 
         const mapLabelShort = session!.context!.mapSource === "p3" ? "P3" : "P4";
         const periodLabelShort = session!.context!.period === "m" ? "☀️" : "🌙";
+        const nStrats = Math.min(strategyIds.length, PROGRESSIVE_MAX_STRATEGIES);
+        const numCombos = (1 << nStrats) - 1;
 
         // Mensaje de progreso (editable)
         const progressMsg = await ctx.reply(
           `⏳ *Analizando…* ${mapLabelShort} · ${periodLabelShort}\n\n` +
             `📅 \`${session!.startDate}\` → \`${session!.endDate}\`\n` +
-            `🔢 ${capped} fechas · ${strategyIds.length} estrategias · ${strategyIds.length} subconjuntos\n\n` +
+            `🔢 ${capped} fechas · ${nStrats} estrategias · ${numCombos} combinaciones\n\n` +
             `▓░░░░░░░░░  0%`,
           { parse_mode: "Markdown" }
         );
@@ -1141,7 +1147,7 @@ bot.on("callback_query:data", async (ctx) => {
                   msgId,
                   `⏳ *Analizando…* ${mapLabelShort} · ${periodLabelShort}\n\n` +
                     `📅 \`${session!.startDate}\` → \`${session!.endDate}\`\n` +
-                    `🔢 ${capped} fechas · ${strategyIds.length} estrategias\n\n` +
+                    `🔢 ${capped} fechas · ${nStrats} estrategias · ${numCombos} combos\n\n` +
                     `${bar(pct)}`,
                   { parse_mode: "Markdown" }
                 );

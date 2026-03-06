@@ -1,16 +1,20 @@
 /**
- * Análisis Progresivo — Back-testing iterativo de estrategias.
+ * Análisis Progresivo — Back-testing iterativo con todas las combinaciones posibles.
  *
  * Recorre un rango de fechas día a día:
  *   1. Para cada "fecha de corte" D, construye la base de conocimientos limitada a ≤ D.
- *   2. Extrae candidatos de cada estrategia seleccionada.
- *   3. Aplica consenso por votación para subconjuntos cumulativos:
- *        {A} → {A,B} → {A,B,C} → …
- *   4. Verifica si el sorteo real siguiente (> D) está en los top-N candidatos.
- *   5. Acumula aciertos y fallos por subconjunto.
+ *   2. Extrae candidatos de cada estrategia seleccionada (una sola vez por fecha).
+ *   3. Evalúa las 2^N − 1 combinaciones posibles (todas las formas de agrupar
+ *      las estrategias elegidas) usando bitmask para eficiencia máxima.
+ *   4. Verifica si el sorteo real siguiente (> D) está en el top-N de cada combo.
+ *   5. Acumula aciertos y fallos.
  *
- * Resultado: tabla de tasas de acierto por combinación, lo que indica qué grupo
- * de estrategias tiene mayor poder predictivo en el período analizado.
+ * Resultado: ranking de las mejores combinaciones (top 10 global + mejor por tamaño).
+ *
+ * Complejidad:
+ *   · getCandidates: O(N × dates)          — dominante
+ *   · evaluación subsets: O(2^N × dates)   — muy rápido (Int32Array + reset parcial)
+ *   · memoria: O(2^N) typed arrays         — ~128 KB para N=15
  */
 
 import { InlineKeyboard } from "grammy";
@@ -24,42 +28,54 @@ import { CONSENSUS_GROUPS } from "./consensus-multi.js";
 export const PROGRESSIVE_TOP_N = 10;
 
 /**
- * Cap de seguridad: máximo de fechas de corte a iterar.
- * ~365 sorteos/año × periodo (M ó E) → 2500 cubre ~6-7 años de datos diarios.
- * Si el rango supera este límite, se analiza solo el primer tramo y se notifica.
+ * Cap de fechas de corte a iterar (~365/año × período → 2500 cubre ~6-7 años).
+ * Si el rango lo supera se analizan las primeras 2500 y se notifica.
  */
 export const PROGRESSIVE_MAX_DATES = 2500;
 
 /**
- * Umbral a partir del cual se muestra una advertencia de tiempo estimado antes de
- * confirmar la ejecución. Por debajo de este umbral se lanza directamente.
+ * Por encima de este número de fechas se muestra una pantalla de confirmación
+ * con la estimación de tiempo antes de lanzar el análisis.
  */
 export const PROGRESSIVE_WARN_THRESHOLD = 400;
+
+/** Máximo de estrategias permitidas en el análisis progresivo. */
+export const PROGRESSIVE_MAX_STRATEGIES = 15; // 2^15 - 1 = 32 767 combos
+
+/** Cuántas combinaciones mostrar en el ranking del resultado. */
+const TOP_COMBOS_DISPLAY = 10;
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
 export interface ProgressiveSubset {
-  strategyIds: string[];
-  /** "A" | "A+B" | "A+B+C" | … */
+  /** Índices (0-based) de las estrategias en este subconjunto. */
+  indices: number[];
+  /** Etiqueta: "A" | "A+C" | "A+B+C" … */
   label: string;
   hits: number;
   misses: number;
   /** Fechas sin resultado real disponible o sin candidatos. */
   skipped: number;
-  /** hits / (hits + misses). 0 si total = 0. */
+  /** hits / (hits + misses). 0 si no hay datos. */
   hitRate: number;
 }
 
 export interface ProgressiveResult {
-  subsets: ProgressiveSubset[];
+  /** Top 10 subconjuntos ordenados por hitRate descendente. */
+  topSubsets: ProgressiveSubset[];
+  /** El mejor subconjunto para cada tamaño (×1, ×2, …, ×N). */
+  bestBySize: ProgressiveSubset[];
+  /** Total de combinaciones únicas evaluadas (= 2^N − 1). */
+  totalSubsets: number;
   context: StrategyContext;
   startDate: string;
   endDate: string;
-  /** Fechas de corte efectivamente iteradas (≤ PROGRESSIVE_MAX_DATES). */
+  /** Fechas de corte efectivamente iteradas. */
   datesAnalyzed: number;
-  /** Total de fechas válidas en el rango ANTES del cap — para informar al usuario. */
+  /** Total de fechas válidas en el rango antes del cap. */
   totalInRange: number;
   topN: number;
+  strategyCount: number;
 }
 
 export interface ProgressiveSession {
@@ -68,14 +84,13 @@ export interface ProgressiveSession {
   startDate?: string;
   endDate?: string;
   selectedIds: Set<string>;
-  /** Número de fechas válidas en el rango (calculado al confirmar). */
+  /** Número de fechas válidas en el rango (calculado antes de confirmar). */
   estimatedDates?: number;
 }
 
 export interface ProgressiveParams {
   startDate: string;
   endDate: string;
-  /** Orden de selección determina el orden cumulativo A, B, C… */
   strategyIds: string[];
   context: StrategyContext;
   topN: number;
@@ -83,14 +98,43 @@ export interface ProgressiveParams {
   getStrategy: (id: string) => StrategyDefinition | undefined;
   /**
    * Callback de progreso: recibe el porcentaje completado (0-100).
-   * Se invoca cada 10% para permitir actualizar la UI sin saturar la API.
+   * Se invoca cada 10% para actualizar la UI sin saturar la API de Telegram.
    */
   onProgress?: (pct: number) => Promise<void>;
 }
 
+// ── Utilidades internas ───────────────────────────────────────────────────────
+
 /**
- * Calcula cuántas fechas válidas hay en el rango antes de correr el análisis.
- * Útil para estimar tiempo y pedir confirmación al usuario.
+ * Precalcula para cada bitmask (1 → 2^n-1) sus índices activos y etiqueta.
+ * Se llama UNA VEZ antes del loop principal → O(2^n) total.
+ */
+interface SubsetMeta {
+  indices: readonly number[];
+  label: string;
+  size: number;
+}
+
+function buildSubsetMeta(n: number): SubsetMeta[] {
+  const total = (1 << n) - 1;
+  const meta: SubsetMeta[] = new Array(total);
+  for (let mask = 1; mask <= total; mask++) {
+    const indices: number[] = [];
+    const parts: string[] = [];
+    for (let i = 0; i < n; i++) {
+      if (mask & (1 << i)) {
+        indices.push(i);
+        parts.push(String.fromCharCode(65 + i));
+      }
+    }
+    meta[mask - 1] = { indices, label: parts.join("+"), size: indices.length };
+  }
+  return meta;
+}
+
+/**
+ * Calcula cuántas fechas válidas hay en el rango [startDate, endDate].
+ * Útil para estimar tiempo de procesamiento antes de confirmar la ejecución.
  */
 export function countDatesInRange(
   fullMap: DateDrawsMap,
@@ -114,23 +158,15 @@ export function countDatesInRange(
 
 // ── Motor ─────────────────────────────────────────────────────────────────────
 
-/**
- * Retorna un Set con los topN números más votados de un mapa de votos.
- * Set en lugar de Array → lookups O(1) en el check de acierto.
- * El mapa tiene max 100 entradas (números 00-99), sort es trivial.
- */
-function topNSet(votes: Map<number, number>, topN: number): Set<number> {
-  const sorted = [...votes.entries()].sort((a, b) => b[1] - a[1]);
-  const s = new Set<number>();
-  for (let i = 0; i < Math.min(topN, sorted.length); i++) s.add(sorted[i]![0]);
-  return s;
-}
-
-/** Ejecuta el análisis progresivo y retorna los resultados por subconjunto. */
+/** Ejecuta el análisis progresivo evaluando TODAS las combinaciones posibles. */
 export async function runProgressiveAnalysis(
   params: ProgressiveParams
 ): Promise<ProgressiveResult> {
-  const { startDate, endDate, strategyIds, context, topN, fullMap, getStrategy, onProgress } = params;
+  const { startDate, endDate, strategyIds, context, topN, fullMap, getStrategy, onProgress } =
+    params;
+
+  const n = Math.min(strategyIds.length, PROGRESSIVE_MAX_STRATEGIES);
+  const effectiveIds = strategyIds.slice(0, n);
 
   const startDt = mmddyyToDate(startDate);
   const endDt = mmddyyToDate(endDate);
@@ -140,106 +176,141 @@ export async function runProgressiveAnalysis(
   const endTime = endDt.getTime();
   const minLen = context.mapSource === "p4" ? 4 : 3;
 
-  // ── Paso 1: Parsear fechas UNA SOLA VEZ ──────────────────────────────────
-  // Parsea todos los timestamps de los keys del mapa una única vez y ordena
-  // usando esos valores directamente → evita O(m×N) llamadas a mmddyyToDate.
-  const rawKeys = Object.keys(fullMap);
-  const keyTimeArr = rawKeys.map((k) => ({ k, t: mmddyyToDate(k)?.getTime() ?? 0 }));
+  // ── 1. Parsear fechas UNA SOLA VEZ ─────────────────────────────────────────
+  const keyTimeArr = Object.keys(fullMap).map((k) => ({
+    k,
+    t: mmddyyToDate(k)?.getTime() ?? 0,
+  }));
   keyTimeArr.sort((a, b) => a.t - b.t);
   const allMapKeys = keyTimeArr.map((x) => x.k);
-  /** timestamp por key; acceso O(1) */
   const keyTime = new Map<string, number>(keyTimeArr.map((x) => [x.k, x.t]));
 
-  // ── Paso 2: Fechas válidas para el período/fuente (ya ordenadas) ─────────
+  // ── 2. Fechas válidas para el período/fuente ────────────────────────────────
   const allValidDates = allMapKeys.filter((d) => {
     const draw = fullMap[d]?.[context.period];
     return draw != null && draw.length >= minLen;
   });
-  /** índice de cada fecha válida → next-date lookup O(1) */
   const validIdx = new Map<string, number>(allValidDates.map((d, i) => [d, i]));
 
-  // ── Paso 3: Fechas de corte a iterar ────────────────────────────────────
-  const datesInRange = allValidDates.filter(
-    (d) => { const t = keyTime.get(d)!; return t >= startTime && t <= endTime; }
-  );
+  // ── 3. Fechas de corte en el rango ─────────────────────────────────────────
+  const datesInRange = allValidDates.filter((d) => {
+    const t = keyTime.get(d)!;
+    return t >= startTime && t <= endTime;
+  });
   const totalInRange = datesInRange.length;
   const cutoffDates = datesInRange.slice(0, PROGRESSIVE_MAX_DATES);
 
-  // ── Paso 4: Mapa filtrado INCREMENTAL ───────────────────────────────────
-  // En lugar de reconstruir el mapa completo en cada iteración (O(m×N)),
-  // lo construimos una sola vez y añadimos una entrada por iteración → O(m + N).
+  // ── 4. Metadatos de los 2^n − 1 subconjuntos (precalculados una vez) ───────
+  const totalSubsets = (1 << n) - 1;
+  const subsetMeta = buildSubsetMeta(n);
+
+  // ── 5. Contadores con typed arrays → caché-friendly, sin GC ────────────────
+  const hitsArr = new Uint32Array(totalSubsets);
+  const missesArr = new Uint32Array(totalSubsets);
+  const skippedArr = new Uint32Array(totalSubsets);
+
+  // ── 6. Buffers reutilizables para votos (evitan new Map() por subset) ───────
+  //    voteCounts[num] = cuántas estrategias incluyen 'num' en sus candidatos
+  //    usedNums: números para los que voteCounts > 0 (reset O(usedNums.len))
+  const voteCounts = new Int32Array(100);
+  const usedNums: number[] = [];
+
+  // ── 7. Mapa filtrado INCREMENTAL ───────────────────────────────────────────
   const filteredMap: DateDrawsMap = {};
   let mapPtr = 0;
-  // Pre-carga de entradas anteriores a startDate (fuera del loop de corte)
   while (mapPtr < allMapKeys.length && keyTime.get(allMapKeys[mapPtr]!)! < startTime) {
     filteredMap[allMapKeys[mapPtr]!] = fullMap[allMapKeys[mapPtr]!]!;
     mapPtr++;
   }
 
-  // ── Paso 5: Init subconjuntos cumulativos ───────────────────────────────
-  const subsets: ProgressiveSubset[] = strategyIds.map((_, i) => ({
-    strategyIds: strategyIds.slice(0, i + 1),
-    label: Array.from({ length: i + 1 }, (__, j) => String.fromCharCode(65 + j)).join("+"),
-    hits: 0,
-    misses: 0,
-    skipped: 0,
-    hitRate: 0,
-  }));
-
-  // ── Loop principal ───────────────────────────────────────────────────────
-  const total = cutoffDates.length;
+  // ── Loop principal ─────────────────────────────────────────────────────────
+  const totalDates = cutoffDates.length;
   let processed = 0;
   let lastReportedPct = -1;
 
   for (const cutoffDate of cutoffDates) {
     const cutoffTime = keyTime.get(cutoffDate)!;
 
-    // Avanza el puntero: añade entradas ≤ cutoffDate al mapa filtrado
+    // Avanza puntero incremental (O(1) amortizado)
     while (mapPtr < allMapKeys.length && keyTime.get(allMapKeys[mapPtr]!)! <= cutoffTime) {
       filteredMap[allMapKeys[mapPtr]!] = fullMap[allMapKeys[mapPtr]!]!;
       mapPtr++;
     }
 
-    // Siguiente fecha válida: O(1) con índice precomputado
+    // Siguiente sorteo real (O(1) con índice precomputado)
     const nextDateStr = allValidDates[validIdx.get(cutoffDate)! + 1];
-    if (!nextDateStr) { for (const s of subsets) s.skipped++; continue; }
+    if (!nextDateStr) {
+      for (let i = 0; i < totalSubsets; i++) skippedArr[i]++;
+      processed++;
+      continue;
+    }
 
     const nextDraw = fullMap[nextDateStr]?.[context.period];
-    if (!nextDraw || nextDraw.length < minLen) { for (const s of subsets) s.skipped++; continue; }
+    if (!nextDraw || nextDraw.length < minLen) {
+      for (let i = 0; i < totalSubsets; i++) skippedArr[i]++;
+      processed++;
+      continue;
+    }
 
     const actuals = twoDigitNumbers(nextDraw, context.mapSource);
-    if (actuals.length === 0) { for (const s of subsets) s.skipped++; continue; }
+    if (actuals.length === 0) {
+      for (let i = 0; i < totalSubsets; i++) skippedArr[i]++;
+      processed++;
+      continue;
+    }
 
     // Candidatos de todas las estrategias en paralelo (una vez por fecha de corte)
     const strategyCandidates = await Promise.all(
-      strategyIds.map(async (id) => {
+      effectiveIds.map(async (id) => {
         const strat = getStrategy(id);
         if (!strat?.getCandidates) return null;
-        try { return await strat.getCandidates(context, filteredMap); } catch { return null; }
+        try {
+          return await strat.getCandidates(context, filteredMap);
+        } catch {
+          return null;
+        }
       })
     );
 
-    // Evaluación incremental de subconjuntos: acumula votos sin reconstruir
-    // el mapa completo en cada subset → O(total_cands) en lugar de O(i × avg_cands)
-    const votes = new Map<number, number>();
-    for (let i = 0; i < subsets.length; i++) {
-      const cands = strategyCandidates[i];
-      if (cands != null) {
-        for (const n of cands) votes.set(n, (votes.get(n) ?? 0) + 1);
+    // Set de actuals para lookup O(1) en el check de acierto
+    const actualsSet = new Set(actuals);
+
+    // ── Evalúa los 2^n − 1 subconjuntos ──────────────────────────────────────
+    for (let maskIdx = 0; maskIdx < totalSubsets; maskIdx++) {
+      const meta = subsetMeta[maskIdx]!;
+      usedNums.length = 0;
+
+      // Acumula votos de las estrategias del subset
+      for (const idx of meta.indices) {
+        const cands = strategyCandidates[idx];
+        if (!cands) continue;
+        for (const num of cands) {
+          if (voteCounts[num] === 0) usedNums.push(num);
+          voteCounts[num]++;
+        }
       }
 
-      const subset = subsets[i]!;
-      if (votes.size === 0) { subset.skipped++; continue; }
+      if (usedNums.length === 0) {
+        skippedArr[maskIdx]++;
+      } else {
+        // Ordena por votos descendente → top N es usedNums[0..topN-1]
+        usedNums.sort((a, b) => voteCounts[b]! - voteCounts[a]!);
 
-      // Set → .has() O(1) vs array .includes() O(topN)
-      const top = topNSet(votes, topN);
-      if (actuals.some((a) => top.has(a))) { subset.hits++; } else { subset.misses++; }
+        let isHit = false;
+        const limit = Math.min(topN, usedNums.length);
+        for (let j = 0; j < limit && !isHit; j++) {
+          if (actualsSet.has(usedNums[j]!)) isHit = true;
+        }
+        if (isHit) hitsArr[maskIdx]++; else missesArr[maskIdx]++;
+      }
+
+      // Reset parcial O(usedNums.length) — no repasa los 100 slots
+      for (const num of usedNums) voteCounts[num] = 0;
     }
 
     processed++;
-    if (onProgress && total > 0) {
-      const pct = Math.floor((processed / total) * 100);
-      // Notifica cada 10% para no saturar la API de Telegram
+    if (onProgress && totalDates > 0) {
+      const pct = Math.floor((processed / totalDates) * 100);
       if (pct >= lastReportedPct + 10) {
         lastReportedPct = pct;
         await onProgress(pct);
@@ -247,12 +318,53 @@ export async function runProgressiveAnalysis(
     }
   }
 
-  for (const s of subsets) {
-    const tot = s.hits + s.misses;
-    s.hitRate = tot > 0 ? s.hits / tot : 0;
+  // ── Construye el resultado ─────────────────────────────────────────────────
+
+  // Ordena todos los subsets por hitRate para obtener el ranking
+  const rankOrder: number[] = [];
+  for (let i = 0; i < totalSubsets; i++) {
+    if (hitsArr[i]! + missesArr[i]! > 0) rankOrder.push(i);
+  }
+  rankOrder.sort((a, b) => {
+    const totA = hitsArr[a]! + missesArr[a]!;
+    const totB = hitsArr[b]! + missesArr[b]!;
+    return hitsArr[b]! / totB - hitsArr[a]! / totA;
+  });
+
+  const makeSubset = (i: number): ProgressiveSubset => {
+    const meta = subsetMeta[i]!;
+    const tot = hitsArr[i]! + missesArr[i]!;
+    return {
+      indices: [...meta.indices],
+      label: meta.label,
+      hits: hitsArr[i]!,
+      misses: missesArr[i]!,
+      skipped: skippedArr[i]!,
+      hitRate: tot > 0 ? hitsArr[i]! / tot : 0,
+    };
+  };
+
+  const topSubsets = rankOrder.slice(0, TOP_COMBOS_DISPLAY).map(makeSubset);
+
+  // Mejor subconjunto para cada tamaño (×1, ×2, …, ×n)
+  const bestBySize: ProgressiveSubset[] = [];
+  for (let size = 1; size <= n; size++) {
+    const best = rankOrder.find((i) => subsetMeta[i]!.size === size);
+    if (best !== undefined) bestBySize.push(makeSubset(best));
   }
 
-  return { subsets, context, startDate, endDate, datesAnalyzed: cutoffDates.length, totalInRange, topN };
+  return {
+    topSubsets,
+    bestBySize,
+    totalSubsets,
+    context,
+    startDate,
+    endDate,
+    datesAnalyzed: cutoffDates.length,
+    totalInRange,
+    topN,
+    strategyCount: n,
+  };
 }
 
 // ── Mensajes y teclados ───────────────────────────────────────────────────────
@@ -297,25 +409,30 @@ export function buildProgressiveStrategyMessage(
   const mapLabel = context.mapSource === "p3" ? "P3 (Fijos)" : "P4 (Corridos)";
   const periodLabel = context.period === "m" ? "☀️ Mediodía" : "🌙 Noche";
   const activeGroup = detectActiveGroup(selectedIds, selectableIds);
+  const n = Math.min(selectedIds.size, PROGRESSIVE_MAX_STRATEGIES);
+  const numCombos = n >= 1 ? (1 << n) - 1 : 0;
 
   let selectionStatus: string;
   if (selectedIds.size === 0) {
     selectionStatus = "_Sin estrategias seleccionadas (necesitas ≥ 2)_";
   } else if (selectedIds.size === 1) {
-    selectionStatus = `_1 estrategia seleccionada (necesitas al menos 2)_`;
+    selectionStatus = `_1 estrategia — necesitas al menos 2_`;
   } else if (activeGroup) {
     const group = CONSENSUS_GROUPS.find((g) => g.id === activeGroup);
-    selectionStatus = `Grupo *${group?.label ?? activeGroup.toUpperCase()}* — ${selectedIds.size} estrategias`;
+    selectionStatus =
+      `Grupo *${group?.label ?? activeGroup.toUpperCase()}* — ` +
+      `${selectedIds.size} estrategias · *${numCombos}* combinaciones`;
   } else {
-    selectionStatus = `*${selectedIds.size}* estrategia${selectedIds.size !== 1 ? "s" : ""} seleccionada${selectedIds.size !== 1 ? "s" : ""}`;
+    selectionStatus =
+      `*${selectedIds.size}* estrategia${selectedIds.size !== 1 ? "s" : ""} · ` +
+      `*${numCombos}* combinacione${numCombos !== 1 ? "s" : ""} a evaluar`;
   }
 
   return (
     `📈 *Análisis Progresivo* — ${mapLabel} · ${periodLabel}\n` +
     `📅 \`${startDate}\` → \`${endDate}\`\n\n` +
-    `Selecciona las estrategias a evaluar.\n` +
-    `El sistema calculará el consenso para cada subconjunto cumulativo:\n` +
-    `_A → A+B → A+B+C → …_\n\n` +
+    `Selecciona las estrategias. Se evaluarán *todas* las combinaciones posibles:\n` +
+    `_C(N,1) + C(N,2) + … + C(N,N) = 2^N − 1 combos_\n\n` +
     selectionStatus
   );
 }
@@ -331,28 +448,31 @@ export function buildProgressiveStrategyKeyboard(
   for (let i = 0; i < CONSENSUS_GROUPS.length; i += 2) {
     const g1 = CONSENSUS_GROUPS[i]!;
     const g2 = CONSENSUS_GROUPS[i + 1];
-    const active1 = activeGroup === g1.id ? "✅ " : "";
-    kb.text(`${g1.emoji} ${active1}Grupo ${g1.id.toUpperCase()}`, `prog_g_${g1.id}`);
+    kb.text(
+      `${g1.emoji} ${activeGroup === g1.id ? "✅ " : ""}Grupo ${g1.id.toUpperCase()}`,
+      `prog_g_${g1.id}`
+    );
     if (g2) {
-      const active2 = activeGroup === g2.id ? "✅ " : "";
-      kb.text(`${g2.emoji} ${active2}Grupo ${g2.id.toUpperCase()}`, `prog_g_${g2.id}`);
+      kb.text(
+        `${g2.emoji} ${activeGroup === g2.id ? "✅ " : ""}Grupo ${g2.id.toUpperCase()}`,
+        `prog_g_${g2.id}`
+      );
     }
     kb.row();
   }
 
-  // Seleccionar todo / limpiar
   kb.text("☑️ Seleccionar todas", "prog_all").text("🔲 Limpiar", "prog_none").row();
 
-  // Estrategias individuales
   for (const id of selectableIds) {
     const isSelected = selectedIds.has(id);
     const shortName = id.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 16);
     kb.text(`${isSelected ? "✅" : "⬜"} ${shortName}`, `prog_st_${id}`).row();
   }
 
-  // Analizar / cancelar
   if (selectedIds.size >= 2) {
-    kb.text(`▶️ Analizar (${selectedIds.size})`, "prog_run").row();
+    const n = Math.min(selectedIds.size, PROGRESSIVE_MAX_STRATEGIES);
+    const numCombos = (1 << n) - 1;
+    kb.text(`▶️ Analizar (${numCombos} combos)`, "prog_run").row();
   }
   kb.text("❌ Cancelar", "prog_cancel");
 
@@ -375,46 +495,48 @@ export function buildProgressiveResultMessage(
   const lines: string[] = [
     `📊 *Análisis Progresivo* — ${mapLabel} · ${periodLabel}`,
     `📅 \`${result.startDate}\` → \`${result.endDate}\``,
-    `🔢 *${result.datesAnalyzed}* fechas analizadas${cappedNote} · Top *${result.topN}*`,
+    `🔢 *${result.datesAnalyzed}* fechas${cappedNote} · Top *${result.topN}* · *${result.totalSubsets}* combos`,
     ``,
     `*Leyenda:*`,
   ];
 
-  for (let i = 0; i < Math.min(strategyLabels.length, result.subsets.length); i++) {
-    const letter = String.fromCharCode(65 + i);
-    lines.push(`  ${letter} = ${strategyLabels[i] ?? result.subsets[i]?.strategyIds.at(-1) ?? "?"}`);
+  for (let i = 0; i < Math.min(strategyLabels.length, result.strategyCount); i++) {
+    lines.push(`  ${String.fromCharCode(65 + i)} = ${strategyLabels[i]}`);
   }
 
-  lines.push(``, "```");
-  lines.push(`Combo             Ac/Tot     %`);
-  lines.push(`──────────────────────────────`);
+  // ── Top 10 combinaciones ───────────────────────────────────────────────────
+  lines.push(``, `🏆 *Top ${Math.min(TOP_COMBOS_DISPLAY, result.topSubsets.length)} combinaciones:*`);
+  lines.push("```");
+  lines.push(`Combo             Ac/Tot    %`);
+  lines.push(`────────────────────────────`);
 
-  for (const subset of result.subsets) {
-    const tot = subset.hits + subset.misses;
-    const pct = tot > 0 ? ((subset.hits / tot) * 100).toFixed(1) : "  -";
-    const acTot = `${subset.hits}/${tot}`;
-    lines.push(
-      `${subset.label.padEnd(16)}  ${acTot.padStart(6)}  ${pct.padStart(5)}%`
-    );
+  for (let i = 0; i < result.topSubsets.length; i++) {
+    const s = result.topSubsets[i]!;
+    const tot = s.hits + s.misses;
+    const pct = (s.hitRate * 100).toFixed(1);
+    const rank = i === 0 ? " 1er" : ` #${i + 1}`;
+    lines.push(`${s.label.padEnd(14)}${rank}  ${s.hits}/${tot}  ${pct.padStart(5)}%`);
   }
-
   lines.push("```");
 
-  const withData = result.subsets.filter((s) => s.hits + s.misses > 0);
-  if (withData.length > 0) {
-    const best = withData.reduce((a, b) => (a.hitRate >= b.hitRate ? a : b));
-    const worst = withData.reduce((a, b) => (a.hitRate <= b.hitRate ? a : b));
-    lines.push(``, `🏆 *Mejor:* ${best.label} — ${(best.hitRate * 100).toFixed(1)}%`);
-    if (worst.label !== best.label) {
-      lines.push(`📉 *Menor:* ${worst.label} — ${(worst.hitRate * 100).toFixed(1)}%`);
+  // ── Mejor por tamaño ───────────────────────────────────────────────────────
+  if (result.bestBySize.length > 1) {
+    lines.push(``, `🥇 *Mejor por número de estrategias:*`);
+    lines.push("```");
+    for (const s of result.bestBySize) {
+      const tot = s.hits + s.misses;
+      const pct = (s.hitRate * 100).toFixed(1);
+      lines.push(
+        `×${s.indices.length} ${s.label.padEnd(14)}  ${s.hits}/${tot}  ${pct.padStart(5)}%`
+      );
     }
+    lines.push("```");
   }
 
   if (result.totalInRange > result.datesAnalyzed) {
     lines.push(
       ``,
-      `_⚠️ Se analizaron las primeras ${result.datesAnalyzed} fechas del rango ` +
-        `(cap de ${PROGRESSIVE_MAX_DATES}). Ajusta el rango para analizar el resto._`
+      `_⚠️ Primeras ${result.datesAnalyzed} fechas del rango (cap ${PROGRESSIVE_MAX_DATES})._`
     );
   }
 
