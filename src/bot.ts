@@ -794,8 +794,9 @@ bot.on("callback_query:data", async (ctx) => {
           });
           const selectableIds = getAccessibleStrategyIds(userId);
           const emptySet = new Set<string>();
-          const msg = buildConsensusSelectionMessage(emptySet, parsed.context, selectableIds);
-          const kb = buildConsensusSelectionKeyboard(emptySet, parsed.context, selectableIds);
+          const ownerView = isOwner(userId);
+          const msg = buildConsensusSelectionMessage(emptySet, parsed.context, selectableIds, ownerView);
+          const kb = buildConsensusSelectionKeyboard(emptySet, parsed.context, selectableIds, ownerView);
           try {
             await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
           } catch (e) {
@@ -1252,8 +1253,9 @@ bot.on("callback_query:data", async (ctx) => {
       }
       await ctx.answerCallbackQuery();
       const selectableIds = getAccessibleStrategyIds(userId);
-      const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds);
-      const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds);
+      const ownerView = isOwner(userId);
+      const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds, ownerView);
+      const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds, ownerView);
       try {
         await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
       } catch (e) {
@@ -1276,8 +1278,9 @@ bot.on("callback_query:data", async (ctx) => {
         const groupSelectable = group.ids.filter((id) => selectableIds.includes(id));
         session.selectedIds = new Set(groupSelectable);
         await ctx.answerCallbackQuery({ text: `Grupo ${groupId.toUpperCase()} cargado (${groupSelectable.length} estrategias)` });
-        const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds);
-        const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds);
+        const ownerView = isOwner(userId);
+        const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds, ownerView);
+        const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds, ownerView);
         try {
           await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
         } catch (e) {
@@ -1298,8 +1301,9 @@ bot.on("callback_query:data", async (ctx) => {
       const selectableIds = getAccessibleStrategyIds(userId);
       session.selectedIds = new Set(selectableIds);
       await ctx.answerCallbackQuery({ text: `${selectableIds.length} estrategias seleccionadas` });
-      const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds);
-      const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds);
+      const ownerView = isOwner(userId);
+      const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds, ownerView);
+      const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds, ownerView);
       try {
         await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
       } catch (e) {
@@ -1317,8 +1321,9 @@ bot.on("callback_query:data", async (ctx) => {
       session.selectedIds = new Set();
       await ctx.answerCallbackQuery({ text: "Selección limpiada" });
       const selectableIds = getAccessibleStrategyIds(userId);
-      const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds);
-      const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds);
+      const ownerView = isOwner(userId);
+      const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds, ownerView);
+      const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds, ownerView);
       try {
         await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
       } catch (e) {

@@ -246,7 +246,8 @@ function detectActiveGroup(
 export function buildConsensusSelectionMessage(
   selectedIds: Set<string>,
   context: StrategyContext,
-  selectableIds: string[]
+  selectableIds: string[],
+  showGroups = false
 ): string {
   const mapLabel = context.mapSource === "p3" ? "P3 (Fijos)" : "P4 (Corridos)";
   const periodLabel = context.period === "m" ? "☀️ Mediodía" : "🌙 Noche";
@@ -255,21 +256,30 @@ export function buildConsensusSelectionMessage(
 
   const activeGroup = detectActiveGroup(selectedIds, selectableIds);
 
+  const intro = showGroups
+    ? `Elige un *grupo predefinido* o selecciona estrategias individuales _(${selectedCount}/${total})_:`
+    : `Selecciona estrategias individuales _(${selectedCount}/${total})_:`;
+
   const lines: string[] = [
     `🤝 *Consenso Multi-Estrategia* — ${mapLabel} · ${periodLabel}`,
     "",
-    `Elige un *grupo predefinido* o selecciona estrategias individuales _(${selectedCount}/${total})_:`,
-    "",
-    `${CONSENSUS_GROUPS[0]!.emoji} *Grupo A — ${CONSENSUS_GROUPS[0]!.label}*`,
-    `_${CONSENSUS_GROUPS[0]!.description}_`,
-    `${CONSENSUS_GROUPS[1]!.emoji} *Grupo B — ${CONSENSUS_GROUPS[1]!.label}*`,
-    `_${CONSENSUS_GROUPS[1]!.description}_`,
-    `${CONSENSUS_GROUPS[2]!.emoji} *Grupo C — ${CONSENSUS_GROUPS[2]!.label}*`,
-    `_${CONSENSUS_GROUPS[2]!.description}_`,
-    `${CONSENSUS_GROUPS[3]!.emoji} *Grupo D — ${CONSENSUS_GROUPS[3]!.label}*`,
-    `_${CONSENSUS_GROUPS[3]!.description}_`,
+    intro,
     "",
   ];
+
+  if (showGroups) {
+    lines.push(
+      `${CONSENSUS_GROUPS[0]!.emoji} *Grupo A — ${CONSENSUS_GROUPS[0]!.label}*`,
+      `_${CONSENSUS_GROUPS[0]!.description}_`,
+      `${CONSENSUS_GROUPS[1]!.emoji} *Grupo B — ${CONSENSUS_GROUPS[1]!.label}*`,
+      `_${CONSENSUS_GROUPS[1]!.description}_`,
+      `${CONSENSUS_GROUPS[2]!.emoji} *Grupo C — ${CONSENSUS_GROUPS[2]!.label}*`,
+      `_${CONSENSUS_GROUPS[2]!.description}_`,
+      `${CONSENSUS_GROUPS[3]!.emoji} *Grupo D — ${CONSENSUS_GROUPS[3]!.label}*`,
+      `_${CONSENSUS_GROUPS[3]!.description}_`,
+      ""
+    );
+  }
 
   if (activeGroup) {
     const names = activeGroup.ids
@@ -296,22 +306,25 @@ export function buildConsensusSelectionMessage(
 export function buildConsensusSelectionKeyboard(
   selectedIds: Set<string>,
   context: StrategyContext,
-  selectableIds: string[]
+  selectableIds: string[],
+  showGroups = false
 ): InlineKeyboard {
   const kb = new InlineKeyboard();
   const activeGroup = detectActiveGroup(selectedIds, selectableIds);
 
-  // ── Fila 1 y 2: Grupos A/B y C/D ──────────────────────────────────────────
-  const gMark = (id: string) => (activeGroup?.id === id ? "✅" : "◻️");
-  kb
-    .text(`${gMark("a")} 🇦 Grupo A`, "cns_g_a")
-    .text(`${gMark("b")} 🇧 Grupo B`, "cns_g_b")
-    .row()
-    .text(`${gMark("c")} 🇨 Grupo C`, "cns_g_c")
-    .text(`${gMark("d")} 🇩 Grupo D`, "cns_g_d")
-    .row();
+  // ── Filas de grupos (solo dueño) ──────────────────────────────────────────
+  if (showGroups) {
+    const gMark = (id: string) => (activeGroup?.id === id ? "✅" : "◻️");
+    kb
+      .text(`${gMark("a")} 🇦 Grupo A`, "cns_g_a")
+      .text(`${gMark("b")} 🇧 Grupo B`, "cns_g_b")
+      .row()
+      .text(`${gMark("c")} 🇨 Grupo C`, "cns_g_c")
+      .text(`${gMark("d")} 🇩 Grupo D`, "cns_g_d")
+      .row();
+  }
 
-  // ── Fila 3: Seleccionar Todo / Limpiar ─────────────────────────────────────
+  // ── Seleccionar Todo / Limpiar ─────────────────────────────────────────────
   const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id));
   kb
     .text(allSelected ? "✅ Todas seleccionadas" : "☑️ Seleccionar todo", "cns_all")
