@@ -141,6 +141,7 @@ import {
   ADIVINANZA_CNS_CALLBACK,
   ADIVINANZA_OPEN_MSG,
   generarAdivinanza,
+  listarModelosGemini,
   buildAdivinanzaMenuKeyboard,
   buildAdivinanzaResultKeyboard,
   buildAdivinanzaResultMsg,
@@ -587,6 +588,36 @@ bot.command("admin", async (ctx) => {
     parse_mode: "Markdown",
     reply_markup: buildSecurityKeyboard(),
   });
+});
+
+bot.command("gemini_modelos", async (ctx) => {
+  if (!isOwner(ctx.from?.id ?? 0)) return;
+  const msg = await ctx.reply("⏳ Consultando modelos disponibles en tu API key...");
+  try {
+    const modelos = await listarModelosGemini();
+    if (modelos.length === 0) {
+      await ctx.api.editMessageText(
+        msg.chat.id, msg.message_id,
+        "⚠️ No se encontraron modelos que soporten `generateContent` con esta API key.",
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+    const lista = modelos.map((m) => `• \`${m}\``).join("\n");
+    await ctx.api.editMessageText(
+      msg.chat.id, msg.message_id,
+      `🤖 *Modelos Gemini disponibles (${modelos.length}):*\n\n${lista}\n\n` +
+      `_Copia uno de estos nombres y actualiza_ \`GEMINI_MODELS\` _en_ \`src/adivinanza.ts\`_._`,
+      { parse_mode: "Markdown" }
+    );
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    await ctx.api.editMessageText(
+      msg.chat.id, msg.message_id,
+      `❌ *Error al listar modelos:*\n\n\`${detail}\``,
+      { parse_mode: "Markdown" }
+    );
+  }
 });
 
 bot.on("callback_query:data", async (ctx) => {

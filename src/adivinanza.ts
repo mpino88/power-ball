@@ -64,10 +64,33 @@ function buildPrompt(numbers: number[]): string {
   );
 }
 
+// ─── Listar modelos disponibles ───────────────────────────────────────────────
+
+/**
+ * Llama a la API REST para obtener todos los modelos disponibles con la API key actual.
+ * Filtra solo los que soportan generateContent.
+ */
+export async function listarModelosGemini(): Promise<string[]> {
+  const key = process.env.GEMINI_API_KEY?.trim() ?? "";
+  if (!key) throw new Error("GEMINI_API_KEY no está configurada.");
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`
+  );
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`[${res.status}] ${body}`);
+  }
+  const data = await res.json() as { models?: Array<{ name: string; supportedGenerationMethods?: string[] }> };
+  return (data.models ?? [])
+    .filter((m) => m.supportedGenerationMethods?.includes("generateContent"))
+    .map((m) => m.name.replace("models/", ""));
+}
+
 // ─── Función principal ────────────────────────────────────────────────────────
 
 /** Modelos a intentar en orden; el primero disponible se usa. */
-const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-latest"];
+const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"];
 
 /**
  * Llama a Gemini y devuelve la adivinanza generada para los números dados.
