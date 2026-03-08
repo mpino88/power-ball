@@ -697,6 +697,7 @@ export async function reloadConfigFromStorage(): Promise<void> {
     try {
       const loaded = await loadFromSheet();
       config = loaded;
+      lastReloadAt = Date.now();
       const n = Object.keys(config.requestedPlans).length;
       console.log("[user-config] reloadConfigFromStorage: recargado desde Sheet;", n, "solicitudes pendientes.");
     } catch (e) {
@@ -704,7 +705,29 @@ export async function reloadConfigFromStorage(): Promise<void> {
     }
   } else {
     config = loadFromFile();
+    lastReloadAt = Date.now();
     console.log("[user-config] reloadConfigFromStorage: recargado desde archivo;", Object.keys(config.requestedPlans).length, "solicitudes pendientes.");
+  }
+}
+
+/** TTL del caché en memoria: máximo 3 minutos entre recargas automáticas. */
+const CONFIG_CACHE_TTL_MS = 3 * 60 * 1000;
+let lastReloadAt = 0;
+let refreshInProgress = false;
+
+/**
+ * Recarga la config desde el Sheet solo si el caché tiene más de CONFIG_CACHE_TTL_MS.
+ * Llamado en el middleware de acceso antes de cada comprobación de permisos.
+ * El flag refreshInProgress evita recargas concurrentes si varios usuarios interactúan al mismo tiempo.
+ */
+export async function refreshIfStale(): Promise<void> {
+  if (Date.now() - lastReloadAt < CONFIG_CACHE_TTL_MS) return;
+  if (refreshInProgress) return;
+  refreshInProgress = true;
+  try {
+    await reloadConfigFromStorage();
+  } finally {
+    refreshInProgress = false;
   }
 }
 

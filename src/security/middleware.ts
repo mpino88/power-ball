@@ -6,7 +6,7 @@
 
 import { InlineKeyboard, Keyboard } from "grammy";
 import type { getOwnerId as GetOwnerId, isAllowed as IsAllowed } from "../user-config.js";
-import { addPlanRequest, assignPlanToUser, hasUsedTrial, isPlanExpired } from "../user-config.js";
+import { addPlanRequest, assignPlanToUser, hasUsedTrial, isPlanExpired, refreshIfStale } from "../user-config.js";
 import { getPlans, getPriceForTemporality, REGULAR_TEMPORALITIES, TEMPORALITIES, TRIAL_TEMPORALITIES } from "../plans.js";
 
 export type BuildMainKeyboard = (userId: number | undefined) => InlineKeyboard;
@@ -75,6 +75,9 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
 
     // ── Dueño: siempre pasa ──────────────────────────────────────────────────
     if (isOwner(uid)) return next();
+
+    // ── Verificar caché: recargar desde Sheet si tiene > 3 min de antigüedad ─
+    await refreshIfStale();
 
     // ── Usuario autorizado: verificar caducidad ──────────────────────────────
     if (isAllowed(uid)) {
