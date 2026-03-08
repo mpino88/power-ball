@@ -38,7 +38,7 @@ export function buildManagePlansKeyboard(): InlineKeyboard {
     .row()
     .text("🗑 Eliminar plan", "admin_plans_delete")
     .row()
-    .text("◀️ Volver a Seguridad", "security_open");
+    .text("◀️ Volver a Administrar", "security_open");
 }
 
 /** Teclado para asociar/desasociar menús a un plan. ➕ = añadir al plan, ➖ = quitar del plan. */
@@ -76,7 +76,7 @@ export function buildManageEstrategiasKeyboard(): InlineKeyboard {
     .row()
     .text("🌐 Visibilidad (pública/privada)", "admin_estrategias_visibility")
     .row()
-    .text("◀️ Volver a Seguridad", "security_open");
+    .text("◀️ Volver a Administrar", "security_open");
 }
 
 /** Teclado Gestionar Estrategias (usuario): listar, crear, eliminar (sin asignar). */
@@ -102,7 +102,7 @@ export function buildUserMenusKeyboard(
       .text("➖", `admin_menu_remove_${uid}|${menuId}`)
       .row();
   }
-  kb.text("◀️ Volver a Seguridad", "security_open");
+  kb.text("◀️ Volver a Administrar", "security_open");
   return kb;
 }
 

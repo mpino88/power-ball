@@ -151,7 +151,7 @@ export async function handleSecurityCallback(
       const label = getUsername(uid) ? `➖ Quitar ${getUsername(uid)}` : `➖ Quitar ${uid}`;
       keyboard.text(label.length > 64 ? `➖ Quitar ${uid}` : label, `admin_revoke_${uid}`).row();
     }
-    keyboard.text("◀️ Volver a Seguridad", "security_open");
+    keyboard.text("◀️ Volver a Administrar", "security_open");
   } else if (data === "admin_add") {
     addingUserFlow.set(ctx.from.id, { step: 1 });
     result =
@@ -171,7 +171,7 @@ export async function handleSecurityCallback(
       const label = getUsername(uid) ? `❌ ${getUsername(uid)}` : `❌ ${uid}`;
       keyboard.text(label, `admin_revoke_${uid}`).row();
     }
-    keyboard.text("◀️ Volver a Seguridad", "security_open");
+    keyboard.text("◀️ Volver a Administrar", "security_open");
   } else if (data.startsWith("admin_revoke_")) {
     const uid = parseInt(data.replace("admin_revoke_", ""), 10);
     if (Number.isNaN(uid)) {
@@ -191,7 +191,7 @@ export async function handleSecurityCallback(
         const label = getUsername(id) ? `❌ ${getUsername(id)}` : `❌ ${id}`;
         keyboard.text(label, `admin_revoke_${id}`).row();
       }
-      keyboard.text("◀️ Volver a Seguridad", "security_open");
+      keyboard.text("◀️ Volver a Administrar", "security_open");
     }
   } else if (data === "admin_menus") {
     const list = getAllowedUsers();
@@ -204,7 +204,7 @@ export async function handleSecurityCallback(
       const label = getUsername(uid) ? `${getUsername(uid)} (${uid})` : `Usuario ${uid}`;
       keyboard.text(label.length > 64 ? `Usuario ${uid}` : label, `admin_menus_${uid}`).row();
     }
-    keyboard.text("◀️ Volver a Seguridad", "security_open");
+    keyboard.text("◀️ Volver a Administrar", "security_open");
   } else if (/^admin_menus_\d+$/.test(data)) {
     const uid = parseInt(data.replace("admin_menus_", ""), 10);
     keyboard = buildUserMenusKeyboard(uid, getExtraMenuIds, getExtraMenuLabel);
