@@ -224,11 +224,11 @@ function formatMessage(
   const earlyPhase = inResonance.filter((s) => s.phase === "early").slice(0, 8);
 
   const lines: string[] = [
-    `📊 *Resonancia Fibonacci \\(UnoDosTres\\)* — ${mapLabel} · ${periodLabel}`,
+    `📊 *Resonancia Fibonacci (UnoDosTres)* — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr} · Total sorteos: ${totalDraws}`,
     "",
-    "📖 _Modelo:_ ventanas Fibonacci desde última aparición de cada número\\.",
-    `_T\\_n = t₀ \\+ F\\_n_ \\| σ=${SIGMA}d \\| F=\\{1,2,3,5,8,13,21,34,55,89,144\\}`,
+    "📖 _Modelo:_ ventanas Fibonacci desde última aparición de cada número.",
+    `_Tₙ = t₀ + Fₙ_ | σ=${SIGMA}d | F={1,2,3,5,8,13,21,34,55,89,144}`,
     "",
     "```",
   ];
@@ -274,7 +274,7 @@ function formatMessage(
 export const unodostres: StrategyDefinition = {
   id: "unodostres",
   description:
-    "Resonancia Temporal Fibonacci: usa los intervalos F_n = {1,2,3,5,8,13,21,34,55,89,144} días como ventanas de alta probabilidad desde la última aparición de cada número. Números en T_n = t₀ + F_n días están en su ventana de resonancia óptima (ciclo mayor = pico máximo). P3/P4 · Día/Noche",
+    "Resonancia Temporal Fibonacci: usa los intervalos Fₙ = {1,2,3,5,8,13,21,34,55,89,144} días como ventanas de alta probabilidad desde la última aparición de cada número. Números en Tₙ = t₀ + Fₙ días están en su ventana de resonancia óptima (ciclo mayor = pico máximo). P3/P4 · Día/Noche",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
 
