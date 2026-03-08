@@ -102,6 +102,17 @@ async function detectModel(): Promise<string> {
 }
 
 /**
+ * Elimina la sección "Clave:" y todo lo que sigue después de ella.
+ * Cubre variantes como "Clave:", "**Clave:**", "CLAVE:", "Claves:", etc.
+ */
+function stripClave(text: string): string {
+  return text
+    .replace(/\*{0,2}claves?\*{0,2}\s*:/gi, "___CLAVE_CUT___")
+    .split("___CLAVE_CUT___")[0]!
+    .trimEnd();
+}
+
+/**
  * Genera una adivinanza vía REST puro (sin SDK), auto-detectando el modelo disponible.
  * Relanza con mensaje descriptivo para que el dueño vea la causa en Telegram.
  */
@@ -128,9 +139,9 @@ export async function generarAdivinanza(numbers: number[]): Promise<string> {
   const data = await res.json() as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
   };
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
-  if (!text) throw new Error("La API devolvió una respuesta vacía.");
-  return text;
+  const raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  if (!raw.trim()) throw new Error("La API devolvió una respuesta vacía.");
+  return stripClave(raw);
 }
 
 // ─── Teclados ────────────────────────────────────────────────────────────────
