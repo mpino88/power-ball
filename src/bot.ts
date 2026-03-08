@@ -545,7 +545,14 @@ bot.command("help", async (ctx) => {
 
 bot.command("admin", async (ctx) => {
   if (!isOwner(ctx.from?.id ?? 0)) return;
-  await ctx.reply("🔒 *Seguridad* — Gestiona quién puede usar el bot y sus menús.", {
+  await ctx.reply(
+      "⚙️ *Panel de Administración*\n\n" +
+      "Centro de control completo del bot. Todo lo que puedes hacer desde aquí:\n\n" +
+      "👥 *Usuarios* — Lista todos los usuarios con acceso, consulta su plan, estado y datos de contacto.\n\n" +
+      "➕➖ *Acceso* — Agrega o elimina usuarios de la lista de acceso permitido.\n\n" +
+      "📋 *Estrategias por usuario* — Asigna o quita estrategias individuales a cualquier usuario.\n\n" +
+      "🤖 *Gestionar Estrategias* — Crea nuevas estrategias personalizadas, elimínalas, controla su visibilidad pública/privada y revisa las solicitudes de acceso pendientes.\n\n" +
+      "💰 *Gestionar Planes* — Crea, edita y elimina planes de suscripción; asigna planes a usuarios; revisa y aprueba solicitudes de cambio de plan.", {
     parse_mode: "Markdown",
     reply_markup: buildSecurityKeyboard(),
   });

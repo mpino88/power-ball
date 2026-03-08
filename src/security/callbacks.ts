@@ -115,7 +115,14 @@ export async function handleSecurityCallback(
   let keyboard: InlineKeyboard;
 
   if (data === "security_open") {
-    result = "🔒 *Seguridad* — Gestiona quién puede usar el bot y sus menús.";
+    result =
+      "⚙️ *Panel de Administración*\n\n" +
+      "Centro de control completo del bot. Todo lo que puedes hacer desde aquí:\n\n" +
+      "👥 *Usuarios* — Lista todos los usuarios con acceso, consulta su plan, estado y datos de contacto.\n\n" +
+      "➕➖ *Acceso* — Agrega o elimina usuarios de la lista de acceso permitido.\n\n" +
+      "📋 *Estrategias por usuario* — Asigna o quita estrategias individuales a cualquier usuario.\n\n" +
+      "🤖 *Gestionar Estrategias* — Crea nuevas estrategias personalizadas, elimínalas, controla su visibilidad pública/privada y revisa las solicitudes de acceso pendientes.\n\n" +
+      "💰 *Gestionar Planes* — Crea, edita y elimina planes de suscripción; asigna planes a usuarios; revisa y aprueba solicitudes de cambio de plan.";
     keyboard = buildSecurityKeyboard();
   } else if (data === "security_main") {
     clearAllFlows(ctx.from.id);

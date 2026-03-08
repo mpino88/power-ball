@@ -100,7 +100,7 @@ export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboard
     }
   }
   if (ownerId !== null && deps.isOwner(uid)) {
-    kb.row().text("🔒 Seguridad", "security_open").text("🧪 Testing", "testing_open");
+    kb.row().text("⚙️ Administrar", "security_open").text("🧪 Testing", "testing_open");
   }
   return kb;
 }
@@ -141,7 +141,7 @@ export function buildEstrategiasKeyboard(userId: number | undefined, deps: MainK
 
   if (isOwnerUser) {
     // Owner manages everything from the Security panel.
-    kb.row().text("🔒 Gestionar en Seguridad", "security_open");
+    kb.row().text("⚙️ Administrar", "security_open");
   } else {
     kb.row().text("⚙️ Gestionar estrategias", "estrategias_manage");
   }
