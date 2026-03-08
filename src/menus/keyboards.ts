@@ -139,12 +139,7 @@ export function buildEstrategiasKeyboard(userId: number | undefined, deps: MainK
     }
   }
 
-  if (isOwnerUser) {
-    // Owner manages everything from the Security panel.
-    kb.row().text("⚙️ Administrar", "security_open");
-  } else {
-    kb.row().text("⚙️ Gestionar estrategias", "estrategias_manage");
-  }
+  kb.row().text("⚙️ Gestionar estrategias", "estrategias_manage");
   kb.row().text("◀️ Volver", "volver");
   return kb;
 }
