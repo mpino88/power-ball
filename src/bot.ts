@@ -1378,10 +1378,11 @@ bot.on("callback_query:data", async (ctx) => {
       });
     } catch (err) {
       console.error("[adivinanza-cns] Error:", err);
+      const detail = err instanceof Error ? err.message : String(err);
       await ctx.api.editMessageText(
         chatId,
         loadingMsg.message_id,
-        "❌ Error al generar la adivinanza. Verifica que `GEMINI_API_KEY` esté configurada.",
+        `❌ *Error al generar la adivinanza*\n\n\`${detail}\``,
         { parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("🏠 Inicio", "volver") }
       );
     }
@@ -1427,10 +1428,11 @@ bot.on("callback_query:data", async (ctx) => {
       });
     } catch (err) {
       console.error("[adivinanza-strat] Error:", err);
+      const detail = err instanceof Error ? err.message : String(err);
       await ctx.api.editMessageText(
         chatId,
         loadingMsg.message_id,
-        "❌ Error al generar la adivinanza. Verifica que `GEMINI_API_KEY` esté configurada.",
+        `❌ *Error al generar la adivinanza*\n\n\`${detail}\``,
         { parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("🏠 Inicio", "volver") }
       );
     }
@@ -1904,15 +1906,17 @@ bot.on("message:text", async (ctx) => {
       );
     } catch (err) {
       console.error("[adivinanza] Error al generar:", err);
+      const detail = err instanceof Error ? err.message : String(err);
       try {
         await ctx.api.editMessageText(
           ctx.chat.id,
           loadingMsg.message_id,
-          "❌ Error al generar la adivinanza. Verifica que `GEMINI_API_KEY` esté configurada.",
+          `❌ *Error al generar la adivinanza*\n\n\`${detail}\``,
           { parse_mode: "Markdown", reply_markup: buildAdivinanzaMenuKeyboard() }
         );
       } catch {
-        await ctx.reply("❌ Error al generar la adivinanza. Revisa los logs.", {
+        await ctx.reply(`❌ Error al generar la adivinanza:\n\`${detail}\``, {
+          parse_mode: "Markdown",
           reply_markup: buildMainKb(userId),
         });
       }

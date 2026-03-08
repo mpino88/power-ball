@@ -66,14 +66,33 @@ function buildPrompt(numbers: number[]): string {
 
 // ─── Función principal ────────────────────────────────────────────────────────
 
+/** Modelos a intentar en orden; el primero disponible se usa. */
+const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-latest"];
+
 /**
  * Llama a Gemini y devuelve la adivinanza generada para los números dados.
- * Lanza un error si GEMINI_API_KEY no está configurada o si falla la API.
+ * Prueba los modelos en orden hasta que uno funcione.
+ * Relanza con mensaje descriptivo para que el dueño vea la causa en Telegram.
  */
 export async function generarAdivinanza(numbers: number[]): Promise<string> {
-  const model = getGenAI().getGenerativeModel({ model: "gemini-1.5-flash" });
-  const result = await model.generateContent(buildPrompt(numbers));
-  return result.response.text().trim();
+  const ai = getGenAI();
+  const prompt = buildPrompt(numbers);
+  let lastError: unknown;
+
+  for (const modelName of GEMINI_MODELS) {
+    try {
+      const model = ai.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent(prompt);
+      const text = result.response.text().trim();
+      if (text) return text;
+    } catch (err) {
+      lastError = err;
+      console.warn(`[adivinanza] Modelo ${modelName} falló:`, err);
+    }
+  }
+
+  const msg = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(msg);
 }
 
 // ─── Teclados ────────────────────────────────────────────────────────────────
