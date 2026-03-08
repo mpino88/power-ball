@@ -15,6 +15,7 @@ import {
   buildDiasDiferenciaKeyboard,
   buildDiasDiferenciaKeyboardIndividual,
   CONSULTAR_DATOS_CALLBACK,
+  MAIN_MENU_MESSAGE,
   type MainKeyboardDeps,
 } from "./keyboards.js";
 
@@ -92,7 +93,7 @@ export async function handleMenuCallback(
 
   if (data === "volver") {
     return {
-      result: "🎰 *Florida Lottery* — Pick 3 y Pick 4\n\nSelecciona una opción del menú:",
+      result: MAIN_MENU_MESSAGE,
       keyboard: mainKb(),
     };
   }

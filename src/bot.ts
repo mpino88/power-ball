@@ -81,6 +81,7 @@ import {
   buildTestingMessage,
   handleMenuCallback,
   ESTRATEGIAS_OPEN_CALLBACK,
+  MAIN_MENU_MESSAGE,
   type GameMenu,
 } from "./menus/index.js";
 import {
@@ -518,15 +519,7 @@ bot.use(
 
 bot.command("start", async (ctx) => {
   await ctx.reply(
-    "🎰 *¡Bienvenido a Florida Lottery Bot!*\n\n" +
-    "Tu asistente definitivo para Pick 3 y Pick 4. Aquí tienes todo lo que puedes hacer:\n\n" +
-    "🔎 *Consultar resultados* — Fijo (P3) y Corrido (P4) de hoy, ayer, esta semana o por fecha exacta.\n\n" +
-    "📊 *Estadísticas avanzadas* — Descubre qué números salen más, agrupaciones y tendencias reales.\n\n" +
-    "🤖 *Estrategias inteligentes* — Algoritmos que analizan el historial y te dan candidatos para el próximo sorteo.\n\n" +
-    "🤝 *Consenso Multi-Estrategia* — Combina varias estrategias y filtra los números con mayor coincidencia.\n\n" +
-    "🃏 *Charada Cubana* — Consulta el significado de cualquier número o busca el número de tu sueño.\n\n" +
-    "🛒 *Tienda* — Accede a estrategias exclusivas creadas por la comunidad.\n\n" +
-    "_Elige una opción y empieza a jugar con ventaja:_",
+    MAIN_MENU_MESSAGE,
     { parse_mode: "Markdown", reply_markup: buildMainKb(ctx.from?.id) }
   );
 });

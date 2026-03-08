@@ -67,6 +67,7 @@ import {
   buildPlanMenusKeyboard,
   formatUserLine,
 } from "./keyboards.js";
+import { MAIN_MENU_MESSAGE } from "../menus/keyboards.js";
 import {
   addingUserFlow,
   creatingMenuFlow,
@@ -126,7 +127,7 @@ export async function handleSecurityCallback(
     keyboard = buildSecurityKeyboard();
   } else if (data === "security_main") {
     clearAllFlows(ctx.from.id);
-    result = "🎰 *Florida Lottery* — Pick 3 y Pick 4\n\nSelecciona una opción del menú:";
+    result = MAIN_MENU_MESSAGE;
     keyboard = deps.buildMainKeyboard(ctx.from.id);
   } else if (data === "admin_list") {
     await reloadConfigFromStorage();

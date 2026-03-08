@@ -16,6 +16,7 @@ export {
   buildConsultarDatosKeyboard,
   ESTRATEGIAS_OPEN_CALLBACK,
   CONSULTAR_DATOS_CALLBACK,
+  MAIN_MENU_MESSAGE,
 } from "./keyboards.js";
 export type { MainKeyboardDeps } from "./keyboards.js";
 export { handleMenuCallback } from "./handlers.js";
