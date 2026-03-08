@@ -7,21 +7,17 @@
  * Variable de entorno requerida: GEMINI_API_KEY
  */
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { InlineKeyboard } from "grammy";
 
-// ─── Cliente Gemini (lazy init) ───────────────────────────────────────────────
+// ─── API key ──────────────────────────────────────────────────────────────────
 
-let genAI: GoogleGenerativeAI | null = null;
-
-function getGenAI(): GoogleGenerativeAI {
-  if (!genAI) {
-    const key = process.env.GEMINI_API_KEY?.trim() ?? "";
-    if (!key) throw new Error("GEMINI_API_KEY no está configurada.");
-    genAI = new GoogleGenerativeAI(key);
-  }
-  return genAI;
+function getApiKey(): string {
+  const key = process.env.GEMINI_API_KEY?.trim() ?? "";
+  if (!key) throw new Error("GEMINI_API_KEY no está configurada.");
+  return key;
 }
+
+const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -66,22 +62,20 @@ function buildPrompt(numbers: number[]): string {
 
 // ─── Listar modelos disponibles ───────────────────────────────────────────────
 
+type GeminiModel = { name: string; supportedGenerationMethods?: string[] };
+
 /**
  * Llama a la API REST para obtener todos los modelos disponibles con la API key actual.
  * Filtra solo los que soportan generateContent.
  */
 export async function listarModelosGemini(): Promise<string[]> {
-  const key = process.env.GEMINI_API_KEY?.trim() ?? "";
-  if (!key) throw new Error("GEMINI_API_KEY no está configurada.");
-
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`
-  );
+  const key = getApiKey();
+  const res = await fetch(`${GEMINI_BASE}/models?key=${key}`);
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`[${res.status}] ${body}`);
   }
-  const data = await res.json() as { models?: Array<{ name: string; supportedGenerationMethods?: string[] }> };
+  const data = await res.json() as { models?: GeminiModel[] };
   return (data.models ?? [])
     .filter((m) => m.supportedGenerationMethods?.includes("generateContent"))
     .map((m) => m.name.replace("models/", ""));
@@ -89,33 +83,54 @@ export async function listarModelosGemini(): Promise<string[]> {
 
 // ─── Función principal ────────────────────────────────────────────────────────
 
-/** Modelos a intentar en orden; el primero disponible se usa. */
-const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"];
+/** Caché del primer modelo disponible detectado en runtime. */
+let cachedModel: string | null = null;
 
 /**
- * Llama a Gemini y devuelve la adivinanza generada para los números dados.
- * Prueba los modelos en orden hasta que uno funcione.
+ * Detecta el primer modelo Flash disponible con la API key actual.
+ * Prefiere flash por velocidad y costo; tiene caché en memoria.
+ */
+async function detectModel(): Promise<string> {
+  if (cachedModel) return cachedModel;
+  const all = await listarModelosGemini();
+  // Prioridad: flash > pro > cualquiera
+  const preferred = all.find((m) => /flash/i.test(m)) ?? all.find((m) => /pro/i.test(m)) ?? all[0];
+  if (!preferred) throw new Error("No hay modelos Gemini disponibles con esta API key.");
+  cachedModel = preferred;
+  console.log(`[adivinanza] Modelo detectado: ${preferred}`);
+  return preferred;
+}
+
+/**
+ * Genera una adivinanza vía REST puro (sin SDK), auto-detectando el modelo disponible.
  * Relanza con mensaje descriptivo para que el dueño vea la causa en Telegram.
  */
 export async function generarAdivinanza(numbers: number[]): Promise<string> {
-  const ai = getGenAI();
-  const prompt = buildPrompt(numbers);
-  let lastError: unknown;
+  const key = getApiKey();
+  const model = await detectModel();
+  const url = `${GEMINI_BASE}/models/${model}:generateContent?key=${key}`;
 
-  for (const modelName of GEMINI_MODELS) {
-    try {
-      const model = ai.getGenerativeModel({ model: modelName });
-      const result = await model.generateContent(prompt);
-      const text = result.response.text().trim();
-      if (text) return text;
-    } catch (err) {
-      lastError = err;
-      console.warn(`[adivinanza] Modelo ${modelName} falló:`, err);
-    }
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: buildPrompt(numbers) }] }],
+    }),
+  });
+
+  if (!res.ok) {
+    // Si el modelo en caché ya no funciona, borramos la caché para reintentar la próxima vez
+    cachedModel = null;
+    const body = await res.text();
+    throw new Error(`[${res.status} ${model}] ${body}`);
   }
 
-  const msg = lastError instanceof Error ? lastError.message : String(lastError);
-  throw new Error(msg);
+  const data = await res.json() as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  };
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
+  if (!text) throw new Error("La API devolvió una respuesta vacía.");
+  return text;
 }
 
 // ─── Teclados ────────────────────────────────────────────────────────────────
