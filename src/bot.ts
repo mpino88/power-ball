@@ -2071,6 +2071,7 @@ async function main(): Promise<void> {
         price_1m: p.price_1m ?? "",
         price_3m: p.price_3m ?? "",
         price_6m: p.price_6m ?? "",
+        price_9m: p.price_9m ?? "",
         price_1a: p.price_1a ?? "",
       }));
       await savePlansToSheet(plansToSave);

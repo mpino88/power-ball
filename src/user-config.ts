@@ -580,11 +580,12 @@ export interface PlanRow {
   price_1m: string;
   price_3m: string;
   price_6m: string;
+  price_9m: string;
   price_1a: string;
 }
 
 const PLANS_SHEET_TITLE = "Planes";
-const PLANS_HEADERS = ["id", "title", "description", "price", "menuIds", "price_1m", "price_3m", "price_6m", "price_1a"] as const;
+const PLANS_HEADERS = ["id", "title", "description", "price", "menuIds", "price_1m", "price_3m", "price_6m", "price_9m", "price_1a"] as const;
 
 /** Carga planes desde la 3ª pestaña. Si no existe, la crea y devuelve []. */
 export async function loadPlansFromSheet(): Promise<PlanRow[]> {
@@ -630,7 +631,8 @@ export async function loadPlansFromSheet(): Promise<PlanRow[]> {
         price_1m: values[5] ?? "",
         price_3m: values[6] ?? "",
         price_6m: values[7] ?? "",
-        price_1a: values[8] ?? "",
+        price_9m: values[8] ?? "",
+        price_1a: values[9] ?? "",
       });
     }
     console.log("[user-config] Planes: cargados", result.length, "desde 3ª pestaña.");
@@ -669,6 +671,7 @@ export async function savePlansToSheet(items: PlanRow[]): Promise<void> {
         price_1m: r.price_1m ?? "",
         price_3m: r.price_3m ?? "",
         price_6m: r.price_6m ?? "",
+        price_9m: r.price_9m ?? "",
         price_1a: r.price_1a ?? "",
       }));
       await sheet.addRows(rows);

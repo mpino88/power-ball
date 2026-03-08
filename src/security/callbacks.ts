@@ -95,8 +95,8 @@ export interface SecurityCallbackDeps {
   getExtraMenuLabel: (menuId: string) => string | undefined;
   /** Si se proporciona, "Listar planes" recarga desde el Sheet antes de mostrar. */
   getStorageBackend?: () => "sheet" | "file";
-  loadPlansFromSheet?: () => Promise<{ id: string; title: string; description: string; price: string; menuIds: string; price_1m: string; price_3m: string; price_6m: string; price_1a: string }[]>;
-  initPlansFromSheet?: (rows: { id: string; title: string; description: string; price: string; menuIds: string; price_1m: string; price_3m: string; price_6m: string; price_1a: string }[]) => void;
+  loadPlansFromSheet?: () => Promise<{ id: string; title: string; description: string; price: string; menuIds: string; price_1m: string; price_3m: string; price_6m: string; price_9m: string; price_1a: string }[]>;
+  initPlansFromSheet?: (rows: { id: string; title: string; description: string; price: string; menuIds: string; price_1m: string; price_3m: string; price_6m: string; price_9m: string; price_1a: string }[]) => void;
 }
 
 export async function handleSecurityCallback(

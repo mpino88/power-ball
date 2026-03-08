@@ -14,6 +14,7 @@ export const TEMPORALITIES = [
   { id: "1m", label: "1 Mes" },
   { id: "3m", label: "3 Meses" },
   { id: "6m", label: "6 Meses" },
+  { id: "9m", label: "9 Meses" },
   { id: "1a", label: "1 Año" },
 ] as const;
 
@@ -26,6 +27,7 @@ export function computeExpiryDate(from: Date, temporality: Temporality | string)
     case "1m": d.setMonth(d.getMonth() + 1); break;
     case "3m": d.setMonth(d.getMonth() + 3); break;
     case "6m": d.setMonth(d.getMonth() + 6); break;
+    case "9m": d.setMonth(d.getMonth() + 9); break;
     case "1a": d.setFullYear(d.getFullYear() + 1); break;
   }
   return d;
@@ -50,6 +52,7 @@ export interface Plan {
   price_1m?: string;
   price_3m?: string;
   price_6m?: string;
+  price_9m?: string;
   price_1a?: string;
 }
 
@@ -59,6 +62,7 @@ export function getPriceForTemporality(plan: Plan, temporality: string): string 
     case "1m": return plan.price_1m || plan.price || "";
     case "3m": return plan.price_3m || plan.price || "";
     case "6m": return plan.price_6m || plan.price || "";
+    case "9m": return plan.price_9m || plan.price || "";
     case "1a": return plan.price_1a || plan.price || "";
     default: return plan.price || "";
   }
@@ -76,6 +80,7 @@ export interface PlanSheetRow {
   price_1m: string;
   price_3m: string;
   price_6m: string;
+  price_9m: string;
   price_1a: string;
 }
 
@@ -101,6 +106,7 @@ export function initPlansFromSheet(rows: PlanSheetRow[]): void {
     price_1m: r.price_1m ?? "",
     price_3m: r.price_3m ?? "",
     price_6m: r.price_6m ?? "",
+    price_9m: r.price_9m ?? "",
     price_1a: r.price_1a ?? "",
   }));
 }
@@ -142,6 +148,7 @@ function save(): void {
       price_1m: p.price_1m ?? "",
       price_3m: p.price_3m ?? "",
       price_6m: p.price_6m ?? "",
+      price_9m: p.price_9m ?? "",
       price_1a: p.price_1a ?? "",
     }));
     void planSheetPersist(items);
@@ -216,7 +223,7 @@ export function addPlan(
   description: string,
   price: string,
   menuIds?: string[],
-  pricing?: { price_1m?: string; price_3m?: string; price_6m?: string; price_1a?: string }
+  pricing?: { price_1m?: string; price_3m?: string; price_6m?: string; price_9m?: string; price_1a?: string }
 ): boolean {
   const normId = id.trim() || titleToPlanId(title);
   if (plans.some((p) => p.id === normId)) return false;
@@ -230,6 +237,7 @@ export function addPlan(
     price_1m: pricing?.price_1m ?? "",
     price_3m: pricing?.price_3m ?? "",
     price_6m: pricing?.price_6m ?? "",
+    price_9m: pricing?.price_9m ?? "",
     price_1a: pricing?.price_1a ?? "",
   });
   save();
@@ -246,6 +254,7 @@ export function updatePlan(
     price_1m?: string;
     price_3m?: string;
     price_6m?: string;
+    price_9m?: string;
     price_1a?: string;
   }
 ): boolean {
@@ -258,6 +267,7 @@ export function updatePlan(
   if (updates.price_1m !== undefined) plan.price_1m = updates.price_1m.trim();
   if (updates.price_3m !== undefined) plan.price_3m = updates.price_3m.trim();
   if (updates.price_6m !== undefined) plan.price_6m = updates.price_6m.trim();
+  if (updates.price_9m !== undefined) plan.price_9m = updates.price_9m.trim();
   if (updates.price_1a !== undefined) plan.price_1a = updates.price_1a.trim();
   save();
   return true;

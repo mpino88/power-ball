@@ -237,13 +237,13 @@ export async function handleSecurityMessage(
       const title = text.trim();
       if (!title) { await ctx.reply("Envía el título del plan (ej: Plan Básico)."); return true; }
       creatingPlanFlow.set(userId, { step: 2, title });
-      await ctx.reply("➕ *Añadir plan* (paso 2/7)\n\nEnvía la *descripción* del plan.", { parse_mode: "Markdown", reply_markup: cancelKb });
+      await ctx.reply("➕ *Añadir plan* (paso 2/8)\n\nEnvía la *descripción* del plan.", { parse_mode: "Markdown", reply_markup: cancelKb });
       return true;
     }
     if (creatingPlan.step === 2) {
       creatingPlanFlow.set(userId, { step: 3, title: creatingPlan.title, description: text.trim() });
       await ctx.reply(
-        "➕ *Añadir plan* (paso 3/7)\n\nEnvía los *IDs de menús* incluidos (ej: `est_grupos,est_individuales`). Envía *-* para ninguno.",
+        "➕ *Añadir plan* (paso 3/8)\n\nEnvía los *IDs de menús* incluidos (ej: `est_grupos,est_individuales`). Envía *-* para ninguno.",
         { parse_mode: "Markdown", reply_markup: cancelKb }
       );
       return true;
@@ -252,32 +252,38 @@ export async function handleSecurityMessage(
       const raw = text.trim();
       const menuIds = raw === "-" || raw === "" ? [] : raw.split(",").map((s) => s.trim()).filter(Boolean);
       creatingPlanFlow.set(userId, { step: 4, title: creatingPlan.title, description: creatingPlan.description, menuIds });
-      await ctx.reply("➕ *Añadir plan* (paso 4/7)\n\nPrecio para *1 Mes*. Envía *-* para omitir.", { parse_mode: "Markdown", reply_markup: cancelKb });
+      await ctx.reply("➕ *Añadir plan* (paso 4/8)\n\nPrecio para *1 Mes*. Envía *-* para omitir.", { parse_mode: "Markdown", reply_markup: cancelKb });
       return true;
     }
     if (creatingPlan.step === 4) {
       const price_1m = text.trim() === "-" ? "" : text.trim();
       creatingPlanFlow.set(userId, { step: 5, title: creatingPlan.title, description: creatingPlan.description, menuIds: creatingPlan.menuIds, price_1m });
-      await ctx.reply("➕ *Añadir plan* (paso 5/7)\n\nPrecio para *3 Meses*. Envía *-* para omitir.", { parse_mode: "Markdown", reply_markup: cancelKb });
+      await ctx.reply("➕ *Añadir plan* (paso 5/8)\n\nPrecio para *3 Meses*. Envía *-* para omitir.", { parse_mode: "Markdown", reply_markup: cancelKb });
       return true;
     }
     if (creatingPlan.step === 5) {
       const price_3m = text.trim() === "-" ? "" : text.trim();
       creatingPlanFlow.set(userId, { step: 6, title: creatingPlan.title, description: creatingPlan.description, menuIds: creatingPlan.menuIds, price_1m: creatingPlan.price_1m, price_3m });
-      await ctx.reply("➕ *Añadir plan* (paso 6/7)\n\nPrecio para *6 Meses*. Envía *-* para omitir.", { parse_mode: "Markdown", reply_markup: cancelKb });
+      await ctx.reply("➕ *Añadir plan* (paso 6/8)\n\nPrecio para *6 Meses*. Envía *-* para omitir.", { parse_mode: "Markdown", reply_markup: cancelKb });
       return true;
     }
     if (creatingPlan.step === 6) {
       const price_6m = text.trim() === "-" ? "" : text.trim();
       creatingPlanFlow.set(userId, { step: 7, title: creatingPlan.title, description: creatingPlan.description, menuIds: creatingPlan.menuIds, price_1m: creatingPlan.price_1m, price_3m: creatingPlan.price_3m, price_6m });
-      await ctx.reply("➕ *Añadir plan* (paso 7/7)\n\nPrecio para *1 Año*. Envía *-* para omitir.", { parse_mode: "Markdown", reply_markup: cancelKb });
+      await ctx.reply("➕ *Añadir plan* (paso 7/8)\n\nPrecio para *9 Meses*. Envía *-* para omitir.", { parse_mode: "Markdown", reply_markup: cancelKb });
       return true;
     }
     if (creatingPlan.step === 7) {
+      const price_9m = text.trim() === "-" ? "" : text.trim();
+      creatingPlanFlow.set(userId, { step: 8, title: creatingPlan.title, description: creatingPlan.description, menuIds: creatingPlan.menuIds, price_1m: creatingPlan.price_1m, price_3m: creatingPlan.price_3m, price_6m: creatingPlan.price_6m, price_9m });
+      await ctx.reply("➕ *Añadir plan* (paso 8/8)\n\nPrecio para *1 Año*. Envía *-* para omitir.", { parse_mode: "Markdown", reply_markup: cancelKb });
+      return true;
+    }
+    if (creatingPlan.step === 8) {
       const price_1a = text.trim() === "-" ? "" : text.trim();
       creatingPlanFlow.delete(userId);
       const id = titleToPlanId(creatingPlan.title);
-      const pricing = { price_1m: creatingPlan.price_1m, price_3m: creatingPlan.price_3m, price_6m: creatingPlan.price_6m, price_1a };
+      const pricing = { price_1m: creatingPlan.price_1m, price_3m: creatingPlan.price_3m, price_6m: creatingPlan.price_6m, price_9m: creatingPlan.price_9m, price_1a };
       if (!addPlan(id, creatingPlan.title, creatingPlan.description, "", creatingPlan.menuIds, pricing)) {
         await ctx.reply("No se pudo añadir (id duplicado). Cambia el título.", { reply_markup: buildManagePlansKeyboard() });
         return true;
@@ -287,6 +293,7 @@ export async function handleSecurityMessage(
         creatingPlan.price_1m && `1M: ${creatingPlan.price_1m}`,
         creatingPlan.price_3m && `3M: ${creatingPlan.price_3m}`,
         creatingPlan.price_6m && `6M: ${creatingPlan.price_6m}`,
+        creatingPlan.price_9m && `9M: ${creatingPlan.price_9m}`,
         price_1a && `1A: ${price_1a}`,
       ].filter(Boolean).join(" · ");
       await ctx.reply(
@@ -304,13 +311,13 @@ export async function handleSecurityMessage(
       const title = text.trim();
       if (!title) { await ctx.reply("Envía el nuevo título del plan."); return true; }
       editingPlanFlow.set(userId, { step: 2, planId: editingPlan.planId, title });
-      await ctx.reply("✏️ *Editar plan* (paso 2/7)\n\nEnvía la *nueva descripción*.", { parse_mode: "Markdown", reply_markup: cancelKb });
+      await ctx.reply("✏️ *Editar plan* (paso 2/8)\n\nEnvía la *nueva descripción*.", { parse_mode: "Markdown", reply_markup: cancelKb });
       return true;
     }
     if (editingPlan.step === 2) {
       editingPlanFlow.set(userId, { step: 3, planId: editingPlan.planId, title: editingPlan.title, description: text.trim() });
       await ctx.reply(
-        "✏️ *Editar plan* (paso 3/7)\n\nEnvía los *IDs de menús* del plan (separados por coma) o *-* para ninguno.",
+        "✏️ *Editar plan* (paso 3/8)\n\nEnvía los *IDs de menús* del plan (separados por coma) o *-* para ninguno.",
         { parse_mode: "Markdown", reply_markup: cancelKb }
       );
       return true;
@@ -319,28 +326,34 @@ export async function handleSecurityMessage(
       const raw = text.trim();
       const menuIds = raw === "-" || raw === "" ? [] : raw.split(",").map((s) => s.trim()).filter(Boolean);
       editingPlanFlow.set(userId, { step: 4, planId: editingPlan.planId, title: editingPlan.title, description: editingPlan.description, menuIds });
-      await ctx.reply("✏️ *Editar plan* (paso 4/7)\n\nNuevo precio para *1 Mes*. Envía *-* para dejar vacío.", { parse_mode: "Markdown", reply_markup: cancelKb });
+      await ctx.reply("✏️ *Editar plan* (paso 4/8)\n\nNuevo precio para *1 Mes*. Envía *-* para dejar vacío.", { parse_mode: "Markdown", reply_markup: cancelKb });
       return true;
     }
     if (editingPlan.step === 4) {
       const price_1m = text.trim() === "-" ? "" : text.trim();
       editingPlanFlow.set(userId, { step: 5, planId: editingPlan.planId, title: editingPlan.title, description: editingPlan.description, menuIds: editingPlan.menuIds, price_1m });
-      await ctx.reply("✏️ *Editar plan* (paso 5/7)\n\nNuevo precio para *3 Meses*. Envía *-* para dejar vacío.", { parse_mode: "Markdown", reply_markup: cancelKb });
+      await ctx.reply("✏️ *Editar plan* (paso 5/8)\n\nNuevo precio para *3 Meses*. Envía *-* para dejar vacío.", { parse_mode: "Markdown", reply_markup: cancelKb });
       return true;
     }
     if (editingPlan.step === 5) {
       const price_3m = text.trim() === "-" ? "" : text.trim();
       editingPlanFlow.set(userId, { step: 6, planId: editingPlan.planId, title: editingPlan.title, description: editingPlan.description, menuIds: editingPlan.menuIds, price_1m: editingPlan.price_1m, price_3m });
-      await ctx.reply("✏️ *Editar plan* (paso 6/7)\n\nNuevo precio para *6 Meses*. Envía *-* para dejar vacío.", { parse_mode: "Markdown", reply_markup: cancelKb });
+      await ctx.reply("✏️ *Editar plan* (paso 6/8)\n\nNuevo precio para *6 Meses*. Envía *-* para dejar vacío.", { parse_mode: "Markdown", reply_markup: cancelKb });
       return true;
     }
     if (editingPlan.step === 6) {
       const price_6m = text.trim() === "-" ? "" : text.trim();
       editingPlanFlow.set(userId, { step: 7, planId: editingPlan.planId, title: editingPlan.title, description: editingPlan.description, menuIds: editingPlan.menuIds, price_1m: editingPlan.price_1m, price_3m: editingPlan.price_3m, price_6m });
-      await ctx.reply("✏️ *Editar plan* (paso 7/7)\n\nNuevo precio para *1 Año*. Envía *-* para dejar vacío.", { parse_mode: "Markdown", reply_markup: cancelKb });
+      await ctx.reply("✏️ *Editar plan* (paso 7/8)\n\nNuevo precio para *9 Meses*. Envía *-* para dejar vacío.", { parse_mode: "Markdown", reply_markup: cancelKb });
       return true;
     }
     if (editingPlan.step === 7) {
+      const price_9m = text.trim() === "-" ? "" : text.trim();
+      editingPlanFlow.set(userId, { step: 8, planId: editingPlan.planId, title: editingPlan.title, description: editingPlan.description, menuIds: editingPlan.menuIds, price_1m: editingPlan.price_1m, price_3m: editingPlan.price_3m, price_6m: editingPlan.price_6m, price_9m });
+      await ctx.reply("✏️ *Editar plan* (paso 8/8)\n\nNuevo precio para *1 Año*. Envía *-* para dejar vacío.", { parse_mode: "Markdown", reply_markup: cancelKb });
+      return true;
+    }
+    if (editingPlan.step === 8) {
       const price_1a = text.trim() === "-" ? "" : text.trim();
       editingPlanFlow.delete(userId);
       updatePlan(editingPlan.planId, {
@@ -350,6 +363,7 @@ export async function handleSecurityMessage(
         price_1m: editingPlan.price_1m,
         price_3m: editingPlan.price_3m,
         price_6m: editingPlan.price_6m,
+        price_9m: editingPlan.price_9m,
         price_1a,
       });
       await ctx.reply(`✅ Plan actualizado: *${editingPlan.title}*`, { parse_mode: "Markdown", reply_markup: buildManagePlansKeyboard() });
