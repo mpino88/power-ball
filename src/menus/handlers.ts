@@ -92,6 +92,7 @@ export async function handleMenuCallback(
   }
 
   if (data === "volver") {
+    await deps.reloadUserConfig();
     return {
       result: MAIN_MENU_MESSAGE,
       keyboard: mainKb(),

@@ -531,6 +531,7 @@ bot.use(
 );
 
 bot.command("start", async (ctx) => {
+  await reloadConfigFromStorage();
   await ctx.reply(
     MAIN_MENU_MESSAGE,
     { parse_mode: "Markdown", reply_markup: buildMainKb(ctx.from?.id) }
