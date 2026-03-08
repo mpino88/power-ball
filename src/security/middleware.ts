@@ -6,8 +6,8 @@
 
 import { InlineKeyboard, Keyboard } from "grammy";
 import type { getOwnerId as GetOwnerId, isAllowed as IsAllowed } from "../user-config.js";
-import { addPlanRequest, isPlanExpired } from "../user-config.js";
-import { getPlans, getPriceForTemporality, TEMPORALITIES } from "../plans.js";
+import { addPlanRequest, assignPlanToUser, isPlanExpired } from "../user-config.js";
+import { getPlans, getPriceForTemporality, REGULAR_TEMPORALITIES, TEMPORALITIES, TRIAL_TEMPORALITIES } from "../plans.js";
 
 export type BuildMainKeyboard = (userId: number | undefined) => InlineKeyboard;
 
@@ -36,12 +36,14 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
       .resized()
       .oneTime();
 
-  /** Construye los 4 botones de temporalidad de un plan. */
+  /** Construye los botones de temporalidad de un plan: solo 1d para autoApprove, el resto para planes normales. */
   function addPlanTemporalityButtons(kb: InlineKeyboard, planId: string, planTitle: string, plan: ReturnType<typeof getPlans>[number], prefix: string): void {
-    for (const t of TEMPORALITIES) {
+    const temporalities = plan.autoApprove ? TRIAL_TEMPORALITIES : REGULAR_TEMPORALITIES;
+    for (const t of temporalities) {
       const price = getPriceForTemporality(plan, t.id);
       const priceLabel = price ? ` — ${price}` : "";
-      kb.text(`${t.label}${priceLabel}`, `${prefix}${planId}_${t.id}`);
+      const label = plan.autoApprove ? `✅ Activar gratis — ${t.label}` : `${t.label}${priceLabel}`;
+      kb.text(label, `${prefix}${planId}_${t.id}`);
     }
     kb.row();
   }
@@ -80,9 +82,17 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
           const temporality = rest.slice(lastUnderscore + 1);
           const plan = getPlans().find((p) => p.id === planId);
           if (plan && TEMPORALITIES.some((t) => t.id === temporality)) {
-            pendingRenewal.set(uid, { planId, planName: plan.title, temporality });
             if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery();
+            if (plan.autoApprove) {
+              await assignPlanToUser(uid, plan.title, plan.menuIds ?? [], temporality);
+              await ctx.reply(
+                `✅ *Plan ${plan.title} activado*\n\nTu acceso de prueba está listo por *1 día*.`,
+                { parse_mode: "Markdown", reply_markup: options.buildMainKeyboard(uid) }
+              );
+              return;
+            }
             const tLabel = TEMPORALITIES.find((t) => t.id === temporality)?.label ?? temporality;
+            pendingRenewal.set(uid, { planId, planName: plan.title, temporality });
             await ctx.reply(
               `🔄 *Renovar plan: ${plan.title}* (${tLabel})\n\n` +
               "Para completar la renovación necesitamos tu número de contacto.\n\n" +
@@ -176,9 +186,17 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
         const temporality = rest.slice(lastUnderscore + 1);
         const plan = getPlans().find((p) => p.id === planId);
         if (plan && TEMPORALITIES.some((t) => t.id === temporality)) {
-          pendingPlanRequest.set(uid, { planId, planName: plan.title, temporality });
           if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery();
+          if (plan.autoApprove) {
+            await assignPlanToUser(uid, plan.title, plan.menuIds ?? [], temporality);
+            await ctx.reply(
+              `✅ *¡Plan ${plan.title} activado!*\n\nTienes *1 día* de acceso gratuito para explorar todas las funciones. ¡Disfrútalo!`,
+              { parse_mode: "Markdown", reply_markup: options.buildMainKeyboard(uid) }
+            );
+            return;
+          }
           const tLabel = TEMPORALITIES.find((t) => t.id === temporality)?.label ?? temporality;
+          pendingPlanRequest.set(uid, { planId, planName: plan.title, temporality });
           await ctx.reply(
             `📋 Plan *${plan.title}* — ${tLabel}\n\n` +
             "Para completar la solicitud necesitamos tu número de contacto.\n\n" +
@@ -241,41 +259,34 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
     }
 
     const plans = getPlans();
-    const header =
-      "🔒 *Acceso restringido*\n\n" +
-      "Tu ID: `" + uid + "` — elige un plan y solicita acceso.\n\n";
 
-    let body: string;
+    let msg: string;
     if (plans.length === 0) {
-      body = "No hay planes configurados. Contacta al administrador para solicitar acceso.";
+      msg = "📋 *Elige un plan y solicita acceso*\n\nNo hay planes configurados. Contacta al administrador para solicitar acceso.";
     } else {
-      body =
-        plans
-          .map((p) => {
-            const desc = p.description.replace(/\n/g, " ");
-            const prices = TEMPORALITIES
-              .map((t) => {
-                const price = getPriceForTemporality(p, t.id);
-                return price ? `${t.label}: *${price}*` : null;
-              })
-              .filter(Boolean)
-              .join(" · ");
-            return (
-              "▃▃▃▃▃▃▃▃▃▃▃▃▃▃▃\n" +
-              `  *${p.title}*\n` +
-              (prices ? `  ${prices}\n` : "") +
-              "  ─────────────\n" +
-              `  ${desc}\n` +
-              "▃▃▃▃▃▃▃▃▃▃▃▃▃▃▃"
-            );
-          })
-          .join("\n\n") +
-        "\n\n👇 _Elige tu plan, selecciona la duración y toca el botón para solicitar:_";
+      const planList = plans
+        .map((p) => {
+          const temporalities = p.autoApprove ? TRIAL_TEMPORALITIES : REGULAR_TEMPORALITIES;
+          const prices = temporalities
+            .map((t) => {
+              const price = getPriceForTemporality(p, t.id);
+              return price ? `${t.label}: *${price}*` : null;
+            })
+            .filter(Boolean)
+            .join(" · ");
+          const autoTag = p.autoApprove ? " — _acceso inmediato_" : "";
+          return (
+            `*${p.title}*${autoTag}\n` +
+            (prices ? `${prices}\n` : "") +
+            `_${p.description.replace(/\n/g, " ")}_`
+          );
+        })
+        .join("\n\n─────────────\n\n");
+      msg =
+        "📋 *Elige un plan y solicita acceso*\n\n" +
+        planList +
+        "\n\n👇 _Selecciona la duración y toca el botón:_";
     }
-
-    const msg = link
-      ? header + body
-      : "🔒 *Acceso restringido.*\n\nContacta al administrador y envíale tu ID: `" + uid + "`.";
 
     const keyboard = new InlineKeyboard();
     if (plans.length === 0 && link) {

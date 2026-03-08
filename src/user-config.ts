@@ -582,10 +582,11 @@ export interface PlanRow {
   price_6m: string;
   price_9m: string;
   price_1a: string;
+  autoApprove: string;
 }
 
 const PLANS_SHEET_TITLE = "Planes";
-const PLANS_HEADERS = ["id", "title", "description", "price", "menuIds", "price_1m", "price_3m", "price_6m", "price_9m", "price_1a"] as const;
+const PLANS_HEADERS = ["id", "title", "description", "price", "menuIds", "price_1m", "price_3m", "price_6m", "price_9m", "price_1a", "autoApprove"] as const;
 
 /** Carga planes desde la 3ª pestaña. Si no existe, la crea y devuelve []. */
 export async function loadPlansFromSheet(): Promise<PlanRow[]> {
@@ -633,6 +634,7 @@ export async function loadPlansFromSheet(): Promise<PlanRow[]> {
         price_6m: values[7] ?? "",
         price_9m: values[8] ?? "",
         price_1a: values[9] ?? "",
+        autoApprove: values[10] ?? "",
       });
     }
     console.log("[user-config] Planes: cargados", result.length, "desde 3ª pestaña.");
@@ -673,6 +675,7 @@ export async function savePlansToSheet(items: PlanRow[]): Promise<void> {
         price_6m: r.price_6m ?? "",
         price_9m: r.price_9m ?? "",
         price_1a: r.price_1a ?? "",
+        autoApprove: r.autoApprove ?? "",
       }));
       await sheet.addRows(rows);
     }
@@ -942,6 +945,7 @@ export function getRequestedPlanUsers(): RequestedPlanUser[] {
 function computeExpiryStr(temporality: string): string {
   const d = new Date();
   switch (temporality) {
+    case "1d": d.setDate(d.getDate() + 1); break;
     case "1m": d.setMonth(d.getMonth() + 1); break;
     case "3m": d.setMonth(d.getMonth() + 3); break;
     case "6m": d.setMonth(d.getMonth() + 6); break;

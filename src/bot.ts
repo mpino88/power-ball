@@ -711,7 +711,7 @@ bot.on("callback_query:data", async (ctx) => {
 
   if (data === "cambiar_plan_open" && ctx.from && isAllowed(ctx.from.id) && !isOwner(ctx.from.id)) {
     await ctx.answerCallbackQuery();
-    const plans = getPlans();
+    const plans = getPlans().filter((p) => !p.autoApprove);
     if (plans.length === 0) {
       try {
         await ctx.editMessageText("No hay planes disponibles para cambiar.", {
@@ -741,7 +741,7 @@ bot.on("callback_query:data", async (ctx) => {
     const keyboard = new InlineKeyboard();
     for (const p of plans) {
       keyboard.text(`📋 ${p.title}`, `noop_cambiar`).row();
-      for (const t of TEMPORALITIES) {
+      for (const t of TEMPORALITIES.filter((t) => t.id !== "1d")) {
         const price = getPriceForTemporality(p, t.id);
         const priceLabel = price ? ` — ${price}` : "";
         keyboard.text(`${t.label}${priceLabel}`, `user_cambiar_plan_${p.id}_${t.id}`);
@@ -2074,6 +2074,7 @@ async function main(): Promise<void> {
         price_6m: p.price_6m ?? "",
         price_9m: p.price_9m ?? "",
         price_1a: p.price_1a ?? "",
+        autoApprove: p.autoApprove ? "true" : "",
       }));
       await savePlansToSheet(plansToSave);
       setPlanSheetPersist((items) => savePlansToSheet(items));

@@ -11,6 +11,7 @@ const FILE_PATH = path.join(DATA_DIR, "plans.json");
 
 /** Opciones de temporalidad disponibles. */
 export const TEMPORALITIES = [
+  { id: "1d", label: "1 Día" },
   { id: "1m", label: "1 Mes" },
   { id: "3m", label: "3 Meses" },
   { id: "6m", label: "6 Meses" },
@@ -18,12 +19,18 @@ export const TEMPORALITIES = [
   { id: "1a", label: "1 Año" },
 ] as const;
 
+/** Temporalidades visibles para planes regulares (excluye 1d). */
+export const REGULAR_TEMPORALITIES = TEMPORALITIES.filter((t) => t.id !== "1d");
+/** Temporalidades visibles para planes de prueba / auto-aprobados (solo 1d). */
+export const TRIAL_TEMPORALITIES = TEMPORALITIES.filter((t) => t.id === "1d");
+
 export type Temporality = (typeof TEMPORALITIES)[number]["id"];
 
 /** Calcula la fecha de caducidad a partir de una fecha base y una temporalidad. */
 export function computeExpiryDate(from: Date, temporality: Temporality | string): Date {
   const d = new Date(from);
   switch (temporality) {
+    case "1d": d.setDate(d.getDate() + 1); break;
     case "1m": d.setMonth(d.getMonth() + 1); break;
     case "3m": d.setMonth(d.getMonth() + 3); break;
     case "6m": d.setMonth(d.getMonth() + 6); break;
@@ -54,6 +61,8 @@ export interface Plan {
   price_6m?: string;
   price_9m?: string;
   price_1a?: string;
+  /** Si true, el plan se aprueba automáticamente sin intervención del admin. */
+  autoApprove?: boolean;
 }
 
 /** Devuelve el precio de un plan según la temporalidad; si no está definido usa price. */
@@ -82,6 +91,7 @@ export interface PlanSheetRow {
   price_6m: string;
   price_9m: string;
   price_1a: string;
+  autoApprove: string;
 }
 
 /** Cuando está definido, save() persiste en la 3ª pestaña del Sheet en lugar del archivo JSON. */
@@ -108,6 +118,7 @@ export function initPlansFromSheet(rows: PlanSheetRow[]): void {
     price_6m: r.price_6m ?? "",
     price_9m: r.price_9m ?? "",
     price_1a: r.price_1a ?? "",
+    autoApprove: r.autoApprove === "true",
   }));
 }
 
@@ -150,6 +161,7 @@ function save(): void {
       price_6m: p.price_6m ?? "",
       price_9m: p.price_9m ?? "",
       price_1a: p.price_1a ?? "",
+      autoApprove: p.autoApprove ? "true" : "",
     }));
     void planSheetPersist(items);
     return;
@@ -191,6 +203,15 @@ const DEFAULT_PLANS: Plan[] = [
     price: "",
     menuIds: ["est_grupos", "est_individuales"],
   },
+  {
+    id: "trial",
+    title: "Trial",
+    description:
+      "Acceso de prueba gratuito por 1 día. Incluye consultas Fijo/Corrido y Estadísticas por grupo. Sin necesidad de aprobación — actívalo al instante.",
+    price: "",
+    menuIds: ["est_grupos"],
+    autoApprove: true,
+  },
 ];
 
 export function initPlans(): Plan[] {
@@ -223,7 +244,8 @@ export function addPlan(
   description: string,
   price: string,
   menuIds?: string[],
-  pricing?: { price_1m?: string; price_3m?: string; price_6m?: string; price_9m?: string; price_1a?: string }
+  pricing?: { price_1m?: string; price_3m?: string; price_6m?: string; price_9m?: string; price_1a?: string },
+  autoApprove?: boolean
 ): boolean {
   const normId = id.trim() || titleToPlanId(title);
   if (plans.some((p) => p.id === normId)) return false;
@@ -239,6 +261,7 @@ export function addPlan(
     price_6m: pricing?.price_6m ?? "",
     price_9m: pricing?.price_9m ?? "",
     price_1a: pricing?.price_1a ?? "",
+    autoApprove: autoApprove ?? false,
   });
   save();
   return true;
@@ -256,6 +279,7 @@ export function updatePlan(
     price_6m?: string;
     price_9m?: string;
     price_1a?: string;
+    autoApprove?: boolean;
   }
 ): boolean {
   const plan = plans.find((p) => p.id === id);
@@ -269,6 +293,7 @@ export function updatePlan(
   if (updates.price_6m !== undefined) plan.price_6m = updates.price_6m.trim();
   if (updates.price_9m !== undefined) plan.price_9m = updates.price_9m.trim();
   if (updates.price_1a !== undefined) plan.price_1a = updates.price_1a.trim();
+  if (updates.autoApprove !== undefined) plan.autoApprove = updates.autoApprove;
   save();
   return true;
 }

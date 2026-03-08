@@ -95,8 +95,8 @@ export interface SecurityCallbackDeps {
   getExtraMenuLabel: (menuId: string) => string | undefined;
   /** Si se proporciona, "Listar planes" recarga desde el Sheet antes de mostrar. */
   getStorageBackend?: () => "sheet" | "file";
-  loadPlansFromSheet?: () => Promise<{ id: string; title: string; description: string; price: string; menuIds: string; price_1m: string; price_3m: string; price_6m: string; price_9m: string; price_1a: string }[]>;
-  initPlansFromSheet?: (rows: { id: string; title: string; description: string; price: string; menuIds: string; price_1m: string; price_3m: string; price_6m: string; price_9m: string; price_1a: string }[]) => void;
+  loadPlansFromSheet?: () => Promise<{ id: string; title: string; description: string; price: string; menuIds: string; price_1m: string; price_3m: string; price_6m: string; price_9m: string; price_1a: string; autoApprove: string }[]>;
+  initPlansFromSheet?: (rows: { id: string; title: string; description: string; price: string; menuIds: string; price_1m: string; price_3m: string; price_6m: string; price_9m: string; price_1a: string; autoApprove: string }[]) => void;
 }
 
 export async function handleSecurityCallback(
@@ -488,7 +488,8 @@ export async function handleSecurityCallback(
       const prices = TEMPORALITIES
         .map((t) => { const pr = getPriceForTemporality(p, t.id); return pr ? `${t.label}: *${escapeMd(pr)}*` : null; })
         .filter(Boolean).join(" · ");
-      return `• *${escapeMd(p.title)}*${prices ? `\n  ${prices}` : ""}\n  _${escapeMd(p.description.slice(0, 50))}${p.description.length > 50 ? "…" : ""}_\n  Menús: \`${menus}\``;
+      const autoTag = p.autoApprove ? " _(auto-aprobado)_" : "";
+      return `• *${escapeMd(p.title)}*${autoTag}${prices ? `\n  ${prices}` : ""}\n  _${escapeMd(p.description.slice(0, 50))}${p.description.length > 50 ? "…" : ""}_\n  Menús: \`${menus}\``;
     });
     result = "📋 *Planes*\n\n" + (lines.length ? lines.join("\n\n") : "_Ningún plan. Añade uno desde Gestionar planes._");
     keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar planes", "admin_plans_manage");
