@@ -113,6 +113,7 @@ export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboard
   }
   if (ownerId !== null && deps.isOwner(uid)) {
     kb.row().text("⚙️ Administrar", "security_open").text("🧪 Testing", "testing_open");
+    kb.row().text("🔮 Crear Adivinanza", "adivinanza_open");
   }
   return kb;
 }

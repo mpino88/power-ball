@@ -20,6 +20,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "google-auth-library": "^10.6.1",
     "google-spreadsheet": "^5.2.0",
     "grammy": "^1.28.0",

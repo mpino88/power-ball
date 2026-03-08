@@ -133,6 +133,21 @@ import {
   searchCharada,
   buildSearchMessage,
 } from "./charada.js";
+import {
+  ADIVINANZA_OPEN_CB,
+  ADIVINANZA_INGRESAR_CB,
+  ADIVINANZA_REGEN_PREFIX,
+  ADIVINANZA_STRAT_PREFIX,
+  ADIVINANZA_CNS_CALLBACK,
+  ADIVINANZA_OPEN_MSG,
+  generarAdivinanza,
+  buildAdivinanzaMenuKeyboard,
+  buildAdivinanzaResultKeyboard,
+  buildAdivinanzaResultMsg,
+  buildAdivinanzaStratCallback,
+  parseAdivinanzaStratCallback,
+  parseNumberList,
+} from "./adivinanza.js";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
@@ -168,6 +183,12 @@ const waitingCharadaSearch = new Map<number, true>();
  * Se sobrescribe en cada resultado de consenso; expira al calcular uno nuevo.
  */
 const parleConsensusCache = new Map<number, { nums: number[]; context: StrategyContext }>();
+
+/**
+ * Caché de números para la adivinanza del Consenso Multi-Estrategia (solo dueño).
+ * Se sobrescribe con cada nuevo resultado de consenso.
+ */
+const adivinanzaConsensusCache = new Map<number, number[]>();
 
 /** Sesiones activas del Análisis Progresivo (solo para el dueño del bot). */
 const progressiveSessionMap = new Map<number, ProgressiveSession>();
@@ -215,6 +236,9 @@ function invalidateTestingCutoffCache(): void {
 
 /** Usuarios (solo el dueño) esperando introducir una fecha de testing. */
 const waitingTestingDate = new Map<number, true>();
+
+/** Dueño esperando ingresar lista de números para generar una adivinanza. */
+const waitingAdivinanzaNums = new Map<number, true>();
 
 /**
  * Versiones de getP3Map/getP4Map con filtro de fecha de corte para estrategias.
@@ -667,6 +691,78 @@ bot.on("callback_query:data", async (ctx) => {
   }
   // ── fin Testing ───────────────────────────────────────────────────────────
 
+  // ── Crear Adivinanza (solo dueño) ─────────────────────────────────────────
+  if (
+    (data === ADIVINANZA_OPEN_CB ||
+      data === ADIVINANZA_INGRESAR_CB ||
+      data.startsWith(ADIVINANZA_REGEN_PREFIX)) &&
+    ctx.from &&
+    isOwner(ctx.from.id)
+  ) {
+    await ctx.answerCallbackQuery();
+    const ownerId = ctx.from.id;
+
+    if (data === ADIVINANZA_OPEN_CB) {
+      try {
+        await ctx.editMessageText(ADIVINANZA_OPEN_MSG, {
+          parse_mode: "MarkdownV2",
+          reply_markup: buildAdivinanzaMenuKeyboard(),
+        });
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
+
+    if (data === ADIVINANZA_INGRESAR_CB) {
+      waitingAdivinanzaNums.set(ownerId, true);
+      try {
+        await ctx.editMessageText(
+          "🔮 *Crear Adivinanza — Ingresar números*\n\n" +
+            "Escribe la lista de números separados por espacios o comas\\.\n\n" +
+            "Ejemplo: `7 23 45 12 9` o `07, 23, 45`\n\n" +
+            "_Máximo 20 números\\. Usa /cancel para cancelar\\._",
+          {
+            parse_mode: "MarkdownV2",
+            reply_markup: new InlineKeyboard().text("❌ Cancelar", ADIVINANZA_OPEN_CB),
+          }
+        );
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
+
+    if (data.startsWith(ADIVINANZA_REGEN_PREFIX)) {
+      const encoded = data.slice(ADIVINANZA_REGEN_PREFIX.length);
+      const numbers = encoded.split(",").map(Number).filter((n) => !Number.isNaN(n));
+      if (numbers.length === 0) {
+        await ctx.reply("❌ Lista de números inválida.", { reply_markup: buildMainKb(ownerId) });
+        return;
+      }
+      try {
+        await ctx.editMessageText(
+          "⏳ _Generando adivinanza\\.\\.\\._",
+          { parse_mode: "MarkdownV2", reply_markup: new InlineKeyboard() }
+        );
+        const texto = await generarAdivinanza(numbers);
+        const msg = buildAdivinanzaResultMsg(texto, numbers);
+        await ctx.editMessageText(msg, {
+          parse_mode: "Markdown",
+          reply_markup: buildAdivinanzaResultKeyboard(numbers),
+        });
+      } catch (err) {
+        console.error("[adivinanza] Error al regenerar:", err);
+        await ctx.editMessageText(
+          "❌ Error al generar la adivinanza\\. Verifica que `GEMINI_API_KEY` esté configurada\\.",
+          { parse_mode: "MarkdownV2", reply_markup: buildAdivinanzaMenuKeyboard() }
+        );
+      }
+      return;
+    }
+  }
+  // ── fin Crear Adivinanza ──────────────────────────────────────────────────
+
   if (data === ESTRATEGIAS_OPEN_CALLBACK) {
     await ctx.answerCallbackQuery();
     // Siempre recarga desde el Sheet antes de mostrar el menú para que refleje
@@ -856,7 +952,7 @@ bot.on("callback_query:data", async (ctx) => {
             getP3Map: () => getStrategyP3Map(userId),
             getP4Map: () => getStrategyP4Map(userId),
           });
-          // Añade "Hacer parlé" si la estrategia tiene getCandidates
+          // Botones post-estrategia: "Hacer parlé" y "Crear Adivinanza" (dueño)
           const stratDef = getStrategy(parsed.menuId);
           const resultKb = new InlineKeyboard();
           if (stratDef?.getCandidates) {
@@ -865,7 +961,16 @@ bot.on("callback_query:data", async (ctx) => {
               parsed.context.mapSource,
               parsed.context.period
             );
-            resultKb.text("🎰 Hacer parlé", parleCallback).row();
+            resultKb.text("🎰 Hacer parlé", parleCallback);
+            if (userId && isOwner(userId)) {
+              const adivinanzaCallback = buildAdivinanzaStratCallback(
+                parsed.menuId,
+                parsed.context.mapSource,
+                parsed.context.period
+              );
+              resultKb.text("🔮 Crear Adivinanza", adivinanzaCallback);
+            }
+            resultKb.row();
           }
           // Botones de cambio rápido de base y período
           const pre = `${STRATEGY_CONTEXT_CALLBACK_PREFIX}${parsed.menuId}_`;
@@ -1253,6 +1358,86 @@ bot.on("callback_query:data", async (ctx) => {
     return;
   }
 
+  // ── Adivinanza desde Consenso (solo dueño) ───────────────────────────────
+  if (data === ADIVINANZA_CNS_CALLBACK && ctx.from && isOwner(ctx.from.id)) {
+    const userId = ctx.from.id;
+    const cached = adivinanzaConsensusCache.get(userId);
+    if (!cached || cached.length === 0) {
+      await ctx.answerCallbackQuery({ text: "⚠️ Sin resultado de consenso reciente." });
+      return;
+    }
+    await ctx.answerCallbackQuery({ text: "Generando adivinanza…" });
+    const loadingMsg = await ctx.reply("⏳ _Generando adivinanza..._", { parse_mode: "Markdown" });
+    const chatId = loadingMsg.chat.id;
+    try {
+      const texto = await generarAdivinanza(cached);
+      const msg = buildAdivinanzaResultMsg(texto, cached);
+      await ctx.api.editMessageText(chatId, loadingMsg.message_id, msg, {
+        parse_mode: "Markdown",
+        reply_markup: buildAdivinanzaResultKeyboard(cached),
+      });
+    } catch (err) {
+      console.error("[adivinanza-cns] Error:", err);
+      await ctx.api.editMessageText(
+        chatId,
+        loadingMsg.message_id,
+        "❌ Error al generar la adivinanza. Verifica que `GEMINI_API_KEY` esté configurada.",
+        { parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("🏠 Inicio", "volver") }
+      );
+    }
+    return;
+  }
+
+  // ── Adivinanza desde estrategia individual (solo dueño) ───────────────────
+  if (data.startsWith(ADIVINANZA_STRAT_PREFIX) && ctx.from && isOwner(ctx.from.id)) {
+    const userId = ctx.from.id;
+    const parsed = parseAdivinanzaStratCallback(data);
+    if (!parsed) {
+      await ctx.answerCallbackQuery({ text: "Callback inválido." });
+      return;
+    }
+    const strat = getStrategy(parsed.menuId);
+    if (!strat?.getCandidates) {
+      await ctx.answerCallbackQuery({ text: "Esta estrategia no soporta candidatos." });
+      return;
+    }
+    await ctx.answerCallbackQuery({ text: "Generando adivinanza…" });
+    const loadingMsg = await ctx.reply("⏳ _Generando adivinanza..._", { parse_mode: "Markdown" });
+    const chatId = loadingMsg.chat.id;
+    try {
+      const isP3 = parsed.context.mapSource === "p3";
+      const filteredMap = isP3
+        ? await getStrategyP3Map(userId)
+        : await getStrategyP4Map(userId);
+      const candidates = await strat.getCandidates(parsed.context, filteredMap);
+      if (candidates.length === 0) {
+        await ctx.api.editMessageText(
+          chatId,
+          loadingMsg.message_id,
+          "⚠️ La estrategia no devolvió candidatos para generar la adivinanza.",
+          { parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("🏠 Inicio", "volver") }
+        );
+        return;
+      }
+      const texto = await generarAdivinanza(candidates);
+      const msg = buildAdivinanzaResultMsg(texto, candidates);
+      await ctx.api.editMessageText(chatId, loadingMsg.message_id, msg, {
+        parse_mode: "Markdown",
+        reply_markup: buildAdivinanzaResultKeyboard(candidates),
+      });
+    } catch (err) {
+      console.error("[adivinanza-strat] Error:", err);
+      await ctx.api.editMessageText(
+        chatId,
+        loadingMsg.message_id,
+        "❌ Error al generar la adivinanza. Verifica que `GEMINI_API_KEY` esté configurada.",
+        { parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("🏠 Inicio", "volver") }
+      );
+    }
+    return;
+  }
+  // ── fin Adivinanza desde estrategia ──────────────────────────────────────
+
   if (data.startsWith("parle_") && ctx.from) {
     const userId = ctx.from.id;
     const parsed = parseParleCallback(data);
@@ -1561,6 +1746,7 @@ bot.command("cancel", async (ctx) => {
     consensusSessionMap.delete(userId);
     waitingCharadaSearch.delete(userId);
     waitingTestingDate.delete(userId);
+    waitingAdivinanzaNums.delete(userId);
     progressiveSessionMap.delete(userId);
     waitingProgressiveDate.delete(userId);
     const wasInPlanFlow = creatingPlanFlow.has(userId) || editingPlanFlow.has(userId);
@@ -1692,6 +1878,49 @@ bot.on("message:text", async (ctx) => {
   }
   // ── fin Testing ───────────────────────────────────────────────────────────
 
+  // ── Adivinanza: entrada de lista de números (solo dueño) ──────────────────
+  if (userId && isOwner(userId) && waitingAdivinanzaNums.has(userId)) {
+    waitingAdivinanzaNums.delete(userId);
+    const numbers = parseNumberList(text);
+    if (!numbers) {
+      await ctx.reply(
+        "❌ Lista inválida. Ingresa entre 1 y 20 números separados por espacios o comas (ej: `7 23 45 12`).",
+        { parse_mode: "Markdown", reply_markup: buildAdivinanzaMenuKeyboard() }
+      );
+      return;
+    }
+    const loadingMsg = await ctx.reply(
+      "⏳ _Generando adivinanza..._",
+      { parse_mode: "Markdown" }
+    );
+    try {
+      const texto = await generarAdivinanza(numbers);
+      const msg = buildAdivinanzaResultMsg(texto, numbers);
+      await ctx.api.editMessageText(
+        ctx.chat.id,
+        loadingMsg.message_id,
+        msg,
+        { parse_mode: "Markdown", reply_markup: buildAdivinanzaResultKeyboard(numbers) }
+      );
+    } catch (err) {
+      console.error("[adivinanza] Error al generar:", err);
+      try {
+        await ctx.api.editMessageText(
+          ctx.chat.id,
+          loadingMsg.message_id,
+          "❌ Error al generar la adivinanza. Verifica que `GEMINI_API_KEY` esté configurada.",
+          { parse_mode: "Markdown", reply_markup: buildAdivinanzaMenuKeyboard() }
+        );
+      } catch {
+        await ctx.reply("❌ Error al generar la adivinanza. Revisa los logs.", {
+          reply_markup: buildMainKb(userId),
+        });
+      }
+    }
+    return;
+  }
+  // ── fin Adivinanza ────────────────────────────────────────────────────────
+
   // ── Consenso: entrada de cantidad de resultados ──────────────────────────
   const consensusSession = userId ? consensusSessionMap.get(userId) : undefined;
   if (userId && consensusSession?.step === "waiting_count") {
@@ -1713,13 +1942,22 @@ bot.on("message:text", async (ctx) => {
         map,
         getStrategy
       );
-      // Guarda los números del consenso para el botón "Hacer parlé"
+      // Guarda los números del consenso para "Hacer parlé" y "Crear Adivinanza"
       if (rankedNums.length >= 2) {
         parleConsensusCache.set(userId, { nums: rankedNums, context: consensusSession.context });
       }
+      if (rankedNums.length >= 1 && isOwner(userId)) {
+        adivinanzaConsensusCache.set(userId, rankedNums);
+      }
       const consensusKb = new InlineKeyboard();
       if (rankedNums.length >= 2) {
-        consensusKb.text("🎰 Hacer parlé", PARLE_CNS_CALLBACK).row();
+        consensusKb.text("🎰 Hacer parlé", PARLE_CNS_CALLBACK);
+        if (isOwner(userId)) {
+          consensusKb.text("🔮 Crear Adivinanza", ADIVINANZA_CNS_CALLBACK);
+        }
+        consensusKb.row();
+      } else if (rankedNums.length >= 1 && isOwner(userId)) {
+        consensusKb.text("🔮 Crear Adivinanza", ADIVINANZA_CNS_CALLBACK).row();
       }
       consensusKb.text("🏠 Inicio", "volver");
       await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: consensusKb });
