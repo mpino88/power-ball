@@ -20,8 +20,12 @@ export interface UserInfo {
   phone?: string;
   plan?: string;
   plan_status?: string;
-  /** Plan solicitado para cambio. El usuario conserva su plan actual hasta que el dueño apruebe. */
+  /** Plan solicitado para cambio. Formato: "PlanTitle" o "PlanTitle|temporality". */
   pending_plan?: string;
+  /** Temporalidad del plan activo: 1m, 3m, 6m, 1a. */
+  plan_temporality?: string;
+  /** Fecha de caducidad del plan activo en formato MM/DD/YY. */
+  plan_expiry?: string;
 }
 
 /** Usuarios que solicitaron un plan pero aún no están aprobados (no están en allowed). */
@@ -29,6 +33,8 @@ export interface PlanRequest {
   plan: string;
   name?: string;
   phone?: string;
+  /** Temporalidad solicitada: 1m, 3m, 6m, 1a. */
+  temporality?: string;
 }
 
 interface UsersConfig {
@@ -50,8 +56,8 @@ let config: UsersConfig = { ...defaultConfig };
  * - plan (F), plan_status (G).
  * Lógica: plan_status === "requested" → requestedPlans; resto → allowed + userInfo + menus.
  */
-const SHEET_HEADERS = ["userId", "nombre", "telefono", "menus", "menus_labels", "plan", "plan_status", "pending_plan"] as const;
-type SheetRow = { userId: string; nombre: string; telefono: string; menus: string; menus_labels: string; plan: string; plan_status: string; pending_plan: string };
+const SHEET_HEADERS = ["userId", "nombre", "telefono", "menus", "menus_labels", "plan", "plan_status", "pending_plan", "plan_temporality", "plan_expiry"] as const;
+type SheetRow = { userId: string; nombre: string; telefono: string; menus: string; menus_labels: string; plan: string; plan_status: string; pending_plan: string; plan_temporality: string; plan_expiry: string };
 
 /** Índices de columnas (mismo orden que SHEET_HEADERS) para leer sin depender del texto exacto del encabezado. */
 const COL_USERID = 0;
@@ -61,6 +67,8 @@ const COL_MENUS = 3;
 const COL_PLAN = 5;
 const COL_PLAN_STATUS = 6;
 const COL_PENDING_PLAN = 7;
+const COL_PLAN_TEMPORALITY = 8;
+const COL_PLAN_EXPIRY = 9;
 
 /** Resolver para obtener el texto (label) de un menú por ID. Se asigna desde bot al arranque (getExtraMenuLabel). */
 let sheetMenuLabelResolver: ((menuId: string) => string | undefined) | null = null;
@@ -218,6 +226,7 @@ async function loadFromSheet(): Promise<UsersConfig> {
           plan: planName || "—",
           name: getCol(COL_NOMBRE) || undefined,
           phone: getCol(COL_TELEFONO) || undefined,
+          temporality: getCol(COL_PLAN_TEMPORALITY) || undefined,
         };
         continue;
       }
@@ -234,12 +243,16 @@ async function loadFromSheet(): Promise<UsersConfig> {
       }
       menus[uidStr] = menuIds;
       const pendingPlan = getCol(COL_PENDING_PLAN);
+      const planTemporality = getCol(COL_PLAN_TEMPORALITY);
+      const planExpiry = getCol(COL_PLAN_EXPIRY);
       userInfo[uidStr] = {
         name: getCol(COL_NOMBRE) || undefined,
         phone: getCol(COL_TELEFONO) || undefined,
         plan: planName || undefined,
         plan_status: planStatus || undefined,
         pending_plan: pendingPlan || undefined,
+        plan_temporality: planTemporality || undefined,
+        plan_expiry: planExpiry || undefined,
       };
     }
     console.log(
@@ -324,6 +337,8 @@ async function saveToSheet(): Promise<void> {
         plan: info?.plan ?? "",
         plan_status: info?.plan_status ?? "approved",
         pending_plan: info?.pending_plan ?? "",
+        plan_temporality: info?.plan_temporality ?? "",
+        plan_expiry: info?.plan_expiry ?? "",
       };
     });
     const requestedRows: SheetRow[] = Object.entries(config.requestedPlans).map(([uid, req]) => ({
@@ -335,6 +350,8 @@ async function saveToSheet(): Promise<void> {
       plan: req.plan,
       plan_status: "requested",
       pending_plan: "",
+      plan_temporality: req.temporality ?? "",
+      plan_expiry: "",
     }));
     const rows: SheetRow[] = [...allowedRows, ...requestedRows];
     if (rows.length > 0) {
@@ -553,17 +570,21 @@ export async function saveStrategiesToSheet(items: StrategyRow[]): Promise<void>
   }
 }
 
-/** Fila de la 3ª pestaña (Planes): id, title, description, price, menuIds (IDs separados por coma). */
+/** Fila de la 3ª pestaña (Planes): id, title, description, price, menuIds + precios por temporalidad. */
 export interface PlanRow {
   id: string;
   title: string;
   description: string;
   price: string;
   menuIds: string;
+  price_1m: string;
+  price_3m: string;
+  price_6m: string;
+  price_1a: string;
 }
 
 const PLANS_SHEET_TITLE = "Planes";
-const PLANS_HEADERS = ["id", "title", "description", "price", "menuIds"] as const;
+const PLANS_HEADERS = ["id", "title", "description", "price", "menuIds", "price_1m", "price_3m", "price_6m", "price_1a"] as const;
 
 /** Carga planes desde la 3ª pestaña. Si no existe, la crea y devuelve []. */
 export async function loadPlansFromSheet(): Promise<PlanRow[]> {
@@ -606,6 +627,10 @@ export async function loadPlansFromSheet(): Promise<PlanRow[]> {
         description: values[2] ?? "",
         price: values[3] ?? "",
         menuIds: values[4] ?? "",
+        price_1m: values[5] ?? "",
+        price_3m: values[6] ?? "",
+        price_6m: values[7] ?? "",
+        price_1a: values[8] ?? "",
       });
     }
     console.log("[user-config] Planes: cargados", result.length, "desde 3ª pestaña.");
@@ -641,6 +666,10 @@ export async function savePlansToSheet(items: PlanRow[]): Promise<void> {
         description: r.description ?? "",
         price: r.price ?? "",
         menuIds: r.menuIds ?? "",
+        price_1m: r.price_1m ?? "",
+        price_3m: r.price_3m ?? "",
+        price_6m: r.price_6m ?? "",
+        price_1a: r.price_1a ?? "",
       }));
       await sheet.addRows(rows);
     }
@@ -770,9 +799,56 @@ export function getPlanStatus(userId: number): string | undefined {
   return config.userInfo[String(userId)]?.plan_status;
 }
 
-/** Plan pendiente de aprobación (solicitado para cambio). null si no hay cambio pendiente. */
+/** Plan pendiente de aprobación. Puede contener "PlanTitle|temporality". */
 export function getPendingPlan(userId: number): string | undefined {
   return config.userInfo[String(userId)]?.pending_plan;
+}
+
+/** Devuelve solo el nombre del plan pendiente (sin la temporalidad). */
+export function getPendingPlanTitle(userId: number): string | undefined {
+  const raw = getPendingPlan(userId);
+  if (!raw) return undefined;
+  return raw.includes("|") ? raw.split("|")[0] : raw;
+}
+
+/** Devuelve la temporalidad del plan pendiente (si fue solicitado con una). */
+export function getPendingPlanTemporality(userId: number): string | undefined {
+  const raw = getPendingPlan(userId);
+  if (!raw || !raw.includes("|")) return undefined;
+  return raw.split("|")[1];
+}
+
+/** Temporalidad del plan activo del usuario. */
+export function getPlanTemporality(userId: number): string | undefined {
+  return config.userInfo[String(userId)]?.plan_temporality;
+}
+
+/** Fecha de caducidad del plan activo (MM/DD/YY) o undefined si no caduca. */
+export function getPlanExpiry(userId: number): string | undefined {
+  return config.userInfo[String(userId)]?.plan_expiry;
+}
+
+/** Parsea una fecha MM/DD/YY a Date. Null si formato inválido. */
+function parseMMDDYY(s: string): Date | null {
+  const parts = s.split("/");
+  if (parts.length !== 3) return null;
+  const [mm, dd, yy] = parts;
+  const year = 2000 + parseInt(yy ?? "0", 10);
+  const month = parseInt(mm ?? "0", 10) - 1;
+  const day = parseInt(dd ?? "0", 10);
+  if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) return null;
+  return new Date(year, month, day);
+}
+
+/** Devuelve true si el plan del usuario ha caducado. Si no tiene fecha de caducidad, no caduca. */
+export function isPlanExpired(userId: number): boolean {
+  const expiry = config.userInfo[String(userId)]?.plan_expiry;
+  if (!expiry) return false;
+  const d = parseMMDDYY(expiry);
+  if (!d) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return d < today;
 }
 
 export async function setUserInfo(userId: number, info: UserInfo): Promise<PersistResult> {
@@ -807,7 +883,7 @@ export async function setExtraMenus(userId: number, menuIds: string[]): Promise<
 export async function addPlanRequest(
   userId: number,
   planName: string,
-  opts?: { name?: string; phone?: string }
+  opts?: { name?: string; phone?: string; temporality?: string }
 ): Promise<PersistResult> {
   const key = String(userId);
   const existing = config.requestedPlans[key];
@@ -815,6 +891,7 @@ export async function addPlanRequest(
     plan: planName,
     name: opts?.name ?? existing?.name,
     phone: opts?.phone ?? existing?.phone,
+    temporality: opts?.temporality ?? existing?.temporality,
   };
   return persist();
 }
@@ -824,6 +901,7 @@ export interface RequestedPlanUser {
   plan: string;
   name?: string;
   phone?: string;
+  temporality?: string;
   /** true = usuario ya tiene acceso y solicita cambio de plan; false = usuario nuevo sin acceso. */
   isPlanChange: boolean;
 }
@@ -835,41 +913,72 @@ export function getRequestedPlanUsers(): RequestedPlanUser[] {
     plan: req.plan,
     name: req.name,
     phone: req.phone,
+    temporality: req.temporality,
     isPlanChange: false,
   }));
   const fromChange: RequestedPlanUser[] = Object.entries(config.userInfo)
     .filter(([, info]) => !!info.pending_plan)
-    .map(([uid, info]) => ({
-      userId: parseInt(uid, 10),
-      plan: info.pending_plan!,
-      name: info.name,
-      phone: info.phone,
-      isPlanChange: true,
-    }));
+    .map(([uid, info]) => {
+      const raw = info.pending_plan!;
+      const [planTitle, temporality] = raw.includes("|")
+        ? [raw.split("|")[0]!, raw.split("|")[1]]
+        : [raw, undefined];
+      return {
+        userId: parseInt(uid, 10),
+        plan: planTitle,
+        name: info.name,
+        phone: info.phone,
+        temporality,
+        isPlanChange: true,
+      };
+    });
   return [...fromNew, ...fromChange];
 }
 
-/** Asigna un plan directamente a un usuario (por el dueño). Le da acceso y plan/plan_status=approved. Los menús del plan se aplican vía getExtraMenus; no se sobrescribe la asignación individual (menus). */
+/** Calcula la fecha de caducidad y la devuelve como "MM/DD/YY". */
+function computeExpiryStr(temporality: string): string {
+  const d = new Date();
+  switch (temporality) {
+    case "1m": d.setMonth(d.getMonth() + 1); break;
+    case "3m": d.setMonth(d.getMonth() + 3); break;
+    case "6m": d.setMonth(d.getMonth() + 6); break;
+    case "1a": d.setFullYear(d.getFullYear() + 1); break;
+  }
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const yy = String(d.getFullYear()).slice(-2);
+  return `${mm}/${dd}/${yy}`;
+}
+
+/** Asigna un plan directamente a un usuario (por el dueño). Le da acceso y plan/plan_status=approved. */
 export async function assignPlanToUser(
   targetUserId: number,
   planName: string,
-  _planMenuIds: string[]
+  _planMenuIds: string[],
+  temporality?: string
 ): Promise<PersistResult> {
   const key = String(targetUserId);
   if (!config.allowed.includes(targetUserId)) config.allowed.push(targetUserId);
   delete config.requestedPlans[key];
-  config.userInfo[key] = { ...config.userInfo[key], plan: planName, plan_status: "approved" };
+  config.userInfo[key] = {
+    ...config.userInfo[key],
+    plan: planName,
+    plan_status: "approved",
+    plan_temporality: temporality || undefined,
+    plan_expiry: temporality ? computeExpiryStr(temporality) : undefined,
+  };
   return persist();
 }
 
-/** Usuario con acceso solicita cambio de plan: conserva su plan actual (sigue en allowed) y se guarda el nuevo plan en pending_plan. El dueño lo aprueba cuando quiera; hasta entonces el usuario mantiene acceso al plan vigente. */
-export async function requestPlanChange(userId: number, planName: string): Promise<PersistResult> {
+/** Usuario con acceso solicita cambio de plan. Guarda "PlanTitle|temporality" en pending_plan. */
+export async function requestPlanChange(userId: number, planName: string, temporality?: string): Promise<PersistResult> {
   const key = String(userId);
-  config.userInfo[key] = { ...config.userInfo[key], pending_plan: planName };
+  const encoded = temporality ? `${planName}|${temporality}` : planName;
+  config.userInfo[key] = { ...config.userInfo[key], pending_plan: encoded };
   return persist();
 }
 
-/** Aprueba solicitud de plan.
+/** Aprueba solicitud de plan. Calcula expiry a partir de la temporalidad almacenada.
  * - Usuario nuevo (en requestedPlans): le da acceso + asigna el plan solicitado.
  * - Usuario con cambio pendiente (pending_plan): actualiza su plan al pending_plan y limpia el campo.
  */
@@ -888,18 +997,25 @@ export async function approvePlanRequest(userId: number, _planMenuIds?: string[]
       plan: req.plan,
       plan_status: "approved",
       pending_plan: undefined,
+      plan_temporality: req.temporality || undefined,
+      plan_expiry: req.temporality ? computeExpiryStr(req.temporality) : undefined,
     };
     return persist();
   }
 
-  // Caso 2: usuario con acceso que solicita cambio de plan (pending_plan)
-  const pendingPlan = config.userInfo[key]?.pending_plan;
-  if (pendingPlan) {
+  // Caso 2: usuario con acceso que solicita cambio de plan (pending_plan = "PlanTitle|temporality")
+  const pendingRaw = config.userInfo[key]?.pending_plan;
+  if (pendingRaw) {
+    const [planTitle, temporality] = pendingRaw.includes("|")
+      ? [pendingRaw.split("|")[0]!, pendingRaw.split("|")[1]]
+      : [pendingRaw, undefined];
     config.userInfo[key] = {
       ...config.userInfo[key],
-      plan: pendingPlan,
+      plan: planTitle,
       plan_status: "approved",
       pending_plan: undefined,
+      plan_temporality: temporality || undefined,
+      plan_expiry: temporality ? computeExpiryStr(temporality) : undefined,
     };
     return persist();
   }

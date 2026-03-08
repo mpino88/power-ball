@@ -15,22 +15,31 @@ export type CreatingStep =
   | { step: 2; label: string; createdBy?: number; fromAdmin?: boolean }
   | { step: 3; label: string; description?: string; createdBy?: number; fromAdmin?: boolean };
 
-/** Crear plan: título → descripción → precio → menús. */
+/** Crear plan: título → descripción → menuIds → price_1m → price_3m → price_6m → price_1a. */
 export type CreatingPlanStep =
   | { step: 1 }
   | { step: 2; title: string }
   | { step: 3; title: string; description: string }
-  | { step: 4; title: string; description: string; price: string };
+  | { step: 4; title: string; description: string; menuIds: string[] }
+  | { step: 5; title: string; description: string; menuIds: string[]; price_1m: string }
+  | { step: 6; title: string; description: string; menuIds: string[]; price_1m: string; price_3m: string }
+  | { step: 7; title: string; description: string; menuIds: string[]; price_1m: string; price_3m: string; price_6m: string };
 
-/** Editar plan: planId + título → descripción → precio → menús. */
+/** Editar plan: planId + título → descripción → menuIds → price_1m → price_3m → price_6m → price_1a. */
 export type EditingPlanStep =
   | { step: 1; planId: string }
   | { step: 2; planId: string; title: string }
   | { step: 3; planId: string; title: string; description: string }
-  | { step: 4; planId: string; title: string; description: string; price: string };
+  | { step: 4; planId: string; title: string; description: string; menuIds: string[] }
+  | { step: 5; planId: string; title: string; description: string; menuIds: string[]; price_1m: string }
+  | { step: 6; planId: string; title: string; description: string; menuIds: string[]; price_1m: string; price_3m: string }
+  | { step: 7; planId: string; title: string; description: string; menuIds: string[]; price_1m: string; price_3m: string; price_6m: string };
 
-/** Asignar plan a usuario (dueño): paso 1 = esperando ID, paso 2 = esperando elegir plan (por callback). */
-export type AssigningPlanStep = { step: 1 } | { step: 2; targetUserId: number };
+/** Asignar plan a usuario (dueño): paso 1 = esperando ID, paso 2 = esperando elegir plan, paso 3 = esperando elegir temporalidad. */
+export type AssigningPlanStep =
+  | { step: 1 }
+  | { step: 2; targetUserId: number }
+  | { step: 3; targetUserId: number; planId: string };
 
 export const addingUserFlow = new Map<number, AddingStep>();
 export const creatingMenuFlow = new Map<number, CreatingStep>();

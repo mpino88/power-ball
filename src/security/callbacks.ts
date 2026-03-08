@@ -58,6 +58,8 @@ import {
   removePlan,
   titleToPlanId,
   updatePlan,
+  TEMPORALITIES,
+  getPriceForTemporality,
 } from "../plans.js";
 import {
   buildSecurityKeyboard,
@@ -93,8 +95,8 @@ export interface SecurityCallbackDeps {
   getExtraMenuLabel: (menuId: string) => string | undefined;
   /** Si se proporciona, "Listar planes" recarga desde el Sheet antes de mostrar. */
   getStorageBackend?: () => "sheet" | "file";
-  loadPlansFromSheet?: () => Promise<{ id: string; title: string; description: string; price: string; menuIds: string }[]>;
-  initPlansFromSheet?: (rows: { id: string; title: string; description: string; price: string; menuIds: string }[]) => void;
+  loadPlansFromSheet?: () => Promise<{ id: string; title: string; description: string; price: string; menuIds: string; price_1m: string; price_3m: string; price_6m: string; price_1a: string }[]>;
+  initPlansFromSheet?: (rows: { id: string; title: string; description: string; price: string; menuIds: string; price_1m: string; price_3m: string; price_6m: string; price_1a: string }[]) => void;
 }
 
 export async function handleSecurityCallback(
@@ -428,7 +430,7 @@ export async function handleSecurityCallback(
     result =
       "👤 *Asignar plan a usuario*\n\nEnvía el *ID* del usuario (número de Telegram). El usuario puede ver su ID con /start si no tiene acceso.";
     keyboard = new InlineKeyboard().text("◀️ Cancelar", "admin_assign_plan_cancel");
-  } else if (data.startsWith("admin_assign_plan_") && !data.startsWith("admin_assign_plan_cancel")) {
+  } else if (data.startsWith("admin_assign_plan_") && !data.startsWith("admin_assign_plan_cancel") && !data.startsWith("admin_assign_plan_temp_")) {
     const planId = data.replace("admin_assign_plan_", "");
     const plan = getPlanById(planId);
     const flow = assigningPlanFlow.get(ctx.from.id);
@@ -437,11 +439,35 @@ export async function handleSecurityCallback(
       keyboard = buildManagePlansKeyboard();
       if (flow) assigningPlanFlow.delete(ctx.from.id);
     } else {
+      // Paso 3: pedir temporalidad
+      assigningPlanFlow.set(ctx.from.id, { step: 3, targetUserId: flow.targetUserId, planId });
+      result = `👤 *Asignar plan: ${escapeMd(plan.title)}*\n\nElige la duración (temporalidad) para el usuario \`${flow.targetUserId}\`:`;
+      keyboard = new InlineKeyboard();
+      for (const t of TEMPORALITIES) {
+        const price = getPriceForTemporality(plan, t.id);
+        const priceLabel = price ? ` — ${price}` : "";
+        keyboard.text(`${t.label}${priceLabel}`, `admin_assign_plan_temp_${planId}_${t.id}`).row();
+      }
+      keyboard.text("◀️ Cancelar", "admin_assign_plan_cancel");
+    }
+  } else if (data.startsWith("admin_assign_plan_temp_")) {
+    const rest = data.slice("admin_assign_plan_temp_".length);
+    const lastUnderscore = rest.lastIndexOf("_");
+    const planId = lastUnderscore > 0 ? rest.slice(0, lastUnderscore) : rest;
+    const temporality = lastUnderscore > 0 ? rest.slice(lastUnderscore + 1) : "";
+    const plan = getPlanById(planId);
+    const flow = assigningPlanFlow.get(ctx.from.id);
+    if (!plan || !flow || flow.step !== 3 || !TEMPORALITIES.some((t) => t.id === temporality)) {
+      result = "Sesión expirada o temporalidad inválida. Vuelve a *Asignar plan a usuario*.";
+      keyboard = buildManagePlansKeyboard();
+      if (flow) assigningPlanFlow.delete(ctx.from.id);
+    } else {
       const targetUserId = flow.targetUserId;
       assigningPlanFlow.delete(ctx.from.id);
-      const assignResult = await assignPlanToUser(targetUserId, plan.title, plan.menuIds ?? []);
+      const assignResult = await assignPlanToUser(targetUserId, plan.title, plan.menuIds ?? [], temporality);
+      const tLabel = TEMPORALITIES.find((t) => t.id === temporality)?.label ?? temporality;
       if (assignResult.ok) {
-        result = `✅ Plan *${plan.title}* asignado al usuario \`${targetUserId}\`. Menús del plan aplicados.`;
+        result = `✅ Plan *${escapeMd(plan.title)}* (${tLabel}) asignado al usuario \`${targetUserId}\`.`;
       } else {
         result = (assignResult.error ?? "Error al guardar.") + "\n\nVuelve a intentar desde *Asignar plan a usuario*.";
       }
@@ -459,7 +485,10 @@ export async function handleSecurityCallback(
     const list = getPlans();
     const lines = list.map((p) => {
       const menus = (p.menuIds?.length ? p.menuIds.join(", ") : "—") || "—";
-      return `• *${p.title}* — ${p.price}\n  _${p.description.slice(0, 50)}${p.description.length > 50 ? "…" : ""}_\n  Menús: \`${menus}\``;
+      const prices = TEMPORALITIES
+        .map((t) => { const pr = getPriceForTemporality(p, t.id); return pr ? `${t.label}: *${escapeMd(pr)}*` : null; })
+        .filter(Boolean).join(" · ");
+      return `• *${escapeMd(p.title)}*${prices ? `\n  ${prices}` : ""}\n  _${escapeMd(p.description.slice(0, 50))}${p.description.length > 50 ? "…" : ""}_\n  Menús: \`${menus}\``;
     });
     result = "📋 *Planes*\n\n" + (lines.length ? lines.join("\n\n") : "_Ningún plan. Añade uno desde Gestionar planes._");
     keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar planes", "admin_plans_manage");
@@ -616,7 +645,8 @@ export async function handleSecurityCallback(
         const nombre = escapeMd((u.name && u.name.trim()) ? u.name.trim() : "—");
         const telefono = escapeMd((u.phone && u.phone.trim()) ? u.phone.trim() : "—");
         const typeTag = u.isPlanChange ? " _🔄 cambio de plan_" : " _🆕 acceso nuevo_";
-        return `• *ID:* \`${id}\` | *Plan solicitado:* ${plan}${typeTag}\n  *Nombre:* ${nombre} | *Teléfono:* ${telefono}`;
+        const tLabel = u.temporality ? ` (${TEMPORALITIES.find((t) => t.id === u.temporality)?.label ?? u.temporality})` : "";
+        return `• *ID:* \`${id}\` | *Plan:* ${plan}${tLabel}${typeTag}\n  *Nombre:* ${nombre} | *Teléfono:* ${telefono}`;
       });
       result =
         "📩 *Solicitudes pendientes*\n\n_🆕 acceso nuevo_ = usuario sin acceso · _🔄 cambio de plan_ = usuario activo cambiando plan\n\n" +
@@ -625,9 +655,10 @@ export async function handleSecurityCallback(
       for (const u of requested) {
         const displayName = (u.name && u.name.trim()) ? u.name.trim() : null;
         const typeIcon = u.isPlanChange ? "🔄" : "✅";
+        const tLabel = u.temporality ? ` ${TEMPORALITIES.find((t) => t.id === u.temporality)?.label ?? u.temporality}` : "";
         const label = displayName
-          ? `${typeIcon} ${u.userId} — ${u.plan} (${displayName})`
-          : `${typeIcon} Aprobar ${u.userId} (${u.plan})`;
+          ? `${typeIcon} ${u.userId} — ${u.plan}${tLabel} (${displayName})`
+          : `${typeIcon} Aprobar ${u.userId} (${u.plan}${tLabel})`;
         keyboard.text(label, `admin_plans_approve_${u.userId}`).row();
       }
       keyboard.text("🔄 Actualizar lista", "admin_plans_requests_refresh").row().text("◀️ Volver a Gestionar planes", "admin_plans_manage");
@@ -646,9 +677,12 @@ export async function handleSecurityCallback(
       const approveResult = await approvePlanRequest(userId, planMenuIds);
       if (approveResult.ok) {
         const menuInfo = planMenuIds.length > 0 ? ` Menús del plan: ${planMenuIds.join(", ")}.` : "";
+        const tLabel = requested?.temporality
+          ? ` (${TEMPORALITIES.find((t) => t.id === requested.temporality)?.label ?? requested.temporality})`
+          : "";
         result = isPlanChange
-          ? `✅ Cambio de plan aprobado para usuario \`${userId}\`. Nuevo plan: *${escapeMd(requested?.plan ?? "")}*.${menuInfo}`
-          : `✅ Usuario \`${userId}\` aprobado. Ya tiene acceso al bot.${menuInfo} Puedes asignar más menús en *Menús por usuario*.`;
+          ? `✅ Cambio de plan aprobado para usuario \`${userId}\`. Nuevo plan: *${escapeMd(requested?.plan ?? "")}*${tLabel}.${menuInfo}`
+          : `✅ Usuario \`${userId}\` aprobado. Plan: *${escapeMd(requested?.plan ?? "")}*${tLabel}.${menuInfo} Puedes asignar más menús en *Menús por usuario*.`;
       } else {
         result = (approveResult.error ?? "Error al aprobar.") + "\n\nVuelve a Solicitudes pendientes.";
       }

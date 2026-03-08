@@ -9,41 +9,99 @@ import path from "node:path";
 const DATA_DIR = path.join(process.cwd(), "data");
 const FILE_PATH = path.join(DATA_DIR, "plans.json");
 
+/** Opciones de temporalidad disponibles. */
+export const TEMPORALITIES = [
+  { id: "1m", label: "1 Mes" },
+  { id: "3m", label: "3 Meses" },
+  { id: "6m", label: "6 Meses" },
+  { id: "1a", label: "1 Año" },
+] as const;
+
+export type Temporality = (typeof TEMPORALITIES)[number]["id"];
+
+/** Calcula la fecha de caducidad a partir de una fecha base y una temporalidad. */
+export function computeExpiryDate(from: Date, temporality: Temporality | string): Date {
+  const d = new Date(from);
+  switch (temporality) {
+    case "1m": d.setMonth(d.getMonth() + 1); break;
+    case "3m": d.setMonth(d.getMonth() + 3); break;
+    case "6m": d.setMonth(d.getMonth() + 6); break;
+    case "1a": d.setFullYear(d.getFullYear() + 1); break;
+  }
+  return d;
+}
+
+/** Formatea fecha como MM/DD/YY. */
+export function formatDateMMDDYY(d: Date): string {
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const yy = String(d.getFullYear()).slice(-2);
+  return `${mm}/${dd}/${yy}`;
+}
+
 export interface Plan {
   id: string;
   title: string;
   description: string;
   price: string;
-  /** IDs de menús que se asignan al usuario cuando se aprueba este plan (ej: est_grupos, est_individuales). */
+  /** IDs de menús que se asignan al usuario cuando se aprueba este plan. */
   menuIds?: string[];
+  /** Precios por temporalidad (columnas F-I del Sheet de Planes). */
+  price_1m?: string;
+  price_3m?: string;
+  price_6m?: string;
+  price_1a?: string;
+}
+
+/** Devuelve el precio de un plan según la temporalidad; si no está definido usa price. */
+export function getPriceForTemporality(plan: Plan, temporality: string): string {
+  switch (temporality) {
+    case "1m": return plan.price_1m || plan.price || "";
+    case "3m": return plan.price_3m || plan.price || "";
+    case "6m": return plan.price_6m || plan.price || "";
+    case "1a": return plan.price_1a || plan.price || "";
+    default: return plan.price || "";
+  }
 }
 
 let plans: Plan[] = [];
 
+/** Tipo de fila de Plan para el Sheet (incluye campos de temporalidad). */
+export interface PlanSheetRow {
+  id: string;
+  title: string;
+  description: string;
+  price: string;
+  menuIds: string;
+  price_1m: string;
+  price_3m: string;
+  price_6m: string;
+  price_1a: string;
+}
+
 /** Cuando está definido, save() persiste en la 3ª pestaña del Sheet en lugar del archivo JSON. */
-let planSheetPersist: ((items: { id: string; title: string; description: string; price: string; menuIds: string }[]) => Promise<void>) | null = null;
+let planSheetPersist: ((items: PlanSheetRow[]) => Promise<void>) | null = null;
 
 export function setPlanSheetPersist(
-  fn: ((items: { id: string; title: string; description: string; price: string; menuIds: string }[]) => Promise<void>) | null
+  fn: ((items: PlanSheetRow[]) => Promise<void>) | null
 ): void {
   planSheetPersist = fn;
 }
 
-/** Inicializa desde filas de la hoja (3ª pestaña). menuIds en cada fila es string separado por coma. */
-export function initPlansFromSheet(
-  rows: { id: string; title: string; description: string; price: string; menuIds: string }[]
-): void {
+/** Inicializa desde filas de la hoja (3ª pestaña). */
+export function initPlansFromSheet(rows: PlanSheetRow[]): void {
   plans = rows.map((r) => ({
     id: r.id,
     title: r.title,
     description: r.description ?? "",
     price: r.price ?? "",
     menuIds: r.menuIds
-      ? r.menuIds
-          .split(",")
-          .map((m) => m.trim())
-          .filter((m) => m.length > 0)
+      ? r.menuIds.split(",").map((m) => m.trim()).filter((m) => m.length > 0)
       : [],
+    price_1m: r.price_1m ?? "",
+    price_3m: r.price_3m ?? "",
+    price_6m: r.price_6m ?? "",
+    price_1a: r.price_1a ?? "",
   }));
 }
 
@@ -75,12 +133,16 @@ function load(): Plan[] {
 
 function save(): void {
   if (planSheetPersist) {
-    const items = plans.map((p) => ({
+    const items: PlanSheetRow[] = plans.map((p) => ({
       id: p.id,
       title: p.title,
       description: p.description ?? "",
       price: p.price ?? "",
       menuIds: Array.isArray(p.menuIds) ? p.menuIds.join(",") : "",
+      price_1m: p.price_1m ?? "",
+      price_3m: p.price_3m ?? "",
+      price_6m: p.price_6m ?? "",
+      price_1a: p.price_1a ?? "",
     }));
     void planSheetPersist(items);
     return;
@@ -111,7 +173,7 @@ const DEFAULT_PLANS: Plan[] = [
     title: "Básico",
     description:
       "Consultas por período: Fijo (P3), Corrido (P4) — Hoy, Ayer, Semana o fecha elegida. Incluye Estadísticas por grupo (Mediodía y Noche).",
-    price: "200",
+    price: "",
     menuIds: ["est_grupos"],
   },
   {
@@ -119,7 +181,7 @@ const DEFAULT_PLANS: Plan[] = [
     title: "Pro",
     description:
       "Todo lo de Básico (consultas Fijo/Corrido + Estadísticas por grupo) más Estadísticas individuales: Top 10 más hot por Mediodía/Noche.",
-    price: "500",
+    price: "",
     menuIds: ["est_grupos", "est_individuales"],
   },
 ];
@@ -142,7 +204,7 @@ export function getPlanById(id: string): Plan | undefined {
   return plans.find((p) => p.id === id);
 }
 
-/** Busca un plan por título (p. ej. para asignar menús al aprobar una solicitud). */
+/** Busca un plan por título. */
 export function getPlanByTitle(title: string): Plan | undefined {
   const t = title.trim();
   return plans.find((p) => p.title.trim() === t);
@@ -153,7 +215,8 @@ export function addPlan(
   title: string,
   description: string,
   price: string,
-  menuIds?: string[]
+  menuIds?: string[],
+  pricing?: { price_1m?: string; price_3m?: string; price_6m?: string; price_1a?: string }
 ): boolean {
   const normId = id.trim() || titleToPlanId(title);
   if (plans.some((p) => p.id === normId)) return false;
@@ -164,6 +227,10 @@ export function addPlan(
     description: description.trim() || "",
     price: price.trim() || "",
     menuIds: ids,
+    price_1m: pricing?.price_1m ?? "",
+    price_3m: pricing?.price_3m ?? "",
+    price_6m: pricing?.price_6m ?? "",
+    price_1a: pricing?.price_1a ?? "",
   });
   save();
   return true;
@@ -171,7 +238,16 @@ export function addPlan(
 
 export function updatePlan(
   id: string,
-  updates: { title?: string; description?: string; price?: string; menuIds?: string[] }
+  updates: {
+    title?: string;
+    description?: string;
+    price?: string;
+    menuIds?: string[];
+    price_1m?: string;
+    price_3m?: string;
+    price_6m?: string;
+    price_1a?: string;
+  }
 ): boolean {
   const plan = plans.find((p) => p.id === id);
   if (!plan) return false;
@@ -179,6 +255,10 @@ export function updatePlan(
   if (updates.description !== undefined) plan.description = updates.description.trim();
   if (updates.price !== undefined) plan.price = updates.price.trim();
   if (updates.menuIds !== undefined) plan.menuIds = Array.isArray(updates.menuIds) ? updates.menuIds.filter((m) => typeof m === "string") : [];
+  if (updates.price_1m !== undefined) plan.price_1m = updates.price_1m.trim();
+  if (updates.price_3m !== undefined) plan.price_3m = updates.price_3m.trim();
+  if (updates.price_6m !== undefined) plan.price_6m = updates.price_6m.trim();
+  if (updates.price_1a !== undefined) plan.price_1a = updates.price_1a.trim();
   save();
   return true;
 }

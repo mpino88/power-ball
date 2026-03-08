@@ -13,6 +13,11 @@ import {
   getExtraMenus,
   getPlan,
   getPendingPlan,
+  getPendingPlanTitle,
+  getPendingPlanTemporality,
+  getPlanTemporality,
+  getPlanExpiry,
+  isPlanExpired,
   getUserAssignedMenuIds,
   isOwner,
   initUserConfig,
@@ -50,7 +55,7 @@ import {
   getMenuSubscribers,
   seedCustomMenus,
 } from "./custom-menus.js";
-import { initPlans, initPlansFromSheet, setPlanSheetPersist, getPlans, getPlanById, getPlanByTitle } from "./plans.js";
+import { initPlans, initPlansFromSheet, setPlanSheetPersist, getPlans, getPlanById, getPlanByTitle, TEMPORALITIES, getPriceForTemporality } from "./plans.js";
 import {
   buildGroupStatsMessage as buildGroupStatsMessageFromStats,
   buildIndividualTop10Message as buildIndividualTop10MessageFromStats,
@@ -514,6 +519,7 @@ bot.use(
     requestAccessLink: REQUEST_ACCESS_LINK,
     buildMainKeyboard: buildMainKb,
     addPlanRequest,
+    isOwner,
   })
 );
 
@@ -710,17 +716,29 @@ bot.on("callback_query:data", async (ctx) => {
       return;
     }
     const currentPlan = getPlan(ctx.from.id);
-    const pendingPlan = getPendingPlan(ctx.from.id);
+    const currentTemporality = getPlanTemporality(ctx.from.id);
+    const currentExpiry = getPlanExpiry(ctx.from.id);
+    const pendingTitle = getPendingPlanTitle(ctx.from.id);
+    const pendingTemp = getPendingPlanTemporality(ctx.from.id);
     let headerMsg = "📋 *Cambiar de plan*\n\n";
-    if (pendingPlan) {
-      headerMsg += `_Ya tienes una solicitud pendiente para cambiar a *${escapeMd(pendingPlan)}*. Puedes elegir otro plan para reemplazarla._\n\n`;
+    if (pendingTitle) {
+      const tPendLabel = pendingTemp ? ` (${TEMPORALITIES.find((t) => t.id === pendingTemp)?.label ?? pendingTemp})` : "";
+      headerMsg += `_Solicitud pendiente: *${escapeMd(pendingTitle)}*${tPendLabel}. Puedes reemplazarla eligiendo otra opción._\n\n`;
     } else if (currentPlan) {
-      headerMsg += `Plan actual: *${escapeMd(currentPlan)}*\n\n`;
+      const tCurLabel = currentTemporality ? ` (${TEMPORALITIES.find((t) => t.id === currentTemporality)?.label ?? currentTemporality})` : "";
+      const expiryInfo = currentExpiry ? ` · caduca: ${currentExpiry}` : "";
+      headerMsg += `Plan actual: *${escapeMd(currentPlan)}*${tCurLabel}${expiryInfo}\n\n`;
     }
     headerMsg += "_Tu acceso actual se mantiene hasta que el administrador apruebe el cambio._";
     const keyboard = new InlineKeyboard();
     for (const p of plans) {
-      keyboard.text(`${p.title} — ${p.price}`, `user_cambiar_plan_${p.id}`).row();
+      keyboard.text(`📋 ${p.title}`, `noop_cambiar`).row();
+      for (const t of TEMPORALITIES) {
+        const price = getPriceForTemporality(p, t.id);
+        const priceLabel = price ? ` — ${price}` : "";
+        keyboard.text(`${t.label}${priceLabel}`, `user_cambiar_plan_${p.id}_${t.id}`);
+      }
+      keyboard.row();
     }
     keyboard.text("◀️ Cancelar", "volver");
     try {
@@ -732,25 +750,30 @@ bot.on("callback_query:data", async (ctx) => {
   }
 
   if (data.startsWith("user_cambiar_plan_") && ctx.from && isAllowed(ctx.from.id) && !isOwner(ctx.from.id)) {
-    const planId = data.slice("user_cambiar_plan_".length);
+    const rest = data.slice("user_cambiar_plan_".length);
+    // Format: planId_temporality (temporality is always 2 chars: 1m,3m,6m,1a)
+    const lastUnderscore = rest.lastIndexOf("_");
+    const planId = lastUnderscore > 0 ? rest.slice(0, lastUnderscore) : rest;
+    const temporality = lastUnderscore > 0 ? rest.slice(lastUnderscore + 1) : "";
     const plan = getPlanById(planId);
-    if (plan) {
+    if (plan && TEMPORALITIES.some((t) => t.id === temporality)) {
       const currentPlan = getPlan(ctx.from.id);
-      const res = await requestPlanChange(ctx.from.id, plan.title);
+      const res = await requestPlanChange(ctx.from.id, plan.title, temporality);
       await ctx.answerCallbackQuery({ text: res.ok ? "Solicitud enviada" : "Error" });
+      const tLabel = TEMPORALITIES.find((t) => t.id === temporality)?.label ?? temporality;
       const currentPlanNote = currentPlan
         ? `Sigues con tu plan *${escapeMd(currentPlan)}* hasta que el administrador apruebe el cambio.`
         : "_El administrador revisará tu solicitud._";
       try {
         await ctx.editMessageText(
-          `✅ Has solicitado cambiar al plan *${escapeMd(plan.title)}*.\n\n${currentPlanNote}`,
+          `✅ Has solicitado cambiar al plan *${escapeMd(plan.title)}* (${tLabel}).\n\n${currentPlanNote}`,
           { parse_mode: "Markdown", reply_markup: buildMainKb(ctx.from.id) }
         );
       } catch (e) {
         if (!(e as Error).message?.includes("message is not modified")) console.error(e);
       }
     } else {
-      await ctx.answerCallbackQuery({ text: "Plan no encontrado" });
+      await ctx.answerCallbackQuery({ text: "Plan o temporalidad no encontrado" });
     }
     return;
   }
@@ -1503,7 +1526,7 @@ bot.on("callback_query:data", async (ctx) => {
     return;
   }
 
-  if (data === "charada_noop") {
+  if (data === "charada_noop" || data === "noop_plan" || data === "noop_cambiar" || data === "noop") {
     await ctx.answerCallbackQuery();
     return;
   }
@@ -2038,6 +2061,10 @@ async function main(): Promise<void> {
         description: p.description ?? "",
         price: p.price ?? "",
         menuIds: (p.menuIds ?? []).join(","),
+        price_1m: p.price_1m ?? "",
+        price_3m: p.price_3m ?? "",
+        price_6m: p.price_6m ?? "",
+        price_1a: p.price_1a ?? "",
       }));
       await savePlansToSheet(plansToSave);
       setPlanSheetPersist((items) => savePlansToSheet(items));
