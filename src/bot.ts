@@ -843,11 +843,11 @@ bot.on("callback_query:data", async (ctx) => {
           // Botones de cambio rápido de base y período
           const pre = `${STRATEGY_CONTEXT_CALLBACK_PREFIX}${parsed.menuId}_`;
           resultKb
-            .text("P3 ☀️ Mediodía", `${pre}p3_m`)
-            .text("P3 🌙 Noche", `${pre}p3_e`)
+            .text("P3 (Fijos) ☀️ Mediodía", `${pre}p3_m`)
+            .text("P3 (Fijos) 🌙 Noche", `${pre}p3_e`)
             .row()
-            .text("P4 ☀️ Mediodía", `${pre}p4_m`)
-            .text("P4 🌙 Noche", `${pre}p4_e`)
+            .text("P4 (Corridos) ☀️ Mediodía", `${pre}p4_m`)
+            .text("P4 (Corridos) 🌙 Noche", `${pre}p4_e`)
             .row();
           resultKb.text("🔄 Probar otra estrategia", ESTRATEGIAS_OPEN_CALLBACK).row();
           resultKb.text("🏠 Volver al Inicio", "volver");
