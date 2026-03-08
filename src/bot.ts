@@ -741,12 +741,15 @@ bot.on("callback_query:data", async (ctx) => {
     const keyboard = new InlineKeyboard();
     for (const p of plans) {
       keyboard.text(`📋 ${p.title}`, `noop_cambiar`).row();
-      for (const t of TEMPORALITIES.filter((t) => t.id !== "1d")) {
+      const temps = TEMPORALITIES.filter((t) => t.id !== "1d");
+      for (let i = 0; i < temps.length; i++) {
+        const t = temps[i]!;
         const price = getPriceForTemporality(p, t.id);
         const priceLabel = price ? ` — ${price}` : "";
         keyboard.text(`${t.label}${priceLabel}`, `user_cambiar_plan_${p.id}_${t.id}`);
+        if (i % 2 === 1) keyboard.row();
       }
-      keyboard.row();
+      if (temps.length % 2 !== 0) keyboard.row();
     }
     keyboard.text("◀️ Cancelar", "volver");
     try {

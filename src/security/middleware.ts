@@ -36,16 +36,26 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
       .resized()
       .oneTime();
 
-  /** Construye los botones de temporalidad de un plan: solo 1d para autoApprove, el resto para planes normales. */
+  /** Construye los botones de temporalidad de un plan.
+   * - Planes autoApprove: un solo botón "✅ Activar gratis".
+   * - Planes normales: botón de trial (1d, auto-aprobado) + temporalidades regulares de 2 en 2. */
   function addPlanTemporalityButtons(kb: InlineKeyboard, planId: string, planTitle: string, plan: ReturnType<typeof getPlans>[number], prefix: string): void {
-    const temporalities = plan.autoApprove ? TRIAL_TEMPORALITIES : REGULAR_TEMPORALITIES;
-    for (const t of temporalities) {
+    if (plan.autoApprove) {
+      kb.text(`✅ Activar gratis — 1 Día`, `${prefix}${planId}_1d`).row();
+      return;
+    }
+    // Botón de trial (1d) — siempre auto-aprobado
+    kb.text(`✅ Trial gratis — 1 Día`, `${prefix}${planId}_1d`).row();
+    // Temporalidades regulares de 2 en 2
+    const temps = REGULAR_TEMPORALITIES;
+    for (let i = 0; i < temps.length; i++) {
+      const t = temps[i]!;
       const price = getPriceForTemporality(plan, t.id);
       const priceLabel = price ? ` — ${price}` : "";
-      const label = plan.autoApprove ? `✅ Activar gratis — ${t.label}` : `${t.label}${priceLabel}`;
-      kb.text(label, `${prefix}${planId}_${t.id}`);
+      kb.text(`${t.label}${priceLabel}`, `${prefix}${planId}_${t.id}`);
+      if (i % 2 === 1) kb.row();
     }
-    kb.row();
+    if (temps.length % 2 !== 0) kb.row();
   }
 
   return async (
@@ -83,7 +93,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
           const plan = getPlans().find((p) => p.id === planId);
           if (plan && TEMPORALITIES.some((t) => t.id === temporality)) {
             if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery();
-            if (plan.autoApprove) {
+            if (plan.autoApprove || temporality === "1d") {
               await assignPlanToUser(uid, plan.title, plan.menuIds ?? [], temporality);
               await ctx.reply(
                 `✅ *Plan ${plan.title} activado*\n\nTu acceso de prueba está listo por *1 día*.`,
@@ -187,7 +197,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
         const plan = getPlans().find((p) => p.id === planId);
         if (plan && TEMPORALITIES.some((t) => t.id === temporality)) {
           if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery();
-          if (plan.autoApprove) {
+          if (plan.autoApprove || temporality === "1d") {
             await assignPlanToUser(uid, plan.title, plan.menuIds ?? [], temporality);
             await ctx.reply(
               `✅ *¡Plan ${plan.title} activado!*\n\nTienes *1 día* de acceso gratuito para explorar todas las funciones. ¡Disfrútalo!`,
