@@ -207,6 +207,7 @@ function formatMessage(
 
 export const cycleDetector: StrategyDefinition = {
   id: "cycle_detector",
+  description: "Detecta si un número tiene un ciclo de aparición rítmico (cada 7, 14, 21 sorteos…). Cuando la fase del ciclo se acerca a 1.0, el número está en su punto de máxima probabilidad — literalmente \"toca\" salir.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
 

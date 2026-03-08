@@ -240,6 +240,7 @@ function formatMessage(
 
 export const decadeFamily: StrategyDefinition = {
   id: "decade_family",
+  description: "Agrupa los 100 números en 10 familias de decena (00-09, 10-19…). Identifica qué familia está en alza y cuál está más debida, luego proyecta los mejores candidatos individuales dentro de esas familias.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
 

@@ -241,6 +241,7 @@ function formatMessage(
 
 export const terminalAnalysis: StrategyDefinition = {
   id: "terminal_analysis",
+  description: "Se enfoca en el dígito final (terminal 0-9) de los números. Detecta qué terminales están en alza o más debidos y lista todos los candidatos completos (00-99) que contienen ese terminal.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
 

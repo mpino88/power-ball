@@ -198,6 +198,7 @@ function formatMessage(
 
 export const maxGapBreach: StrategyDefinition = {
   id: "max_gap_breach",
+  description: "Identifica números que han roto su récord histórico de ausencia — nunca antes habían estado tanto tiempo sin salir. Candidatos de máxima urgencia estadística: están en territorio sin precedentes.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
 

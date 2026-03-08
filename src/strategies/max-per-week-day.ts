@@ -127,6 +127,7 @@ function formatMessage(result: CountMap, mapSource: "p3" | "p4", period: "m" | "
 
 export const maxPerWeekDay: StrategyDefinition = {
   id: "max_per_week_day",
+  description: "Muestra el top 10 de números para cada día de la semana. Si hoy es Lunes, sabrás exactamente cuáles han salido más históricamente los Lunes en este período y turno.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
   async run(context: StrategyContext, map: DateDrawsMap): Promise<string> {

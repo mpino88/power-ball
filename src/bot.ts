@@ -518,7 +518,15 @@ bot.use(
 
 bot.command("start", async (ctx) => {
   await ctx.reply(
-    "👋 Resultados *Fijo* (P3) y *Corrido* (P4) de Florida Lottery.\n\nElige juego y luego el período:",
+    "🎰 *¡Bienvenido a Florida Lottery Bot!*\n\n" +
+    "Tu asistente definitivo para Pick 3 y Pick 4. Aquí tienes todo lo que puedes hacer:\n\n" +
+    "🔎 *Consultar resultados* — Fijo (P3) y Corrido (P4) de hoy, ayer, esta semana o por fecha exacta.\n\n" +
+    "📊 *Estadísticas avanzadas* — Descubre qué números salen más, agrupaciones y tendencias reales.\n\n" +
+    "🤖 *Estrategias inteligentes* — Algoritmos que analizan el historial y te dan candidatos para el próximo sorteo.\n\n" +
+    "🤝 *Consenso Multi-Estrategia* — Combina varias estrategias y filtra los números con mayor coincidencia.\n\n" +
+    "🃏 *Charada Cubana* — Consulta el significado de cualquier número o busca el número de tu sueño.\n\n" +
+    "🛒 *Tienda* — Accede a estrategias exclusivas creadas por la comunidad.\n\n" +
+    "_Elige una opción y empieza a jugar con ventaja:_",
     { parse_mode: "Markdown", reply_markup: buildMainKb(ctx.from?.id) }
   );
 });
@@ -825,7 +833,17 @@ bot.on("callback_query:data", async (ctx) => {
             );
             resultKb.text("🎰 Hacer parlé", parleCallback).row();
           }
-          resultKb.text("◀️ Volver", "volver");
+          // Botones de cambio rápido de base y período
+          const pre = `${STRATEGY_CONTEXT_CALLBACK_PREFIX}${parsed.menuId}_`;
+          resultKb
+            .text("P3 ☀️ Mediodía", `${pre}p3_m`)
+            .text("P3 🌙 Noche", `${pre}p3_e`)
+            .row()
+            .text("P4 ☀️ Mediodía", `${pre}p4_m`)
+            .text("P4 🌙 Noche", `${pre}p4_e`)
+            .row();
+          resultKb.text("🔄 Probar otra estrategia", ESTRATEGIAS_OPEN_CALLBACK).row();
+          resultKb.text("🏠 Volver al Inicio", "volver");
           await ctx.editMessageText(msg, {
             parse_mode: "Markdown",
             reply_markup: resultKb,

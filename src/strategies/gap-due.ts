@@ -176,6 +176,7 @@ function formatMessage(
 
 export const gapDue: StrategyDefinition = {
   id: "gap_due",
+  description: "Detecta números que llevan más días del usual sin salir. Compara la ausencia actual con el promedio histórico y asigna un factor de deuda — cuanto mayor el factor, más \"debe\" aparecer ese número.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
   async run(context: StrategyContext, map: DateDrawsMap): Promise<string> {

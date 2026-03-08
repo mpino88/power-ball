@@ -52,7 +52,12 @@ export function buildStrategyContextKeyboard(menuId: string): InlineKeyboard {
 
 export function getStrategyContextMessage(menuId: string, menuLabel: string): string {
   const s = registry.get(menuId);
-  return s ? s.getContextMessage(menuLabel) : `Estrategia _${menuId}_ no encontrada.`;
+  if (!s) return `Estrategia _${menuId}_ no encontrada.`;
+  const base = s.getContextMessage(menuLabel);
+  if (!s.description) return base;
+  const firstBreak = base.indexOf("\n\n");
+  if (firstBreak === -1) return base;
+  return base.slice(0, firstBreak) + `\n\n_${s.description}_` + base.slice(firstBreak);
 }
 
 export async function runStrategy(

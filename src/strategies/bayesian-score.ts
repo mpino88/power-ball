@@ -326,6 +326,7 @@ function formatMessage(
 
 export const bayesianScore: StrategyDefinition = {
   id: "bayesian_score",
+  description: "Combina 6 señales estadísticas (frecuencia, deuda, momentum, ciclo, Markov y racha) con pesos bayesianos para generar un score 0-100 por número. El ranking más completo y matemáticamente robusto del sistema.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
 

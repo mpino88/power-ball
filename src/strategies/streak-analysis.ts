@@ -235,6 +235,7 @@ function formatMessage(
 
 export const streakAnalysis: StrategyDefinition = {
   id: "streak_analysis",
+  description: "Analiza rachas calientes (sorteos seguidos apareciendo) y frías (sorteos seguidos sin aparecer). Detecta inercia positiva y períodos de ausencia excepcionalmente largos en conteo de sorteos.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
 

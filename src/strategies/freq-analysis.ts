@@ -137,6 +137,7 @@ function formatMessage(
 
 export const freqAnalysis: StrategyDefinition = {
   id: "freq_analysis",
+  description: "Cuenta cuántas veces ha salido cada número en toda la historia. Muestra los 20 más frecuentes (calientes) y los 10 más fríos con su probabilidad y días sin aparecer.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
   async run(context: StrategyContext, map: DateDrawsMap): Promise<string> {

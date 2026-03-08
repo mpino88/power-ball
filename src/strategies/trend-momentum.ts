@@ -159,6 +159,7 @@ function formatMessage(
 
 export const trendMomentum: StrategyDefinition = {
   id: "trend_momentum",
+  description: "Compara la frecuencia reciente de cada número con su historial total. Detecta cuáles están en alza (salen más que de costumbre) y cuáles en baja, revelando cambios de tendencia que la frecuencia global no muestra.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
   async run(context: StrategyContext, map: DateDrawsMap): Promise<string> {

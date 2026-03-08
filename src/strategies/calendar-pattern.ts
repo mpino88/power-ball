@@ -179,6 +179,7 @@ function formatMessage(
 
 export const calendarPattern: StrategyDefinition = {
   id: "calendar_pattern",
+  description: "Analiza qué números salen según el día de la semana, el mes y el día del mes. Dado el próximo sorteo, proyecta los candidatos más probables para ese contexto calendario exacto.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
   async run(context: StrategyContext, map: DateDrawsMap): Promise<string> {

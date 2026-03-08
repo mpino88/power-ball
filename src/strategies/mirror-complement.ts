@@ -253,6 +253,7 @@ function formatMessage(
 
 export const mirrorComplement: StrategyDefinition = {
   id: "mirror_complement",
+  description: "Estudia si existe correlación estadística entre un número y su espejo (47↔74) o complemento (23↔76). Dado el último sorteo, proyecta qué espejos y complementos tienen mayor probabilidad de aparecer.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
 

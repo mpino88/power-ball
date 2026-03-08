@@ -376,6 +376,7 @@ function analyzeP4(map: DateDrawsMap, period: "m" | "e"): string {
 
 export const positionalAnalysis: StrategyDefinition = {
   id: "positional_analysis",
+  description: "Descompone el sorteo posición por posición. En P3 analiza Centena, Decena y Unidad por separado; en P4 analiza los dos pares (AB y CD). Muestra qué dígito \"debe\" en cada posición según su frecuencia y deuda.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
   async run(context: StrategyContext, map: DateDrawsMap): Promise<string> {

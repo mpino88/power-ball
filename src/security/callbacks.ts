@@ -703,7 +703,7 @@ export async function handleEstrategiasUserCallback(
     const publicList = getPublicStrategies().filter((m) => !myIds.has(m.id));
     if (publicList.length === 0) {
       result = "🛒 *Tienda*\n\n_No hay estrategias públicas disponibles o ya tienes todas._";
-      keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar", "estrategias_manage");
+      keyboard = new InlineKeyboard().text("◀️ Volver", "volver");
       return { result, keyboard };
     }
     result = "🛒 *Tienda*\n\nEstrategias públicas que puedes solicitar. Solo el administrador puede aprobar tu solicitud.\n\n";
@@ -715,7 +715,7 @@ export async function handleEstrategiasUserCallback(
     for (const m of publicList) {
       keyboard.text(`🛒 Comprar: ${m.label}`, `estrategias_request_${m.id}`).row();
     }
-    keyboard.text("◀️ Volver a Gestionar", "estrategias_manage");
+    keyboard.text("◀️ Volver", "volver");
     return { result, keyboard };
   }
 

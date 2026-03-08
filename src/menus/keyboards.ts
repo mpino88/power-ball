@@ -54,7 +54,7 @@ export const ESTRATEGIAS_OPEN_CALLBACK = "estrategias_open";
 /** Callback al pulsar "Consultar Datos": abre el submenú de consulta. */
 export const CONSULTAR_DATOS_CALLBACK = "consultar_datos_open";
 
-/** Submenú "Consultar Datos" con las 5 opciones de consulta. */
+/** Submenú "Consultar Datos" con las opciones de consulta. */
 export function buildConsultarDatosKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
     .text("🎯 Fijo (P3)", "menu_fijo")
@@ -63,8 +63,6 @@ export function buildConsultarDatosKeyboard(): InlineKeyboard {
     .text("☀️🌙 Ambos (Fijo + Corrido)", "menu_ambos")
     .row()
     .text("📚 Base de datos", "menu_basedatos")
-    .row()
-    .text("🃏 Charada Cubana", "charada_open")
     .row()
     .text("◀️ Volver", "volver");
 }
@@ -93,7 +91,9 @@ export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboard
   if (hasConsensus) {
     kb.row().text("🤝 Consenso Multi-Estrategia", EXTRA_MENU_CALLBACK_PREFIX + CONSENSUS_MENU_ID);
   }
+  kb.row().text("🃏 Charada Cubana", "charada_open");
   if (ownerId === null || !deps.isOwner(uid)) {
+    kb.row().text("🛒 Tienda", "estrategias_tienda");
     kb.row().text("❓ Ayuda", "help");
     if (ownerId !== null && !deps.isOwner(uid)) {
       kb.row().text("📋 Cambiar plan", "cambiar_plan_open");
@@ -145,7 +145,7 @@ export function buildEstrategiasKeyboard(userId: number | undefined, deps: MainK
   } else {
     kb.row().text("⚙️ Gestionar estrategias", "estrategias_manage");
   }
-  kb.text("◀️ Volver", "volver");
+  kb.row().text("◀️ Volver", "volver");
   return kb;
 }
 

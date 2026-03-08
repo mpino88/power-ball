@@ -146,6 +146,7 @@ function formatMessage(
 
 export const transitionFollow: StrategyDefinition = {
   id: "transition_follow",
+  description: "Cadena de Markov orden 1: dado el último sorteo, muestra qué números han seguido históricamente con mayor frecuencia. La estrategia con el enfoque predictivo más directo para el próximo draw.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
   async run(context: StrategyContext, map: DateDrawsMap): Promise<string> {

@@ -189,6 +189,7 @@ function formatMessage(
 
 export const markovOrder2: StrategyDefinition = {
   id: "markov_order2",
+  description: "Extiende la cadena de Markov a orden 2: usa el par (penúltimo + último sorteo) para predecir el siguiente. Captura patrones de dos pasos que la cadena simple no puede ver, con mayor precisión predictiva.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
 

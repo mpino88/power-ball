@@ -26,6 +26,8 @@ export interface StrategyContext {
  */
 export interface StrategyDefinition {
   readonly id: string;
+  /** Descripción corta que explica qué hace la estrategia. Se muestra en el menú de contexto. */
+  readonly description?: string;
   /** Mensaje al abrir la estrategia (elegir base, período, etc.). */
   getContextMessage(menuLabel: string): string;
   /** Teclado contextual (base P3/P4, período M/E, o opciones propias). */
