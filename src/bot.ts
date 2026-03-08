@@ -444,6 +444,13 @@ const BUILT_IN_STRATEGIES: Array<{ id: string; label: string; description: strin
     createdBy: 728711697,
   },
   {
+    id: "unodostres",
+    label: "Resonancia Fibonacci (1-2-3)",
+    description:
+      "Proyecta ventanas de alta probabilidad usando la serie Fibonacci como estructura temporal. Un número está en resonancia si lleva exactamente F_n = {1,2,3,5,8,13,21,34,55,89,144} días sin salir desde su última aparición. Ciclo mayor (F34+) = pico máximo. P3/P4 · Día/Noche",
+    createdBy: 728711697,
+  },
+  {
     id: "consensus_multi",
     label: "Consenso Multi-Estrategia",
     description:

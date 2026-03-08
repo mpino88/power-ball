@@ -22,6 +22,7 @@ import { terminalAnalysis } from "./terminal-analysis.js";
 import { cycleDetector } from "./cycle-detector.js";
 import { streakAnalysis } from "./streak-analysis.js";
 import { bayesianScore } from "./bayesian-score.js";
+import { unodostres } from "./unodostres.js";
 
 export type { DateDrawsMap, StrategyContext, StrategyDefinition, StrategyMapSource, StrategyPeriod } from "./types.js";
 export { parseStrategyContextCallback, STRATEGY_CONTEXT_CALLBACK_PREFIX } from "./types.js";
@@ -111,5 +112,6 @@ registerStrategy(terminalAnalysis);
 registerStrategy(cycleDetector);
 registerStrategy(streakAnalysis);
 registerStrategy(bayesianScore);
+registerStrategy(unodostres);
 // —— Meta-estrategia (siempre al final) ——
 registerStrategy(consensusMulti);
