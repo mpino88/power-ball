@@ -26,6 +26,8 @@ export interface UserInfo {
   plan_temporality?: string;
   /** Fecha de caducidad del plan activo en formato MM/DD/YY. */
   plan_expiry?: string;
+  /** true si el usuario ya activó un plan Trial (1d). Solo puede activarse una vez por ID. */
+  trial_used?: boolean;
 }
 
 /** Usuarios que solicitaron un plan pero aún no están aprobados (no están en allowed). */
@@ -56,8 +58,8 @@ let config: UsersConfig = { ...defaultConfig };
  * - plan (F), plan_status (G).
  * Lógica: plan_status === "requested" → requestedPlans; resto → allowed + userInfo + menus.
  */
-const SHEET_HEADERS = ["userId", "nombre", "telefono", "menus", "menus_labels", "plan", "plan_status", "pending_plan", "plan_temporality", "plan_expiry"] as const;
-type SheetRow = { userId: string; nombre: string; telefono: string; menus: string; menus_labels: string; plan: string; plan_status: string; pending_plan: string; plan_temporality: string; plan_expiry: string };
+const SHEET_HEADERS = ["userId", "nombre", "telefono", "menus", "menus_labels", "plan", "plan_status", "pending_plan", "plan_temporality", "plan_expiry", "trial_used"] as const;
+type SheetRow = { userId: string; nombre: string; telefono: string; menus: string; menus_labels: string; plan: string; plan_status: string; pending_plan: string; plan_temporality: string; plan_expiry: string; trial_used: string };
 
 /** Índices de columnas (mismo orden que SHEET_HEADERS) para leer sin depender del texto exacto del encabezado. */
 const COL_USERID = 0;
@@ -69,6 +71,7 @@ const COL_PLAN_STATUS = 6;
 const COL_PENDING_PLAN = 7;
 const COL_PLAN_TEMPORALITY = 8;
 const COL_PLAN_EXPIRY = 9;
+const COL_TRIAL_USED = 10;
 
 /** Resolver para obtener el texto (label) de un menú por ID. Se asigna desde bot al arranque (getExtraMenuLabel). */
 let sheetMenuLabelResolver: ((menuId: string) => string | undefined) | null = null;
@@ -253,6 +256,7 @@ async function loadFromSheet(): Promise<UsersConfig> {
         pending_plan: pendingPlan || undefined,
         plan_temporality: planTemporality || undefined,
         plan_expiry: planExpiry || undefined,
+        trial_used: getCol(COL_TRIAL_USED) === "true" || undefined,
       };
     }
     console.log(
@@ -339,6 +343,7 @@ async function saveToSheet(): Promise<void> {
         pending_plan: info?.pending_plan ?? "",
         plan_temporality: info?.plan_temporality ?? "",
         plan_expiry: info?.plan_expiry ?? "",
+        trial_used: info?.trial_used ? "true" : "",
       };
     });
     const requestedRows: SheetRow[] = Object.entries(config.requestedPlans).map(([uid, req]) => ({
@@ -352,6 +357,7 @@ async function saveToSheet(): Promise<void> {
       pending_plan: "",
       plan_temporality: req.temporality ?? "",
       plan_expiry: "",
+      trial_used: "",
     }));
     const rows: SheetRow[] = [...allowedRows, ...requestedRows];
     if (rows.length > 0) {
@@ -846,6 +852,11 @@ function parseMMDDYY(s: string): Date | null {
   return new Date(year, month, day);
 }
 
+/** Devuelve true si el usuario ya usó el trial (1d) alguna vez. */
+export function hasUsedTrial(userId: number): boolean {
+  return config.userInfo[String(userId)]?.trial_used === true;
+}
+
 /** Devuelve true si el plan del usuario ha caducado. Si no tiene fecha de caducidad, no caduca. */
 export function isPlanExpired(userId: number): boolean {
   const expiry = config.userInfo[String(userId)]?.plan_expiry;
@@ -973,6 +984,7 @@ export async function assignPlanToUser(
     plan_status: "approved",
     plan_temporality: temporality || undefined,
     plan_expiry: temporality ? computeExpiryStr(temporality) : undefined,
+    trial_used: temporality === "1d" ? true : (config.userInfo[key]?.trial_used ?? undefined),
   };
   return persist();
 }

@@ -6,7 +6,7 @@
 
 import { InlineKeyboard, Keyboard } from "grammy";
 import type { getOwnerId as GetOwnerId, isAllowed as IsAllowed } from "../user-config.js";
-import { addPlanRequest, assignPlanToUser, isPlanExpired } from "../user-config.js";
+import { addPlanRequest, assignPlanToUser, hasUsedTrial, isPlanExpired } from "../user-config.js";
 import { getPlans, getPriceForTemporality, REGULAR_TEMPORALITIES, TEMPORALITIES, TRIAL_TEMPORALITIES } from "../plans.js";
 
 export type BuildMainKeyboard = (userId: number | undefined) => InlineKeyboard;
@@ -94,6 +94,14 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
           if (plan && TEMPORALITIES.some((t) => t.id === temporality)) {
             if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery();
             if (plan.autoApprove || temporality === "1d") {
+              if (hasUsedTrial(uid)) {
+                if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery({ text: "Ya usaste tu trial gratuito." }).catch(() => {});
+                await ctx.reply(
+                  "⚠️ *Ya usaste tu acceso de prueba*\n\nEl plan Trial solo puede activarse una vez por usuario. Elige un plan de pago para continuar.",
+                  { parse_mode: "Markdown" }
+                );
+                return;
+              }
               await assignPlanToUser(uid, plan.title, plan.menuIds ?? [], temporality);
               await ctx.reply(
                 `✅ *Plan ${plan.title} activado*\n\nTu acceso de prueba está listo por *1 día*.`,
@@ -198,6 +206,14 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
         if (plan && TEMPORALITIES.some((t) => t.id === temporality)) {
           if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery();
           if (plan.autoApprove || temporality === "1d") {
+            if (hasUsedTrial(uid)) {
+              if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery({ text: "Ya usaste tu trial gratuito." }).catch(() => {});
+              await ctx.reply(
+                "⚠️ *Ya usaste tu acceso de prueba*\n\nEl plan Trial solo puede activarse una vez por usuario. Elige un plan de pago para continuar.",
+                { parse_mode: "Markdown", reply_markup: options.buildMainKeyboard(uid) }
+              );
+              return;
+            }
             await assignPlanToUser(uid, plan.title, plan.menuIds ?? [], temporality);
             await ctx.reply(
               `✅ *¡Plan ${plan.title} activado!*\n\nTienes *1 día* de acceso gratuito para explorar todas las funciones. ¡Disfrútalo!`,

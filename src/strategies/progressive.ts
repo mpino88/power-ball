@@ -672,9 +672,9 @@ export function buildProgressiveStrategyMessage(
 
   let selectionStatus: string;
   if (selectedIds.size === 0) {
-    selectionStatus = "_Sin estrategias seleccionadas (necesitas ≥ 2)_";
+    selectionStatus = "_Sin estrategias seleccionadas_";
   } else if (selectedIds.size === 1) {
-    selectionStatus = `_1 estrategia — necesitas al menos 2_`;
+    selectionStatus = `*1* estrategia · *1* combinación a evaluar`;
   } else if (activeGroup) {
     const group = CONSENSUS_GROUPS.find((g) => g.id === activeGroup);
     selectionStatus =

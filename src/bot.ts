@@ -1109,8 +1109,8 @@ bot.on("callback_query:data", async (ctx) => {
       const validStep = session?.step === "strategies" || session?.step === "confirm";
       if (validStep && session!.context && session!.startDate && session!.endDate) {
         const strategyIds = [...session!.selectedIds];
-        if (strategyIds.length < 2) {
-          await ctx.answerCallbackQuery({ text: "⚠️ Selecciona al menos 2 estrategias." });
+        if (strategyIds.length < 1) {
+          await ctx.answerCallbackQuery({ text: "⚠️ Selecciona al menos 1 estrategia." });
           return;
         }
 
