@@ -136,7 +136,7 @@ import {
 import {
   ADIVINANZA_OPEN_CB,
   ADIVINANZA_INGRESAR_CB,
-  ADIVINANZA_REGEN_PREFIX,
+  ADIVINANZA_REGEN_CB,
   ADIVINANZA_STRAT_PREFIX,
   ADIVINANZA_CNS_CALLBACK,
   ADIVINANZA_OPEN_MSG,
@@ -190,6 +190,12 @@ const parleConsensusCache = new Map<number, { nums: number[]; context: StrategyC
  * Se sobrescribe con cada nuevo resultado de consenso.
  */
 const adivinanzaConsensusCache = new Map<number, number[]>();
+
+/**
+ * Últimos números usados para generar una adivinanza por userId (solo dueño).
+ * Permite el botón "🔄 Regenerar" sin codificar números en el callback.
+ */
+const adivinanzaLastNums = new Map<number, number[]>();
 
 /** Sesiones activas del Análisis Progresivo (solo para el dueño del bot). */
 const progressiveSessionMap = new Map<number, ProgressiveSession>();
@@ -726,7 +732,7 @@ bot.on("callback_query:data", async (ctx) => {
   if (
     (data === ADIVINANZA_OPEN_CB ||
       data === ADIVINANZA_INGRESAR_CB ||
-      data.startsWith(ADIVINANZA_REGEN_PREFIX)) &&
+      data === ADIVINANZA_REGEN_CB) &&
     ctx.from &&
     isOwner(ctx.from.id)
   ) {
@@ -764,11 +770,10 @@ bot.on("callback_query:data", async (ctx) => {
       return;
     }
 
-    if (data.startsWith(ADIVINANZA_REGEN_PREFIX)) {
-      const encoded = data.slice(ADIVINANZA_REGEN_PREFIX.length);
-      const numbers = encoded.split(",").map(Number).filter((n) => !Number.isNaN(n));
-      if (numbers.length === 0) {
-        await ctx.reply("❌ Lista de números inválida.", { reply_markup: buildMainKb(ownerId) });
+    if (data === ADIVINANZA_REGEN_CB) {
+      const numbers = adivinanzaLastNums.get(ownerId);
+      if (!numbers || numbers.length === 0) {
+        await ctx.answerCallbackQuery({ text: "⚠️ No hay números en caché. Genera una adivinanza primero." });
         return;
       }
       try {
@@ -780,14 +785,17 @@ bot.on("callback_query:data", async (ctx) => {
         const msg = buildAdivinanzaResultMsg(texto, numbers);
         await ctx.editMessageText(msg, {
           parse_mode: "Markdown",
-          reply_markup: buildAdivinanzaResultKeyboard(numbers),
+          reply_markup: buildAdivinanzaResultKeyboard(),
         });
       } catch (err) {
         console.error("[adivinanza] Error al regenerar:", err);
-        await ctx.editMessageText(
-          "❌ Error al generar la adivinanza\\. Verifica que `GEMINI_API_KEY` esté configurada\\.",
-          { parse_mode: "MarkdownV2", reply_markup: buildAdivinanzaMenuKeyboard() }
-        );
+        const detail = err instanceof Error ? err.message : String(err);
+        try {
+          await ctx.editMessageText(
+            `❌ *Error al regenerar*\n\n\`${detail}\``,
+            { parse_mode: "Markdown", reply_markup: buildAdivinanzaMenuKeyboard() }
+          );
+        } catch { /* ignorar si el mensaje ya fue editado */ }
       }
       return;
     }
@@ -1401,11 +1409,12 @@ bot.on("callback_query:data", async (ctx) => {
     const loadingMsg = await ctx.reply("⏳ _Generando adivinanza..._", { parse_mode: "Markdown" });
     const chatId = loadingMsg.chat.id;
     try {
+      adivinanzaLastNums.set(userId, cached);
       const texto = await generarAdivinanza(cached);
       const msg = buildAdivinanzaResultMsg(texto, cached);
       await ctx.api.editMessageText(chatId, loadingMsg.message_id, msg, {
         parse_mode: "Markdown",
-        reply_markup: buildAdivinanzaResultKeyboard(cached),
+        reply_markup: buildAdivinanzaResultKeyboard(),
       });
     } catch (err) {
       console.error("[adivinanza-cns] Error:", err);
@@ -1451,11 +1460,12 @@ bot.on("callback_query:data", async (ctx) => {
         );
         return;
       }
+      adivinanzaLastNums.set(userId, candidates);
       const texto = await generarAdivinanza(candidates);
       const msg = buildAdivinanzaResultMsg(texto, candidates);
       await ctx.api.editMessageText(chatId, loadingMsg.message_id, msg, {
         parse_mode: "Markdown",
-        reply_markup: buildAdivinanzaResultKeyboard(candidates),
+        reply_markup: buildAdivinanzaResultKeyboard(),
       });
     } catch (err) {
       console.error("[adivinanza-strat] Error:", err);
@@ -1927,13 +1937,14 @@ bot.on("message:text", async (ctx) => {
       { parse_mode: "Markdown" }
     );
     try {
+      adivinanzaLastNums.set(userId, numbers);
       const texto = await generarAdivinanza(numbers);
       const msg = buildAdivinanzaResultMsg(texto, numbers);
       await ctx.api.editMessageText(
         ctx.chat.id,
         loadingMsg.message_id,
         msg,
-        { parse_mode: "Markdown", reply_markup: buildAdivinanzaResultKeyboard(numbers) }
+        { parse_mode: "Markdown", reply_markup: buildAdivinanzaResultKeyboard() }
       );
     } catch (err) {
       console.error("[adivinanza] Error al generar:", err);

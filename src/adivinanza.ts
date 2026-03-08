@@ -23,7 +23,8 @@ const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
 export const ADIVINANZA_OPEN_CB = "adivinanza_open";
 export const ADIVINANZA_INGRESAR_CB = "adivinanza_ingresar";
-export const ADIVINANZA_REGEN_PREFIX = "adivinanza_regen|";
+/** Callback fijo para regenerar — los números se guardan en el cache del bot, no en el callback. */
+export const ADIVINANZA_REGEN_CB = "adivinanza_regen";
 
 /**
  * Prefijo para el botón "Crear Adivinanza" de una estrategia individual.
@@ -52,8 +53,7 @@ function buildPrompt(numbers: number[]): string {
     "- Usa imágenes, simbolismos, naturaleza, animales o escenas cotidianas cubanas.\n" +
     "- La adivinanza debe ser críptica pero con pistas que lleven al lector a descubrir los números.\n" +
     "- No menciones los números directamente en los versos.\n" +
-    "- Al final agrega una sección «Clave:» con los números en un formato cifrado divertido " +
-    "  (ej: suma de dígitos, inversión de cifras, suma total).\n" +
+    "- No incluyas ninguna sección de «Clave», respuesta ni revelación de los números.\n" +
     "- Tono: misterioso, poético y entretenido.\n" +
     "- Idioma: español cubano natural.\n\n" +
     "Responde SOLO con la adivinanza y la clave. Sin explicaciones ni comentarios adicionales."
@@ -142,10 +142,9 @@ export function buildAdivinanzaMenuKeyboard(): InlineKeyboard {
     .text("◀️ Volver", "volver");
 }
 
-export function buildAdivinanzaResultKeyboard(numbers: number[]): InlineKeyboard {
-  const encoded = numbers.join(",");
+export function buildAdivinanzaResultKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
-    .text("🔄 Regenerar", ADIVINANZA_REGEN_PREFIX + encoded)
+    .text("🔄 Regenerar", ADIVINANZA_REGEN_CB)
     .text("✏️ Nuevos números", ADIVINANZA_INGRESAR_CB)
     .row()
     .text("🏠 Inicio", "volver");
