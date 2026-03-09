@@ -325,6 +325,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
         "\n\n👇 _Selecciona la duración y toca el botón:_";
     }
 
+    // Teclado completo con botones de selección de plan (usado en el paso 2).
     const keyboard = new InlineKeyboard();
     if (plans.length === 0 && link) {
       keyboard.url("📩 Solicitar acceso", link);
@@ -336,20 +337,47 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
       if (link) keyboard.url("📩 Contactar al administrador", link);
     }
 
-    // ── Mostrar imagen de onboarding encima de los planes (si está configurada) ──
+    // ── Paso 2: "Ver Planes" — editar caption con info completa + botones ───
+    if (data === "ver_planes_open") {
+      if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery();
+      const ctxEdit = ctx as {
+        editMessageCaption?: (caption: string, opts?: object) => Promise<unknown>;
+      };
+      if (ctxEdit.editMessageCaption) {
+        const caption = msg.length > 1024 ? msg.slice(0, 1021) + "…" : msg;
+        try {
+          await ctxEdit.editMessageCaption(caption, {
+            parse_mode: "Markdown",
+            reply_markup: keyboard,
+          });
+          return;
+        } catch (e) {
+          if ((e as Error).message?.includes("message is not modified")) return;
+          console.error("[middleware] Error al editar caption de planes:", e);
+        }
+      }
+      // Fallback: nuevo mensaje con el contenido completo
+      await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: keyboard });
+      return;
+    }
+
+    // ── Paso 1: imagen de onboarding con un solo botón "Ver Planes" ─────────
     const onboardingPhoto = options.getOnboardingPhoto?.();
-    // Usamos un cast a 'any' para acceder a replyWithPhoto sin romper el tipo mínimo del ctx.
-    const ctxWithPhoto = ctx as { replyWithPhoto?: (photo: unknown, opts?: object) => Promise<{ photo?: Array<{ file_id: string }> }> };
+    const ctxWithPhoto = ctx as {
+      replyWithPhoto?: (photo: unknown, opts?: object) => Promise<{ photo?: Array<{ file_id: string }> }>;
+    };
     if (ctxWithPhoto.replyWithPhoto && onboardingPhoto !== undefined) {
-      // El caption de Telegram tiene límite de 1024 chars; truncar con seguridad.
-      const caption = msg.length > 1024 ? msg.slice(0, 1021) + "…" : msg;
+      const welcomeCaption =
+        "🎰 *Power Ball Bot*\n\n" +
+        "Tu guía para _Pick 3_ y _Pick 4_ de Florida Lottery\\.\n\n" +
+        "_Toca el botón para ver los planes disponibles:_";
+      const welcomeKeyboard = new InlineKeyboard().text("📋 Ver Planes", "ver_planes_open");
       try {
         const sentMsg = await ctxWithPhoto.replyWithPhoto(onboardingPhoto, {
-          caption,
-          parse_mode: "Markdown",
-          reply_markup: keyboard,
+          caption: welcomeCaption,
+          parse_mode: "MarkdownV2",
+          reply_markup: welcomeKeyboard,
         });
-        // Cachear el file_id para futuros envíos sin releer el disco.
         if (typeof onboardingPhoto !== "string" && options.onOnboardingPhotoSent) {
           const photos = sentMsg?.photo;
           if (photos && photos.length > 0) {
@@ -359,7 +387,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
         return;
       } catch (photoErr) {
         console.error("[middleware] Error al enviar foto de onboarding:", photoErr);
-        // Fallback: enviar solo texto si la foto falla por cualquier motivo.
+        // Fallback: mostrar texto completo con todos los botones.
       }
     }
     await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: keyboard });
