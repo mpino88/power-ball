@@ -348,7 +348,13 @@ function registerExtraMenus(): void {
     async (ctx) => {
       await ctx.answerCallbackQuery();
       const result =
-        "📊 *Estadísticas por grupos* (Fijo P3)\n\nElige *Mediodía (M)* o *Noche (E)*. Grupos: terminales (0-9), iniciales (0-9), dobles.\n\n🔥 Hot = (Máx.hist − Máx.actual) ≤ Días diferencia.";
+        "📊 *Estadísticas por Grupos — Fijo P3*\n\n" +
+        "Analiza el historial completo de sorteos agrupando los números por sus características:\n\n" +
+        "🔢 *Terminales (0-9)* — Dígito de unidad del número sorteado. Detecta qué terminal sale más, cuál está caliente y cuál lleva más tiempo sin aparecer.\n\n" +
+        "🔟 *Iniciales (0-9)* — Primer dígito del número. Revela qué prefijos dominan y cuáles están rezagados.\n\n" +
+        "♊ *Dobles* — Números con dígitos repetidos (00, 11, 22 … 99). Seguimiento específico de frecuencia y brecha de los pares.\n\n" +
+        `🔥 *Hot* — Un número se considera caliente cuando su brecha actual ≤ ${hotThresholdDays} días de diferencia con su máximo histórico de ausencia. Ajustable con el botón «Días diferencia».\n\n` +
+        "_Elige el período para ver el análisis:_";
       try {
         await ctx.editMessageText(result, {
           parse_mode: "Markdown",
