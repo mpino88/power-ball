@@ -733,6 +733,11 @@ export interface EstrategiasUserCallbackDeps {
   getOwnerId: () => number | null;
   isOwner: (userId: number) => boolean;
   buildMainKeyboard: (userId: number | undefined) => InlineKeyboard;
+  /**
+   * Si se provee, se llama antes de mostrar la Tienda para garantizar que la
+   * visibilidad de las estrategias esté sincronizada con el Sheet.
+   */
+  reloadStrategies?: () => Promise<void>;
 }
 
 /** Gestionar estrategias para cualquier usuario (listar, crear, eliminar propias). */
@@ -769,10 +774,24 @@ export async function handleEstrategiasUserCallback(
   }
 
   if (data === "estrategias_tienda") {
+    // Sincronizar visibilidad desde el Sheet antes de mostrar la Tienda
+    await deps.reloadStrategies?.();
+
+    // Estrategias ya accesibles: las del plan + las asignadas explícitamente
     const myIds = new Set(deps.getExtraMenus(userId));
-    const publicList = getPublicStrategies().filter((m) => !myIds.has(m.id));
+
+    const isOwnerUser = deps.isOwner(userId);
+    const publicList = getPublicStrategies().filter(
+      (m) =>
+        // No mostrar las que ya tienes (plan o asignadas)
+        !myIds.has(m.id) &&
+        // No mostrar las que creaste tú mismo (no tendría sentido comprarlas)
+        m.createdBy !== userId &&
+        // El dueño no compra por la Tienda; gestiona directamente desde el panel
+        !isOwnerUser
+    );
     if (publicList.length === 0) {
-      result = "🛒 *Tienda*\n\n_No hay estrategias públicas disponibles o ya tienes todas._";
+      result = "🛒 *Tienda*\n\n_No hay estrategias públicas disponibles en este momento o ya tienes acceso a todas._";
       keyboard = new InlineKeyboard().text("◀️ Volver", "volver");
       return { result, keyboard };
     }

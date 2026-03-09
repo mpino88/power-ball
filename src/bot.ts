@@ -181,6 +181,20 @@ async function reloadPlansIfStale(): Promise<void> {
   }
 }
 
+/**
+ * Recarga las estrategias desde el Sheet.
+ * Se llama cada vez que el usuario abre la Tienda para garantizar visibilidad actualizada.
+ */
+async function reloadStrategiesIfStale(): Promise<void> {
+  if (getStorageBackend() !== "sheet") return;
+  try {
+    const rows = await loadStrategiesFromSheet();
+    if (rows.length > 0) initCustomMenusFromSheet(rows);
+  } catch (e) {
+    console.error("[strategies] Error al recargar estrategias desde Sheet:", e);
+  }
+}
+
 function buildHelpText(planName: string): string {
   const safePlan = escapeMd(planName);
   return (
@@ -872,6 +886,7 @@ bot.on("callback_query:data", async (ctx) => {
       getOwnerId,
       isOwner,
       buildMainKeyboard: buildMainKb,
+      reloadStrategies: reloadStrategiesIfStale,
     });
     if (estrategiasOut) {
       await ctx.answerCallbackQuery();
