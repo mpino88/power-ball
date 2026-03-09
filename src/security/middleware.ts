@@ -26,6 +26,12 @@ export interface RestrictMiddlewareOptions {
   getOnboardingPhoto?: () => unknown;
   /** Se invoca tras el primer envío de la imagen para cachear su file_id. */
   onOnboardingPhotoSent?: (fileId: string) => void;
+  /**
+   * Si se provee, se llama antes de mostrar cualquier menú de planes para garantizar
+   * que los precios estén sincronizados con el Sheet.
+   * Debe implementar su propio TTL para evitar llamadas excesivas.
+   */
+  reloadPlans?: () => Promise<void>;
 }
 
 export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
@@ -177,7 +183,8 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
         return;
       }
 
-      // Mostrar mensaje de caducidad
+      // Mostrar mensaje de caducidad (sincronizar precios desde Sheet antes de mostrar)
+      await options.reloadPlans?.();
       const plans = getPlans();
       let link = "";
       const raw = requestAccessLink;
@@ -286,6 +293,9 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
       );
       return;
     }
+
+    // Sincronizar precios desde Sheet antes de mostrar el menú de planes
+    await options.reloadPlans?.();
 
     const raw = requestAccessLink;
     let link = "";

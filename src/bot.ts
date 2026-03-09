@@ -163,6 +163,24 @@ const ONBOARDING_IMAGE_PATH = path.join(process.cwd(), "src", "assets", "onboard
 /** file_id cacheado de Telegram tras el primer envío (evita releer el disco). */
 let onboardingPhotoFileId: string | null = null;
 
+/** TTL (ms) para sincronizar precios de planes desde el Sheet (5 min). */
+const PLAN_RELOAD_TTL_MS = 5 * 60 * 1000;
+let lastPlanReload = 0;
+
+/** Recarga los planes desde el Sheet si el caché tiene más de 5 minutos de antigüedad. */
+async function reloadPlansIfStale(): Promise<void> {
+  if (getStorageBackend() !== "sheet") return;
+  const now = Date.now();
+  if (now - lastPlanReload < PLAN_RELOAD_TTL_MS) return;
+  lastPlanReload = now;
+  try {
+    const rows = await loadPlansFromSheet();
+    if (rows.length > 0) initPlansFromSheet(rows);
+  } catch (e) {
+    console.error("[plans] Error al recargar planes desde Sheet:", e);
+  }
+}
+
 function buildHelpText(planName: string): string {
   const safePlan = escapeMd(planName);
   return (
@@ -582,6 +600,7 @@ bot.use(
     onOnboardingPhotoSent: (fileId: string) => {
       onboardingPhotoFileId = fileId;
     },
+    reloadPlans: reloadPlansIfStale,
   })
 );
 
