@@ -12,7 +12,15 @@ const ACCENTS: Record<string, string> = {
 };
 
 /**
+ * Límite máximo del id de menú en caracteres.
+ * Telegram impone 64 bytes para callback_data; el prefijo más largo es
+ * "admin_estrategias_visibility_toggle_" (36 chars), dejando 28 chars para el id.
+ */
+export const MAX_MENU_ID_LEN = 28;
+
+/**
  * Convierte el texto del botón a un id válido: minúsculas, snake_case, sin acentos ni caracteres raros.
+ * Trunca a MAX_MENU_ID_LEN caracteres para que los callback_data nunca excedan el límite de Telegram.
  * Ej: "Fechas Calor" → "fechas_calor", "Área 51" → "area_51"
  */
 export function labelToMenuId(label: string): string {
@@ -25,5 +33,5 @@ export function labelToMenuId(label: string): string {
     .replace(/\s+/g, "_")
     .replace(/_+/g, "_")
     .replace(/^_|_$/g, "");
-  return snake;
+  return snake.slice(0, MAX_MENU_ID_LEN);
 }

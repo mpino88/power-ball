@@ -84,6 +84,31 @@ import {
 
 const BUILTIN_MENU_IDS = new Set(["est_grupos", "est_individuales"]);
 
+/** Límite de bytes de Telegram para callback_data. */
+const TG_CB_MAX = 64;
+
+/**
+ * Construye un callback_data para el toggle de visibilidad garantizando ≤ 64 bytes.
+ * Si el menuId es demasiado largo, se trunca (IDs existentes que superan el límite).
+ */
+function visToggleCb(prefix: string, menuId: string): string {
+  const maxId = TG_CB_MAX - prefix.length;
+  return prefix + (menuId.length > maxId ? menuId.slice(0, maxId) : menuId);
+}
+
+/**
+ * Resuelve el menuId completo a partir del fragmento que llegó en el callback.
+ * Maneja el caso en que el id fue truncado por el límite de 64 bytes de Telegram.
+ */
+function resolveMenuId(idFragment: string): string {
+  const exact = getCustomMenus().find((m) => m.id === idFragment);
+  if (exact) return exact.id;
+  const byPrefix = getCustomMenus().find(
+    (m) => idFragment.length < m.id.length && m.id.startsWith(idFragment)
+  );
+  return byPrefix?.id ?? idFragment;
+}
+
 /** Escapa caracteres especiales de Telegram Markdown (legacy) para evitar "can't parse entities". */
 export function escapeMd(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/_/g, "\\_").replace(/\*/g, "\\*").replace(/`/g, "\\`").replace(/\[/g, "\\[");
@@ -403,12 +428,12 @@ export async function handleSecurityCallback(
       keyboard = new InlineKeyboard();
       for (const m of custom) {
         const next = getMenuVisibility(m.id) === "public" ? "🔒 Ocultar" : "🌐 Publicar";
-        keyboard.text(`${next}: ${m.label}`, `admin_estrategias_visibility_toggle_${m.id}`).row();
+        keyboard.text(`${next}: ${m.label}`, visToggleCb("admin_estrategias_visibility_toggle_", m.id)).row();
       }
       keyboard.text("◀️ Volver a Gestionar Estrategias", "admin_estrategias_manage");
     }
   } else if (data.startsWith("admin_estrategias_visibility_toggle_")) {
-    const menuId = data.replace("admin_estrategias_visibility_toggle_", "");
+    const menuId = resolveMenuId(data.replace("admin_estrategias_visibility_toggle_", ""));
     if (!isCustomMenu(menuId)) {
       result = "Estrategia no encontrada.";
       keyboard = buildManageEstrategiasKeyboard();
@@ -808,14 +833,14 @@ export async function handleEstrategiasUserCallback(
     for (const m of list) {
       if (!canChangeVisibility(m.id, userId, isOwnerUser)) continue;
       const next = getMenuVisibility(m.id) === "public" ? "🔒 Ocultar" : "🌐 Publicar";
-      keyboard.text(`${next}: ${m.label}`, `estrategias_visibility_toggle_${m.id}`).row();
+      keyboard.text(`${next}: ${m.label}`, visToggleCb("estrategias_visibility_toggle_", m.id)).row();
     }
     keyboard.text("◀️ Volver a Gestionar", "estrategias_manage");
     return { result, keyboard };
   }
 
   if (data.startsWith("estrategias_visibility_toggle_")) {
-    const menuId = data.replace("estrategias_visibility_toggle_", "");
+    const menuId = resolveMenuId(data.replace("estrategias_visibility_toggle_", ""));
     const isOwnerUser = deps.isOwner(userId);
     if (!canChangeVisibility(menuId, userId, isOwnerUser)) {
       result = "No puedes cambiar la visibilidad de esta estrategia.";
