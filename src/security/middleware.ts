@@ -18,6 +18,14 @@ export interface RestrictMiddlewareOptions {
   buildMainKeyboard: BuildMainKeyboard;
   addPlanRequest: typeof addPlanRequest;
   isOwner: (userId: number) => boolean;
+  /**
+   * Devuelve la foto de onboarding para mostrarla encima de los planes al nuevo usuario.
+   * Puede retornar un file_id de Telegram (string) o un InputFile de grammY (opaco aquí como unknown).
+   * Si retorna undefined o no se provee, se usa ctx.reply (solo texto).
+   */
+  getOnboardingPhoto?: () => unknown;
+  /** Se invoca tras el primer envío de la imagen para cachear su file_id. */
+  onOnboardingPhotoSent?: (fileId: string) => void;
 }
 
 export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
@@ -328,6 +336,32 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
       if (link) keyboard.url("📩 Contactar al administrador", link);
     }
 
+    // ── Mostrar imagen de onboarding encima de los planes (si está configurada) ──
+    const onboardingPhoto = options.getOnboardingPhoto?.();
+    // Usamos un cast a 'any' para acceder a replyWithPhoto sin romper el tipo mínimo del ctx.
+    const ctxWithPhoto = ctx as { replyWithPhoto?: (photo: unknown, opts?: object) => Promise<{ photo?: Array<{ file_id: string }> }> };
+    if (ctxWithPhoto.replyWithPhoto && onboardingPhoto !== undefined) {
+      // El caption de Telegram tiene límite de 1024 chars; truncar con seguridad.
+      const caption = msg.length > 1024 ? msg.slice(0, 1021) + "…" : msg;
+      try {
+        const sentMsg = await ctxWithPhoto.replyWithPhoto(onboardingPhoto, {
+          caption,
+          parse_mode: "Markdown",
+          reply_markup: keyboard,
+        });
+        // Cachear el file_id para futuros envíos sin releer el disco.
+        if (typeof onboardingPhoto !== "string" && options.onOnboardingPhotoSent) {
+          const photos = sentMsg?.photo;
+          if (photos && photos.length > 0) {
+            options.onOnboardingPhotoSent(photos[photos.length - 1]!.file_id);
+          }
+        }
+        return;
+      } catch (photoErr) {
+        console.error("[middleware] Error al enviar foto de onboarding:", photoErr);
+        // Fallback: enviar solo texto si la foto falla por cualquier motivo.
+      }
+    }
     await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: keyboard });
   };
 }

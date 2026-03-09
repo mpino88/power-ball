@@ -4,7 +4,9 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { Bot, InlineKeyboard } from "grammy";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { Bot, InputFile, InlineKeyboard } from "grammy";
 import type { Update } from "grammy/types";
 import {
   getOwnerId,
@@ -155,6 +157,11 @@ const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const WEBHOOK_URL = process.env.WEBHOOK_URL ?? "";
 const FLORIDA_TZ = "America/New_York";
 const REQUEST_ACCESS_LINK = process.env.REQUEST_ACCESS_LINK?.trim() ?? "";
+
+/** Ruta local de la imagen de onboarding para nuevos usuarios. */
+const ONBOARDING_IMAGE_PATH = path.join(process.cwd(), "src", "assets", "onboarding-new-user.png");
+/** file_id cacheado de Telegram tras el primer envío (evita releer el disco). */
+let onboardingPhotoFileId: string | null = null;
 
 function buildHelpText(planName: string): string {
   const safePlan = escapeMd(planName);
@@ -564,6 +571,17 @@ bot.use(
     buildMainKeyboard: buildMainKb,
     addPlanRequest,
     isOwner,
+    getOnboardingPhoto: () => {
+      if (onboardingPhotoFileId) return onboardingPhotoFileId;
+      try {
+        return new InputFile(readFileSync(ONBOARDING_IMAGE_PATH), "onboarding-new-user.png");
+      } catch {
+        return undefined;
+      }
+    },
+    onOnboardingPhotoSent: (fileId: string) => {
+      onboardingPhotoFileId = fileId;
+    },
   })
 );
 
