@@ -733,8 +733,10 @@ export async function handleEstrategiasUserCallback(
       .text("➕ Crear estrategia", "estrategias_create")
       .text("🗑 Eliminar estrategia", "estrategias_delete")
       .row();
-    const createdByMe = getCustomMenusCreatedBy(userId);
-    if (createdByMe.length > 0) {
+    // El dueño puede gestionar la visibilidad de todas las estrategias; los demás solo las propias.
+    const isOwnerUser = deps.isOwner(userId);
+    const menusParaVisibilidad = isOwnerUser ? getCustomMenus() : getCustomMenusCreatedBy(userId);
+    if (menusParaVisibilidad.length > 0) {
       keyboard.text("🌐 Visibilidad (pública/privada)", "estrategias_visibility").row();
     }
     keyboard.text("◀️ Volver", "volver");

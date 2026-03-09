@@ -990,6 +990,7 @@ bot.on("callback_query:data", async (ctx) => {
 
   const menuOut = await handleMenuCallback(ctx, data, menuDeps);
   if (menuOut) {
+    await ctx.answerCallbackQuery().catch(() => {});
     try {
       await ctx.editMessageText(menuOut.result, { parse_mode: "Markdown", reply_markup: menuOut.keyboard });
     } catch (err) {
