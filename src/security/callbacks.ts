@@ -196,11 +196,14 @@ export async function handleSecurityCallback(
       "Toda la info del usuario. Usa *Agregar acceso* o *Quitar acceso* para gestionar.\n\n" +
       (lines.length ? lines.join("\n\n") : "_Ningún usuario con acceso_ (solo tú como dueño).");
     keyboard = new InlineKeyboard();
-    // Botón Contactar por cada usuario de la página
+    // Una fila por usuario: [👤 Nombre / ID] + [📩 Contactar]
     for (const uid of slice) {
       const name = getUsername(uid) || String(uid);
-      const label = `📩 Contactar: ${name}`;
-      keyboard.url(label.length > 64 ? `📩 Contactar ${uid}` : label, `tg://user?id=${uid}`).row();
+      const infoLabel = name.length > 30 ? name.slice(0, 28) + "…" : name;
+      keyboard
+        .text(`👤 ${infoLabel}`, "noop_list_page")
+        .url("📩 Contactar", `tg://user?id=${uid}`)
+        .row();
     }
     // Paginación
     if (totalPages > 1) {
