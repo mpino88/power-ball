@@ -31,6 +31,8 @@ import {
   removeStrategyRequest,
   approveStrategyRequest,
   loadLeadsFromSheet,
+  getPlanTemporality,
+  isPlanExpired,
 } from "../user-config.js";
 import {
   getExtraMenuIds,
@@ -730,27 +732,62 @@ export async function handleSecurityCallback(
       keyboard = buildManagePlansKeyboard();
     }
   } else if (data === "admin_leads" || data === "admin_leads_refresh") {
-    const leads = await loadLeadsFromSheet();
-    if (leads.length === 0) {
-      result = "📊 *Leads*\n\n_No hay leads registrados aún._ Los leads se capturan cuando un usuario comparte su número al solicitar un plan.";
+    const todosLosLeads = await loadLeadsFromSheet();
+    const pendientes = getRequestedPlanUsers();
+
+    // Filtramos leads para NO mostrar a los que ya son clientes convertidos activos
+    const leadsFiltrados = todosLosLeads.filter(l => {
+      const uid = Number(l.userId);
+      if (Number.isNaN(uid)) return true;
+
+      const isPending = pendientes.some(u => u.userId === uid);
+      if (isPending) {
+        l.status = "pendiente";
+        return true;
+      }
+
+      const planActual = getPlan(uid);
+      if (planActual) {
+        if (isPlanExpired(uid)) {
+          l.status = "lost";
+          return true;
+        }
+        const temp = getPlanTemporality(uid);
+        if (temp === "1d" || temp === "1 h") {
+          l.status = "trial_active";
+          return true;
+        }
+        // Están en un plan pagado válido (no trial, no expirado)
+        l.status = "converted";
+        return false; // NO MOSTRAR Convertidos en Leads
+      }
+
+      // Sin plan activo ni pendiente = lost (trial expirado sin renovar)
+      l.status = "lost";
+      return true;
+    });
+
+    if (leadsFiltrados.length === 0) {
+      result = "📊 *Leads Activos/Perdidos*\n\n_No hay leads pendientes, perdidos o en trial actualmente._";
       keyboard = new InlineKeyboard()
         .text("🔄 Actualizar", "admin_leads_refresh")
         .row()
         .text("◀️ Volver a Administrar", "security_open");
     } else {
-      const recent = leads.slice(-30).reverse();
+      const recent = leadsFiltrados.slice(-30).reverse();
       const lines = recent.map((l) => {
         const nombre = escapeMd((l.nombre && l.nombre.trim()) ? l.nombre.trim() : "—");
         const telefono = escapeMd((l.telefono && l.telefono.trim()) ? l.telefono.trim() : "—");
         const plan = escapeMd(l.plan || "—");
         const fecha = escapeMd(l.fecha || "—");
         const status = l.status || "—";
-        const statusIcon = status === "trial_active" ? "🟢" : status === "converted" ? "✅" : status === "lost" ? "🔴" : "⏳";
+        const statusIcon = status === "trial_active" ? "🟢" : status === "lost" ? "🔴" : "⏳";
         return `• *ID:* \`${l.userId}\` | ${nombre}\n  📞 ${telefono} | 📋 ${plan} | ${statusIcon} ${escapeMd(status)}\n  📅 ${fecha}`;
       });
       result =
-        `📊 *Leads* (${leads.length} total, últimos ${recent.length})\n\n` +
-        "🟢 trial\\_active · ✅ converted · ⏳ pendiente · 🔴 lost\n\n" +
+        `📊 *Leads* (${leadsFiltrados.length} listados, últimos ${recent.length})\n\n` +
+        "🟢 trial\\_active · ⏳ pendiente · 🔴 lost\n" +
+        "_Nota: Los leads que ya convirtieron a pago no se muestran aquí._\n\n" +
         lines.join("\n\n");
       keyboard = new InlineKeyboard()
         .text("🔄 Actualizar", "admin_leads_refresh")
