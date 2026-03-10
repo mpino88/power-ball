@@ -1319,3 +1319,118 @@ export async function loadTestingCutoffDate(): Promise<string | null> {
     return null;
   }
 }
+
+// ─── Feedback ─────────────────────────────────────────────────────────────────
+
+/** Fila de la 6ª pestaña (Feedback): userId, nombre, telefono, texto, fecha. */
+export interface FeedbackRow {
+  userId: number;
+  nombre: string;
+  telefono: string;
+  texto: string;
+  /** Fecha en formato DD/MM/YYYY HH:MM (hora Florida). */
+  fecha: string;
+}
+
+const FEEDBACK_SHEET_TITLE = "Feedback";
+const FEEDBACK_HEADERS = ["userId", "nombre", "telefono", "texto", "fecha"] as const;
+export const FEEDBACK_SHEET_INDEX = 5;
+
+/**
+ * Carga todos los feedbacks desde la 6ª pestaña del Sheet.
+ * Si la pestaña no existe, la crea y devuelve [].
+ */
+export async function loadFeedbackFromSheet(): Promise<FeedbackRow[]> {
+  const sheetId = getSheetId();
+  if (!sheetId) return [];
+  const auth = getSheetAuth();
+  if (!auth) return [];
+  try {
+    const doc = new GoogleSpreadsheet(sheetId, auth);
+    await doc.loadInfo();
+    let sheet = doc.sheetsByIndex[FEEDBACK_SHEET_INDEX];
+    if (!sheet) {
+      await doc.addSheet({
+        title: FEEDBACK_SHEET_TITLE,
+        headerValues: [...FEEDBACK_HEADERS],
+      });
+      console.log("[feedback] Pestaña 'Feedback' creada (6ª pestaña).");
+      return [];
+    }
+    try {
+      await sheet.loadHeaderRow(1);
+    } catch {
+      await sheet.setHeaderRow([...FEEDBACK_HEADERS], 1);
+      return [];
+    }
+    const rows = await sheet.getRows({ offset: 0, limit: 10000 });
+    const headers = sheet.headerValues;
+    const result: FeedbackRow[] = [];
+    for (const row of rows) {
+      const obj = row.toObject() as Record<string, unknown>;
+      const values = headers.map((h) => (h ? String(obj[h] ?? "").trim() : ""));
+      const userIdStr = values[0] ?? "";
+      const uid = parseInt(userIdStr, 10);
+      if (!userIdStr || Number.isNaN(uid)) continue;
+      result.push({
+        userId: uid,
+        nombre: values[1] ?? "",
+        telefono: values[2] ?? "",
+        texto: values[3] ?? "",
+        fecha: values[4] ?? "",
+      });
+    }
+    console.log("[feedback] Cargados", result.length, "feedbacks desde la 6ª pestaña.");
+    return result;
+  } catch (e) {
+    console.error("[feedback] Error al cargar feedbacks desde Sheet:", (e as Error)?.message ?? e);
+    return [];
+  }
+}
+
+/**
+ * Añade una sola fila de feedback a la 6ª pestaña (sin clearRows, preserva historial).
+ * Crea la pestaña si no existe.
+ */
+export async function appendFeedbackToSheet(row: FeedbackRow): Promise<void> {
+  const sheetId = getSheetId();
+  if (!sheetId) return;
+  const auth = getSheetAuth();
+  if (!auth) return;
+  try {
+    const doc = new GoogleSpreadsheet(sheetId, auth);
+    await doc.loadInfo();
+    let sheet = doc.sheetsByIndex[FEEDBACK_SHEET_INDEX];
+    if (!sheet) {
+      sheet = await doc.addSheet({
+        title: FEEDBACK_SHEET_TITLE,
+        headerValues: [...FEEDBACK_HEADERS],
+      });
+      console.log("[feedback] Pestaña 'Feedback' creada al guardar primera fila.");
+    } else {
+      try {
+        await sheet.loadHeaderRow(1);
+      } catch {
+        await sheet.setHeaderRow([...FEEDBACK_HEADERS], 1);
+      }
+    }
+    await sheet.addRow({
+      userId: String(row.userId),
+      nombre: row.nombre,
+      telefono: row.telefono,
+      texto: row.texto,
+      fecha: row.fecha,
+    });
+    console.log("[feedback] Feedback guardado para userId=", row.userId);
+  } catch (e) {
+    console.error("[feedback] Error al guardar feedback en Sheet:", (e as Error)?.message ?? e);
+    throw e;
+  }
+}
+
+/** Devuelve todos los feedbacks de un usuario específico, ordenados por fecha (más reciente primero). */
+export async function getFeedbackForUser(userId: number): Promise<FeedbackRow[]> {
+  const all = await loadFeedbackFromSheet();
+  return all.filter((r) => r.userId === userId).reverse();
+}
+

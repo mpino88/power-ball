@@ -38,6 +38,11 @@ import {
   normalizeUserMenusAfterLoad,
   loadTestingCutoffDate,
   saveTestingCutoffDate,
+  loadFeedbackFromSheet,
+  appendFeedbackToSheet,
+  getFeedbackForUser,
+  getUsername,
+  getPhone,
 } from "./user-config.js";
 import {
   registerExtraMenu,
@@ -86,6 +91,10 @@ import {
   buildIndividualPeriodKeyboard,
   buildTestingKeyboard,
   buildTestingMessage,
+  buildFeedbackKeyboard,
+  buildAdminFeedbackListKeyboard,
+  buildAdminUserFeedbackKeyboard,
+  buildMyFeedbacksKeyboard,
   handleMenuCallback,
   ESTRATEGIAS_OPEN_CALLBACK,
   MAIN_MENU_MESSAGE,
@@ -285,6 +294,9 @@ const waitingTestingDate = new Map<number, true>();
 
 /** Dueño esperando ingresar lista de números para generar una adivinanza. */
 const waitingAdivinanzaNums = new Map<number, true>();
+
+/** Usuarios esperando introducir el texto de un feedback. */
+const waitingFeedbackText = new Map<number, true>();
 
 /**
  * Versiones de getP3Map/getP4Map con filtro de fecha de corte para estrategias.
@@ -641,13 +653,13 @@ bot.command("help", async (ctx) => {
 bot.command("admin", async (ctx) => {
   if (!isOwner(ctx.from?.id ?? 0)) return;
   await ctx.reply(
-      "⚙️ *Panel de Administración*\n\n" +
-      "Centro de control completo del bot. Todo lo que puedes hacer desde aquí:\n\n" +
-      "👥 *Usuarios* — Lista todos los usuarios con acceso, consulta su plan, estado y datos de contacto.\n\n" +
-      "➕➖ *Acceso* — Agrega o elimina usuarios de la lista de acceso permitido.\n\n" +
-      "📋 *Estrategias por usuario* — Asigna o quita estrategias individuales a cualquier usuario.\n\n" +
-      "🤖 *Gestionar Estrategias* — Crea nuevas estrategias personalizadas, elimínalas, controla su visibilidad pública/privada y revisa las solicitudes de acceso pendientes.\n\n" +
-      "💰 *Gestionar Planes* — Crea, edita y elimina planes de suscripción; asigna planes a usuarios; revisa y aprueba solicitudes de cambio de plan.", {
+    "⚙️ *Panel de Administración*\n\n" +
+    "Centro de control completo del bot. Todo lo que puedes hacer desde aquí:\n\n" +
+    "👥 *Usuarios* — Lista todos los usuarios con acceso, consulta su plan, estado y datos de contacto.\n\n" +
+    "➕➖ *Acceso* — Agrega o elimina usuarios de la lista de acceso permitido.\n\n" +
+    "📋 *Estrategias por usuario* — Asigna o quita estrategias individuales a cualquier usuario.\n\n" +
+    "🤖 *Gestionar Estrategias* — Crea nuevas estrategias personalizadas, elimínalas, controla su visibilidad pública/privada y revisa las solicitudes de acceso pendientes.\n\n" +
+    "💰 *Gestionar Planes* — Crea, edita y elimina planes de suscripción; asigna planes a usuarios; revisa y aprueba solicitudes de cambio de plan.", {
     parse_mode: "Markdown",
     reply_markup: buildSecurityKeyboard(),
   });
@@ -695,7 +707,7 @@ bot.on("callback_query:data", async (ctx) => {
     data === "stats_individual_E" ||
     (data.startsWith(EXTRA_MENU_CALLBACK_PREFIX) && !!getHandler(data.slice(EXTRA_MENU_CALLBACK_PREFIX.length)));
 
-  if ((data === "security_open" || data === "security_main" || data.startsWith("admin_")) && ctx.from && isOwner(ctx.from.id)) {
+  if ((data === "security_open" || data === "security_main" || (data.startsWith("admin_") && !data.startsWith("admin_feedback"))) && ctx.from && isOwner(ctx.from.id)) {
     const out = await handleSecurityCallback(ctx, data, {
       buildMainKeyboard: buildMainKb,
       getExtraMenuIds,
@@ -737,9 +749,9 @@ bot.on("callback_query:data", async (ctx) => {
       try {
         await ctx.editMessageText(
           "🧪 *Modo Testing — Cambiar fecha*\n\n" +
-            "Escribe la fecha de corte en formato *MM/DD/YY* \\(ej: `12/31/25`\\)\\.\n\n" +
-            "_Las estrategias usarán solo sorteos hasta esa fecha\\._\n\n" +
-            "Usa /cancel para cancelar\\.",
+          "Escribe la fecha de corte en formato *MM/DD/YY* \\(ej: `12/31/25`\\)\\.\n\n" +
+          "_Las estrategias usarán solo sorteos hasta esa fecha\\._\n\n" +
+          "Usa /cancel para cancelar\\.",
           {
             parse_mode: "MarkdownV2",
             reply_markup: new InlineKeyboard().text("❌ Cancelar", "testing_cancel"),
@@ -785,6 +797,129 @@ bot.on("callback_query:data", async (ctx) => {
   }
   // ── fin Testing ───────────────────────────────────────────────────────────
 
+  // ── Feedback (usuarios y admin) ──────────────────────────────────────────
+  if (data === "feedback_open") {
+    await ctx.answerCallbackQuery();
+    try {
+      await ctx.editMessageText(
+        "💬 *Feedback*\n\nAquí puedes enviarnos tu opinión, sugerencia o comentario.\n\n" +
+        "_Tu mensaje llegará directamente al administrador._",
+        { parse_mode: "Markdown", reply_markup: buildFeedbackKeyboard() }
+      );
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
+  }
+
+  if (data === "feedback_enviar") {
+    await ctx.answerCallbackQuery();
+    const userId = ctx.from?.id;
+    if (!userId) return;
+    waitingFeedbackText.set(userId, true);
+    try {
+      await ctx.editMessageText(
+        "✉️ *Enviar feedback*\n\nEscribe tu mensaje _(máx. 500 caracteres)_:\n\n_Pulsa Cancelar o /cancel para salir._",
+        {
+          parse_mode: "Markdown",
+          reply_markup: new InlineKeyboard().text("❌ Cancelar", "feedback_cancel"),
+        }
+      );
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
+  }
+
+  if (data === "feedback_cancel") {
+    await ctx.answerCallbackQuery({ text: "Cancelado" });
+    const userId = ctx.from?.id;
+    if (userId) waitingFeedbackText.delete(userId);
+    try {
+      await ctx.editMessageText(
+        "💬 *Feedback*\n\nAquí puedes enviarnos tu opinión, sugerencia o comentario.",
+        { parse_mode: "Markdown", reply_markup: buildFeedbackKeyboard() }
+      );
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
+  }
+
+  // Paginación de "Mis feedbacks" (usuario normal)
+  if (data.startsWith("feedback_mis_p:")) {
+    await ctx.answerCallbackQuery();
+    const userId = ctx.from?.id;
+    if (!userId) return;
+    const page = parseInt(data.replace("feedback_mis_p:", ""), 10) || 0;
+    try {
+      const feedbacks = await getFeedbackForUser(userId);
+      const { buildMyFeedbacksMessage } = await import("./feedback.js");
+      const { text, totalPages } = buildMyFeedbacksMessage(feedbacks, page);
+      await ctx.editMessageText(text, {
+        parse_mode: "Markdown",
+        reply_markup: buildMyFeedbacksKeyboard(page, totalPages),
+      });
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
+  }
+
+  // ── Feedback admin: lista paginada de usuarios ────────────────────────────
+  if (data === "admin_feedback_open" || data.startsWith("admin_feedback_p:")) {
+    if (!ctx.from || !isOwner(ctx.from.id)) {
+      await ctx.answerCallbackQuery({ text: "Sin acceso" });
+      return;
+    }
+    await ctx.answerCallbackQuery();
+    const page = data.startsWith("admin_feedback_p:")
+      ? (parseInt(data.replace("admin_feedback_p:", ""), 10) || 0)
+      : 0;
+    try {
+      const allFeedbacks = await loadFeedbackFromSheet();
+      const { groupFeedbackByUser, buildAdminFeedbackListMessage, FEEDBACK_PAGE_SIZE } = await import("./feedback.js");
+      const grouped = groupFeedbackByUser(allFeedbacks);
+      const { text, totalPages } = buildAdminFeedbackListMessage(grouped, page);
+      const safePage = Math.max(0, Math.min(page, totalPages - 1));
+      const slice = grouped.slice(safePage * FEEDBACK_PAGE_SIZE, (safePage + 1) * FEEDBACK_PAGE_SIZE);
+      await ctx.editMessageText(text, {
+        parse_mode: "Markdown",
+        reply_markup: buildAdminFeedbackListKeyboard(safePage, totalPages, slice),
+      });
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
+  }
+
+  // ── Feedback admin: mensajes de un usuario específico ────────────────────
+  if (data.startsWith("admin_feedback_user:")) {
+    if (!ctx.from || !isOwner(ctx.from.id)) {
+      await ctx.answerCallbackQuery({ text: "Sin acceso" });
+      return;
+    }
+    await ctx.answerCallbackQuery();
+    // Formato: admin_feedback_user:<userId>_p:<page>
+    const match = data.match(/^admin_feedback_user:(\d+)_p:(\d+)$/);
+    if (!match) return;
+    const targetUserId = parseInt(match[1]!, 10);
+    const page = parseInt(match[2]!, 10) || 0;
+    try {
+      const feedbacks = await getFeedbackForUser(targetUserId);
+      const { buildAdminUserFeedbackMessage } = await import("./feedback.js");
+      const { text, totalPages } = buildAdminUserFeedbackMessage(feedbacks, targetUserId, page);
+      await ctx.editMessageText(text, {
+        parse_mode: "Markdown",
+        reply_markup: buildAdminUserFeedbackKeyboard(targetUserId, page, totalPages),
+      });
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
+  }
+  // ── fin Feedback ──────────────────────────────────────────────────────────
+
   // ── Crear Adivinanza (solo dueño) ─────────────────────────────────────────
   if (
     (data === ADIVINANZA_OPEN_CB ||
@@ -813,9 +948,9 @@ bot.on("callback_query:data", async (ctx) => {
       try {
         await ctx.editMessageText(
           "🔮 *Crear Adivinanza — Ingresar números*\n\n" +
-            "Escribe la lista de números separados por espacios o comas\\.\n\n" +
-            "Ejemplo: `7 23 45 12 9` o `07, 23, 45`\n\n" +
-            "_Máximo 20 números\\. Usa /cancel para cancelar\\._",
+          "Escribe la lista de números separados por espacios o comas\\.\n\n" +
+          "Ejemplo: `7 23 45 12 9` o `07, 23, 45`\n\n" +
+          "_Máximo 20 números\\. Usa /cancel para cancelar\\._",
           {
             parse_mode: "MarkdownV2",
             reply_markup: new InlineKeyboard().text("❌ Cancelar", ADIVINANZA_OPEN_CB),
@@ -1005,7 +1140,7 @@ bot.on("callback_query:data", async (ctx) => {
 
   const menuOut = await handleMenuCallback(ctx, data, menuDeps);
   if (menuOut) {
-    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.answerCallbackQuery().catch(() => { });
     try {
       await ctx.editMessageText(menuOut.result, { parse_mode: "Markdown", reply_markup: menuOut.keyboard });
     } catch (err) {
@@ -1110,7 +1245,7 @@ bot.on("callback_query:data", async (ctx) => {
           }
         } catch (err) {
           console.error("Error runStrategy:", err);
-          await ctx.answerCallbackQuery({ text: "Error al calcular" }).catch(() => {});
+          await ctx.answerCallbackQuery({ text: "Error al calcular" }).catch(() => { });
           try {
             await ctx.editMessageText("❌ Error al ejecutar la estrategia. Vuelve a intentarlo.", {
               reply_markup: buildMainKb(ctx.from?.id),
@@ -1152,8 +1287,8 @@ bot.on("callback_query:data", async (ctx) => {
       try {
         await ctx.editMessageText(
           `📈 *Análisis Progresivo*\n\n` +
-            `_Back-testing iterativo: recorre un rango de fechas y mide cuántas veces cada combinación de estrategias acierta el siguiente sorteo._\n\n` +
-            `Elige el tipo de datos a analizar:`,
+          `_Back-testing iterativo: recorre un rango de fechas y mide cuántas veces cada combinación de estrategias acierta el siguiente sorteo._\n\n` +
+          `Elige el tipo de datos a analizar:`,
           { parse_mode: "Markdown", reply_markup: buildProgressiveContextKeyboard() }
         );
       } catch (e) {
@@ -1180,10 +1315,10 @@ bot.on("callback_query:data", async (ctx) => {
         try {
           await ctx.editMessageText(
             `📈 *Análisis Progresivo* — ${mapLabel} · ${periodLabel}\n\n` +
-              `📅 Ingresa la *fecha inicial* (primer corte a analizar).\n` +
-              `Formato: \`MM/DD/YY\` _(ej: \`01/01/25\`)_\n\n` +
-              `_El análisis usará datos hasta esa fecha inclusive y verificará el siguiente sorteo real._\n\n` +
-              `_/cancel para cancelar._`,
+            `📅 Ingresa la *fecha inicial* (primer corte a analizar).\n` +
+            `Formato: \`MM/DD/YY\` _(ej: \`01/01/25\`)_\n\n` +
+            `_El análisis usará datos hasta esa fecha inclusive y verificará el siguiente sorteo real._\n\n` +
+            `_/cancel para cancelar._`,
             {
               parse_mode: "Markdown",
               reply_markup: new InlineKeyboard().text("❌ Cancelar", "prog_cancel"),
@@ -1340,14 +1475,14 @@ bot.on("callback_query:data", async (ctx) => {
             try {
               await ctx.editMessageText(
                 `📈 *Análisis Progresivo* — ${mapLabel} · ${periodLabel}\n\n` +
-                  `📅 \`${session!.startDate}\` → \`${session!.endDate}\`\n` +
-                  `🔢 *${estimated}* fechas válidas en el rango` +
-                  (estimated > PROGRESSIVE_MAX_DATES
-                    ? ` _(se analizarán las primeras ${PROGRESSIVE_MAX_DATES})_`
-                    : ``) +
-                  `\n📊 ${n} estrategias · *${numCombos}* combinaciones posibles\n` +
-                  `⏱ Tiempo estimado: *~${secsEst} seg*\n\n` +
-                  `¿Confirmas el análisis?`,
+                `📅 \`${session!.startDate}\` → \`${session!.endDate}\`\n` +
+                `🔢 *${estimated}* fechas válidas en el rango` +
+                (estimated > PROGRESSIVE_MAX_DATES
+                  ? ` _(se analizarán las primeras ${PROGRESSIVE_MAX_DATES})_`
+                  : ``) +
+                `\n📊 ${n} estrategias · *${numCombos}* combinaciones posibles\n` +
+                `⏱ Tiempo estimado: *~${secsEst} seg*\n\n` +
+                `¿Confirmas el análisis?`,
                 {
                   parse_mode: "Markdown",
                   reply_markup: new InlineKeyboard()
@@ -1383,9 +1518,9 @@ bot.on("callback_query:data", async (ctx) => {
         // Mensaje de progreso (editable)
         const progressMsg = await ctx.reply(
           `⏳ *Analizando…* ${mapLabelShort} · ${periodLabelShort}\n\n` +
-            `📅 \`${session!.startDate}\` → \`${session!.endDate}\`\n` +
-            `🔢 ${capped} fechas · ${nStrats} estrategias · ${numCombos} combinaciones\n\n` +
-            `▓░░░░░░░░░  0%`,
+          `📅 \`${session!.startDate}\` → \`${session!.endDate}\`\n` +
+          `🔢 ${capped} fechas · ${nStrats} estrategias · ${numCombos} combinaciones\n\n` +
+          `▓░░░░░░░░░  0%`,
           { parse_mode: "Markdown" }
         );
 
@@ -1413,9 +1548,9 @@ bot.on("callback_query:data", async (ctx) => {
                   chatId,
                   msgId,
                   `⏳ *Analizando…* ${mapLabelShort} · ${periodLabelShort}\n\n` +
-                    `📅 \`${session!.startDate}\` → \`${session!.endDate}\`\n` +
-                    `🔢 ${capped} fechas · ${nStrats} estrategias · ${numCombos} combos\n\n` +
-                    `${bar(pct)}`,
+                  `📅 \`${session!.startDate}\` → \`${session!.endDate}\`\n` +
+                  `🔢 ${capped} fechas · ${nStrats} estrategias · ${numCombos} combos\n\n` +
+                  `${bar(pct)}`,
                   { parse_mode: "Markdown" }
                 );
               } catch { /* ignorar errores de rate limit en actualizaciones de progreso */ }
@@ -1686,7 +1821,7 @@ bot.on("callback_query:data", async (ctx) => {
       try {
         await ctx.editMessageText(
           `✅ *${count} estrategia${count > 1 ? "s" : ""} seleccionada${count > 1 ? "s" : ""}*\n\n` +
-            `¿Cuántos resultados quieres ver?\nEnvía un número del *1 al 50*.\n\n_Usa /cancel para cancelar._`,
+          `¿Cuántos resultados quieres ver?\nEnvía un número del *1 al 50*.\n\n_Usa /cancel para cancelar._`,
           {
             parse_mode: "Markdown",
             reply_markup: new InlineKeyboard().text("❌ Cancelar", "cns_x"),
@@ -1794,11 +1929,11 @@ bot.on("callback_query:data", async (ctx) => {
     try {
       await ctx.editMessageText(
         "🔍 *Buscar en la Charada Cubana*\n\n" +
-          "✍️ *¿Qué quieres buscar?*\n\n" +
-          "• Escribe un *número* del `00` al `99` para ver su significado\\.\n" +
-          "• Escribe una *palabra* \\(ej\\: `gato`, `agua`, `muerte`\\) para encontrar todas las entradas que la contengan\\.\n\n" +
-          "👇 *Escribe tu búsqueda aquí abajo y pulsa Enviar*\n\n" +
-          "_Usa /cancel para cancelar\\._",
+        "✍️ *¿Qué quieres buscar?*\n\n" +
+        "• Escribe un *número* del `00` al `99` para ver su significado\\.\n" +
+        "• Escribe una *palabra* \\(ej\\: `gato`, `agua`, `muerte`\\) para encontrar todas las entradas que la contengan\\.\n\n" +
+        "👇 *Escribe tu búsqueda aquí abajo y pulsa Enviar*\n\n" +
+        "_Usa /cancel para cancelar\\._",
         {
           parse_mode: "MarkdownV2",
           reply_markup: new InlineKeyboard().text("❌ Cancelar búsqueda", "charada_cancel_search"),
@@ -1832,10 +1967,10 @@ bot.on("callback_query:data", async (ctx) => {
 
   result = "Opción no reconocida. Usa /start para ver el menú.";
   try {
-    if (!asyncData) await ctx.answerCallbackQuery().catch(() => {});
+    if (!asyncData) await ctx.answerCallbackQuery().catch(() => { });
     await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
   } catch (err) {
-    if (!asyncData) await ctx.answerCallbackQuery({ text: "Listo ✓" }).catch(() => {});
+    if (!asyncData) await ctx.answerCallbackQuery({ text: "Listo ✓" }).catch(() => { });
     const msg = (err as Error).message ?? "";
     if (!msg.includes("message is not modified")) console.error("Error en callback_query:", err);
   }
@@ -1849,6 +1984,7 @@ bot.command("cancel", async (ctx) => {
     waitingCharadaSearch.delete(userId);
     waitingTestingDate.delete(userId);
     waitingAdivinanzaNums.delete(userId);
+    waitingFeedbackText.delete(userId);
     progressiveSessionMap.delete(userId);
     waitingProgressiveDate.delete(userId);
     const wasInPlanFlow = creatingPlanFlow.has(userId) || editingPlanFlow.has(userId);
@@ -1911,10 +2047,10 @@ bot.on("message:text", async (ctx) => {
 
       await ctx.reply(
         `📈 *Análisis Progresivo* — ${mapLabel} · ${periodLabel}\n\n` +
-          `✅ Fecha inicial: \`${key}\`\n\n` +
-          `📅 Ahora ingresa la *fecha final* del análisis.\n` +
-          `Formato: \`MM/DD/YY\` _(ej: \`12/31/25\`)_\n\n` +
-          `_/cancel para cancelar._`,
+        `✅ Fecha inicial: \`${key}\`\n\n` +
+        `📅 Ahora ingresa la *fecha final* del análisis.\n` +
+        `Formato: \`MM/DD/YY\` _(ej: \`12/31/25\`)_\n\n` +
+        `_/cancel para cancelar._`,
         {
           parse_mode: "Markdown",
           reply_markup: new InlineKeyboard().text("❌ Cancelar", "prog_cancel"),
@@ -1979,6 +2115,35 @@ bot.on("message:text", async (ctx) => {
     return;
   }
   // ── fin Testing ───────────────────────────────────────────────────────────
+
+  // ── Feedback: guardar texto del usuario ───────────────────────────────────
+  if (userId && waitingFeedbackText.has(userId)) {
+    waitingFeedbackText.delete(userId);
+    const maxLen = 500;
+    const trimmed = text.slice(0, maxLen);
+    try {
+      const { nowFeedbackDate } = await import("./feedback.js");
+      await appendFeedbackToSheet({
+        userId,
+        nombre: getUsername(userId) ?? "",
+        telefono: getPhone(userId) ?? "",
+        texto: trimmed,
+        fecha: nowFeedbackDate(),
+      });
+      await ctx.reply(
+        "✅ *¡Gracias por tu feedback!*\n\nTu mensaje ha sido enviado al administrador.",
+        { parse_mode: "Markdown", reply_markup: buildMainKb(userId) }
+      );
+    } catch (err) {
+      console.error("[feedback] Error al guardar:", err);
+      await ctx.reply(
+        "❌ Hubo un error al enviar tu feedback. Por favor intenta de nuevo más tarde.",
+        { reply_markup: buildMainKb(userId) }
+      );
+    }
+    return;
+  }
+  // ── fin Feedback ─────────────────────────────────────────────────────────
 
   // ── Adivinanza: entrada de lista de números (solo dueño) ──────────────────
   if (userId && isOwner(userId) && waitingAdivinanzaNums.has(userId)) {
@@ -2378,13 +2543,13 @@ async function main(): Promise<void> {
       rows = rows.map((r) =>
         r.id === "estrategia_test"
           ? {
-              id: "max_per_week_day",
-              titulo: "Más salidores x dia de la Semana",
-              descripcion: "Números que más han salido x cada dia de la semana",
-              createdBy: r.createdBy,
-              price: r.price,
-              visibility: r.visibility,
-            }
+            id: "max_per_week_day",
+            titulo: "Más salidores x dia de la Semana",
+            descripcion: "Números que más han salido x cada dia de la semana",
+            createdBy: r.createdBy,
+            price: r.price,
+            visibility: r.visibility,
+          }
           : r
       );
       await saveStrategiesToSheet(rows);

@@ -106,7 +106,7 @@ export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboard
   kb.row().text("🃏 Charada Cubana", "charada_open");
   kb.row().text("🛒 Tienda", "estrategias_tienda");
   if (ownerId === null || !deps.isOwner(uid)) {
-    kb.row().text("❓ Ayuda", "help");
+    kb.row().text("❓ Ayuda", "help").text("💬 Feedback", "feedback_open");
     if (ownerId !== null && !deps.isOwner(uid)) {
       kb.row().text("📋 Cambiar plan", "cambiar_plan_open");
     }
@@ -114,6 +114,7 @@ export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboard
   if (ownerId !== null && deps.isOwner(uid)) {
     kb.row().text("⚙️ Administrar", "security_open").text("🧪 Testing", "testing_open");
     kb.row().text("🔮 Crear Adivinanza", "adivinanza_open");
+    kb.row().text("📣 Feedback", "admin_feedback_open");
   }
   return kb;
 }
@@ -240,4 +241,70 @@ export function buildTestingMessage(currentDate: string | null): string {
     `Pulsa *Cambiar fecha* para fijar un corte o *Eliminar* para quitar el filtro.\n` +
     `_Los cambios manuales en el Sheet también se reflejan (caché de 5 min)._`
   );
+}
+
+// ─── Feedback keyboards ───────────────────────────────────────────────────────
+
+/** Menú principal de Feedback para usuarios normales. */
+export function buildFeedbackKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("✉️ Enviar feedback", "feedback_enviar")
+    .row()
+    .text("📋 Mis feedbacks", "feedback_mis_p:0")
+    .row()
+    .text("◀️ Volver", "volver");
+}
+
+/** Teclado paginado de la lista de usuarios con feedback (admin). */
+export function buildAdminFeedbackListKeyboard(
+  page: number,
+  totalPages: number,
+  userSummaries: Array<{ userId: number; nombre: string }>
+): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  // Botones de usuario (uno por fila)
+  for (const u of userSummaries) {
+    const label = u.nombre || `User ${u.userId}`;
+    kb.text(`👤 ${label}`, `admin_feedback_user:${u.userId}_p:0`).row();
+  }
+  // Paginación
+  if (totalPages > 1) {
+    if (page > 0) kb.text("◀ Anterior", `admin_feedback_p:${page - 1}`);
+    if (page < totalPages - 1) kb.text("Siguiente ▶", `admin_feedback_p:${page + 1}`);
+    kb.row();
+  }
+  kb.text("◀️ Volver", "volver");
+  return kb;
+}
+
+/** Teclado de los mensajes de un usuario específico (admin), con paginación. */
+export function buildAdminUserFeedbackKeyboard(
+  targetUserId: number,
+  page: number,
+  totalPages: number
+): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  if (totalPages > 1) {
+    if (page > 0) kb.text("◀ Anterior", `admin_feedback_user:${targetUserId}_p:${page - 1}`);
+    if (page < totalPages - 1) kb.text("Siguiente ▶", `admin_feedback_user:${targetUserId}_p:${page + 1}`);
+    kb.row();
+  }
+  kb.text("◀️ Ver lista", "admin_feedback_open").row();
+  kb.text("◀️ Menú principal", "volver");
+  return kb;
+}
+
+/** Teclado de paginación para "Mis feedbacks" (usuario). */
+export function buildMyFeedbacksKeyboard(
+  page: number,
+  totalPages: number
+): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  if (totalPages > 1) {
+    if (page > 0) kb.text("◀ Anterior", `feedback_mis_p:${page - 1}`);
+    if (page < totalPages - 1) kb.text("Siguiente ▶", `feedback_mis_p:${page + 1}`);
+    kb.row();
+  }
+  kb.text("◀️ Volver", "feedback_open");
+  return kb;
 }
