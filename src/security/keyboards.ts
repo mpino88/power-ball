@@ -3,6 +3,9 @@
  */
 
 import { InlineKeyboard } from "grammy";
+
+/** Límite de bytes de Telegram para callback_data. */
+const TG_CB_MAX = 64;
 import type { getExtraMenuIds as GetExtraMenuIds, getExtraMenuLabel as GetExtraMenuLabel } from "../menu-registry.js";
 import type { getUsername as GetUsername, getPhone as GetPhone } from "../user-config.js";
 import type { getPlanById as GetPlanById } from "../plans.js";
@@ -90,16 +93,25 @@ export function buildManageEstrategiasKeyboardUser(): InlineKeyboard {
     .text("◀️ Volver", "volver");
 }
 
+/** Trunca menuId para que callback_data no supere TG_CB_MAX. El prefijo más largo es admin_menu_remove_ (19) + uid (≤10) + "|" (1). */
+function menuCb(prefix: string, uid: number, menuId: string): string {
+  const maxIdLen = TG_CB_MAX - prefix.length - String(uid).length - 1;
+  const id = menuId.length > maxIdLen ? menuId.slice(0, maxIdLen) : menuId;
+  return `${prefix}${uid}|${id}`;
+}
+
 export function buildUserMenusKeyboard(
   uid: number,
   getExtraMenuIds: typeof GetExtraMenuIds,
   getExtraMenuLabel: typeof GetExtraMenuLabel
 ): InlineKeyboard {
   const kb = new InlineKeyboard();
+  const addPrefix = "admin_menu_add_";
+  const removePrefix = "admin_menu_remove_";
   for (const menuId of getExtraMenuIds()) {
     kb
-      .text("➕", `admin_menu_add_${uid}|${menuId}`)
-      .text("➖", `admin_menu_remove_${uid}|${menuId}`)
+      .text("➕", menuCb(addPrefix, uid, menuId))
+      .text("➖", menuCb(removePrefix, uid, menuId))
       .row();
   }
   kb.text("◀️ Volver a Administrar", "security_open");

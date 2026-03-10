@@ -109,6 +109,18 @@ function resolveMenuId(idFragment: string): string {
   return byPrefix?.id ?? idFragment;
 }
 
+/**
+ * Resuelve un fragmento de menuId (posiblemente truncado) al id completo dentro de validIds.
+ * Usado en admin_menu_add_ / admin_menu_remove_ donde el callback_data puede estar truncado.
+ */
+function resolveExtraMenuId(validIds: string[], idFragment: string): string {
+  if (validIds.includes(idFragment)) return idFragment;
+  const byPrefix = validIds.find(
+    (id) => idFragment.length < id.length && id.startsWith(idFragment)
+  );
+  return byPrefix ?? idFragment;
+}
+
 /** Escapa caracteres especiales de Telegram Markdown (legacy) para evitar "can't parse entities". */
 export function escapeMd(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/_/g, "\\_").replace(/\*/g, "\\*").replace(/`/g, "\\`").replace(/\[/g, "\\[");
@@ -244,11 +256,12 @@ export async function handleSecurityCallback(
     result = `📋 *Menús para usuario* \`${uid}\`\n\nCada fila: ➕ dar acceso, ➖ quitar acceso.\n\n${menuList}`;
   } else if (data.startsWith("admin_menu_add_")) {
     const rest = data.replace("admin_menu_add_", "");
-    const [uidStr, menuId] = rest.includes("|")
+    const [uidStr, menuIdFragment] = rest.includes("|")
       ? rest.split("|")
       : [rest.split("_")[0], rest.split("_").slice(1).join("_")];
     const uid = parseInt(uidStr!, 10);
     const validIds = getExtraMenuIds();
+    const menuId = resolveExtraMenuId(validIds, menuIdFragment ?? "");
     if (Number.isNaN(uid) || !validIds.includes(menuId)) {
       result = "Error.";
       keyboard = buildSecurityKeyboard();
@@ -264,11 +277,12 @@ export async function handleSecurityCallback(
     }
   } else if (data.startsWith("admin_menu_remove_")) {
     const rest = data.replace("admin_menu_remove_", "");
-    const [uidStr, menuId] = rest.includes("|")
+    const [uidStr, menuIdFragment] = rest.includes("|")
       ? rest.split("|")
       : [rest.split("_")[0], rest.split("_").slice(1).join("_")];
     const uid = parseInt(uidStr!, 10);
     const validIds = getExtraMenuIds();
+    const menuId = resolveExtraMenuId(validIds, menuIdFragment ?? "");
     if (Number.isNaN(uid) || !validIds.includes(menuId)) {
       result = "Error.";
       keyboard = buildSecurityKeyboard();
