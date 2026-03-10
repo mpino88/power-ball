@@ -644,9 +644,16 @@ bot.use(
 
 bot.command("start", async (ctx) => {
   await reloadConfigFromStorage();
+  const startUserId = ctx.from?.id;
+  let announcementBanner = "";
+  if (startUserId && !isOwner(startUserId)) {
+    const annItems = await loadAnnouncementsFromSheet();
+    const { buildAnnouncementsBanner } = await import("./announcements.js");
+    announcementBanner = buildAnnouncementsBanner(annItems);
+  }
   await ctx.reply(
-    MAIN_MENU_MESSAGE,
-    { parse_mode: "Markdown", reply_markup: buildMainKb(ctx.from?.id) }
+    announcementBanner + MAIN_MENU_MESSAGE,
+    { parse_mode: "Markdown", reply_markup: buildMainKb(startUserId) }
   );
 });
 
