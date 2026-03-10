@@ -1591,7 +1591,6 @@ export interface LeadRow {
 
 const LEADS_SHEET_TITLE = "Leads";
 const LEADS_HEADERS = ["userId", "nombre", "telefono", "plan", "temporality", "fecha", "status"] as const;
-export const LEADS_SHEET_INDEX = 7;
 
 /** Formatea la fecha actual en zona horaria de Florida (America/New_York). */
 function floridaNow(): string {
@@ -1628,13 +1627,13 @@ export async function saveLead(
   try {
     const doc = new GoogleSpreadsheet(sheetId, auth);
     await doc.loadInfo();
-    let sheet = doc.sheetsByIndex[LEADS_SHEET_INDEX];
+    let sheet = doc.sheetsByTitle[LEADS_SHEET_TITLE];
     if (!sheet) {
       sheet = await doc.addSheet({
         title: LEADS_SHEET_TITLE,
         headerValues: [...LEADS_HEADERS],
       });
-      console.log("[leads] Pestaña 'Leads' creada (8ª pestaña).");
+      console.log("[leads] Pestaña 'Leads' creada exitosamente.");
     } else {
       try {
         await sheet.loadHeaderRow(1);
@@ -1666,13 +1665,13 @@ export async function loadLeadsFromSheet(): Promise<LeadRow[]> {
   try {
     const doc = new GoogleSpreadsheet(sheetId, auth);
     await doc.loadInfo();
-    let sheet = doc.sheetsByIndex[LEADS_SHEET_INDEX];
+    let sheet = doc.sheetsByTitle[LEADS_SHEET_TITLE];
     if (!sheet) {
       await doc.addSheet({
         title: LEADS_SHEET_TITLE,
         headerValues: [...LEADS_HEADERS],
       });
-      console.log("[leads] Pestaña 'Leads' creada (8ª pestaña).");
+      console.log("[leads] Pestaña 'Leads' creada exitosamente.");
       return [];
     }
     try {
