@@ -43,6 +43,12 @@ import {
   getFeedbackForUser,
   getUsername,
   getPhone,
+  loadAnnouncementsFromSheet,
+  addAnnouncement,
+  editAnnouncement,
+  deleteAnnouncement,
+  clearAllAnnouncements,
+  invalidateAnnouncementsCache,
 } from "./user-config.js";
 import {
   registerExtraMenu,
@@ -297,6 +303,12 @@ const waitingAdivinanzaNums = new Map<number, true>();
 
 /** Usuarios esperando introducir el texto de un feedback. */
 const waitingFeedbackText = new Map<number, true>();
+
+/**
+ * Estado del flujo de anuncios del admin.
+ * "create" = esperando texto nuevo; "edit:<id>" = esperando texto editado.
+ */
+const waitingAnnouncementInput = new Map<number, "create" | string>();
 
 /**
  * Versiones de getP3Map/getP4Map con filtro de fecha de corte para estrategias.
@@ -707,7 +719,7 @@ bot.on("callback_query:data", async (ctx) => {
     data === "stats_individual_E" ||
     (data.startsWith(EXTRA_MENU_CALLBACK_PREFIX) && !!getHandler(data.slice(EXTRA_MENU_CALLBACK_PREFIX.length)));
 
-  if ((data === "security_open" || data === "security_main" || (data.startsWith("admin_") && !data.startsWith("admin_feedback"))) && ctx.from && isOwner(ctx.from.id)) {
+  if ((data === "security_open" || data === "security_main" || (data.startsWith("admin_") && !data.startsWith("admin_feedback") && !data.startsWith("admin_ann"))) && ctx.from && isOwner(ctx.from.id)) {
     const out = await handleSecurityCallback(ctx, data, {
       buildMainKeyboard: buildMainKb,
       getExtraMenuIds,
@@ -919,6 +931,155 @@ bot.on("callback_query:data", async (ctx) => {
     return;
   }
   // ── fin Feedback ──────────────────────────────────────────────────────────
+
+  // ── Anuncios Globales (admin) ────────────────────────────────────────
+  if (data === "admin_ann_open" || data === "admin_ann_refresh") {
+    if (!ctx.from || !isOwner(ctx.from.id)) { await ctx.answerCallbackQuery({ text: "Sin acceso" }); return; }
+    await ctx.answerCallbackQuery();
+    try {
+      const { buildAdminAnnouncementsKeyboard, buildAdminAnnouncementsText } = await import("./announcements.js");
+      const items = await loadAnnouncementsFromSheet(true);
+      await ctx.editMessageText(buildAdminAnnouncementsText(items), {
+        parse_mode: "Markdown",
+        reply_markup: buildAdminAnnouncementsKeyboard(items.length > 0),
+      });
+    } catch (e) { if (!(e as Error).message?.includes("message is not modified")) console.error(e); }
+    return;
+  }
+
+  if (data === "admin_ann_create") {
+    if (!ctx.from || !isOwner(ctx.from.id)) { await ctx.answerCallbackQuery({ text: "Sin acceso" }); return; }
+    await ctx.answerCallbackQuery();
+    waitingAnnouncementInput.set(ctx.from.id, "create");
+    try {
+      await ctx.editMessageText(
+        "📢 *Nuevo anuncio*\n\nEscribe el texto del anuncio _(máx. 300 caracteres)_:\n\n_Pulsa Cancelar o /cancel para salir._",
+        { parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("❌ Cancelar", "admin_ann_open") }
+      );
+    } catch (e) { if (!(e as Error).message?.includes("message is not modified")) console.error(e); }
+    return;
+  }
+
+  if (data === "admin_ann_edit_list") {
+    if (!ctx.from || !isOwner(ctx.from.id)) { await ctx.answerCallbackQuery({ text: "Sin acceso" }); return; }
+    await ctx.answerCallbackQuery();
+    try {
+      const { buildAnnouncementsEditListKeyboard } = await import("./announcements.js");
+      const items = await loadAnnouncementsFromSheet(true);
+      await ctx.editMessageText(
+        items.length === 0
+          ? "❌ No hay anuncios que editar."
+          : "✏️ *Editar anuncio*\n\nElige el anuncio a editar:",
+        {
+          parse_mode: "Markdown",
+          reply_markup: items.length > 0 ? buildAnnouncementsEditListKeyboard(items) : new InlineKeyboard().text("◀️ Volver", "admin_ann_open"),
+        }
+      );
+    } catch (e) { if (!(e as Error).message?.includes("message is not modified")) console.error(e); }
+    return;
+  }
+
+  if (data.startsWith("admin_ann_edit_pick:")) {
+    if (!ctx.from || !isOwner(ctx.from.id)) { await ctx.answerCallbackQuery({ text: "Sin acceso" }); return; }
+    await ctx.answerCallbackQuery();
+    const annId = data.replace("admin_ann_edit_pick:", "");
+    waitingAnnouncementInput.set(ctx.from.id, `edit:${annId}`);
+    try {
+      const items = await loadAnnouncementsFromSheet();
+      const ann = items.find((a) => a.id === annId);
+      await ctx.editMessageText(
+        `✏️ *Editar anuncio*\n\n_Texto actual:_\n${ann?.texto ?? "(no encontrado)"}\n\nEscribe el *nuevo texto*:`,
+        { parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("❌ Cancelar", "admin_ann_open") }
+      );
+    } catch (e) { if (!(e as Error).message?.includes("message is not modified")) console.error(e); }
+    return;
+  }
+
+  if (data === "admin_ann_delete_list") {
+    if (!ctx.from || !isOwner(ctx.from.id)) { await ctx.answerCallbackQuery({ text: "Sin acceso" }); return; }
+    await ctx.answerCallbackQuery();
+    try {
+      const { buildAnnouncementsDeleteListKeyboard } = await import("./announcements.js");
+      const items = await loadAnnouncementsFromSheet(true);
+      await ctx.editMessageText(
+        items.length === 0 ? "❌ No hay anuncios que eliminar." : "🗑 *Eliminar anuncio*\n\nElige el anuncio a eliminar:",
+        {
+          parse_mode: "Markdown",
+          reply_markup: items.length > 0 ? buildAnnouncementsDeleteListKeyboard(items) : new InlineKeyboard().text("◀️ Volver", "admin_ann_open"),
+        }
+      );
+    } catch (e) { if (!(e as Error).message?.includes("message is not modified")) console.error(e); }
+    return;
+  }
+
+  if (data.startsWith("admin_ann_delete_pick:")) {
+    if (!ctx.from || !isOwner(ctx.from.id)) { await ctx.answerCallbackQuery({ text: "Sin acceso" }); return; }
+    await ctx.answerCallbackQuery();
+    const annId = data.replace("admin_ann_delete_pick:", "");
+    try {
+      const items = await loadAnnouncementsFromSheet();
+      const ann = items.find((a) => a.id === annId);
+      await ctx.editMessageText(
+        `🗑 ¿Eliminar este anuncio?\n\n_${ann?.texto ?? "(no encontrado)"}_`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: new InlineKeyboard()
+            .text("✅ Sí, eliminar", `admin_ann_delete_confirm:${annId}`)
+            .text("❌ No", "admin_ann_delete_list"),
+        }
+      );
+    } catch (e) { if (!(e as Error).message?.includes("message is not modified")) console.error(e); }
+    return;
+  }
+
+  if (data.startsWith("admin_ann_delete_confirm:")) {
+    if (!ctx.from || !isOwner(ctx.from.id)) { await ctx.answerCallbackQuery({ text: "Sin acceso" }); return; }
+    await ctx.answerCallbackQuery();
+    const annId = data.replace("admin_ann_delete_confirm:", "");
+    try {
+      const { buildAdminAnnouncementsKeyboard, buildAdminAnnouncementsText } = await import("./announcements.js");
+      const updated = await deleteAnnouncement(annId);
+      const items = updated ?? await loadAnnouncementsFromSheet(true);
+      invalidateAnnouncementsCache();
+      await ctx.editMessageText(
+        (updated ? "✅ Anuncio eliminado.\n\n" : "❌ No se encontró el anuncio.\n\n") + buildAdminAnnouncementsText(items),
+        { parse_mode: "Markdown", reply_markup: buildAdminAnnouncementsKeyboard(items.length > 0) }
+      );
+    } catch (e) { if (!(e as Error).message?.includes("message is not modified")) console.error(e); }
+    return;
+  }
+
+  if (data === "admin_ann_clear_confirm") {
+    if (!ctx.from || !isOwner(ctx.from.id)) { await ctx.answerCallbackQuery({ text: "Sin acceso" }); return; }
+    await ctx.answerCallbackQuery();
+    try {
+      await ctx.editMessageText(
+        "🧹 ¿Eliminar *todos* los anuncios?\n\n_Esta acción no se puede deshacer._",
+        {
+          parse_mode: "Markdown",
+          reply_markup: new InlineKeyboard()
+            .text("✅ Sí, limpiar todo", "admin_ann_clear_execute")
+            .text("❌ No", "admin_ann_open"),
+        }
+      );
+    } catch (e) { if (!(e as Error).message?.includes("message is not modified")) console.error(e); }
+    return;
+  }
+
+  if (data === "admin_ann_clear_execute") {
+    if (!ctx.from || !isOwner(ctx.from.id)) { await ctx.answerCallbackQuery({ text: "Sin acceso" }); return; }
+    await ctx.answerCallbackQuery();
+    try {
+      const { buildAdminAnnouncementsKeyboard, buildAdminAnnouncementsText } = await import("./announcements.js");
+      await clearAllAnnouncements();
+      invalidateAnnouncementsCache();
+      await ctx.editMessageText("✅ Todos los anuncios eliminados.\n\n" + buildAdminAnnouncementsText([]),
+        { parse_mode: "Markdown", reply_markup: buildAdminAnnouncementsKeyboard(false) }
+      );
+    } catch (e) { if (!(e as Error).message?.includes("message is not modified")) console.error(e); }
+    return;
+  }
+  // ── fin Anuncios ──────────────────────────────────────────────────────────
 
   // ── Crear Adivinanza (solo dueño) ─────────────────────────────────────────
   if (
@@ -1142,7 +1303,15 @@ bot.on("callback_query:data", async (ctx) => {
   if (menuOut) {
     await ctx.answerCallbackQuery().catch(() => { });
     try {
-      await ctx.editMessageText(menuOut.result, { parse_mode: "Markdown", reply_markup: menuOut.keyboard });
+      // ── Banner de anuncios (solo usuarios no-admin) ──────────────────────
+      let announcementBanner = "";
+      const menuUserId = ctx.from?.id;
+      if (menuUserId && !isOwner(menuUserId)) {
+        const annItems = await loadAnnouncementsFromSheet();
+        const { buildAnnouncementsBanner } = await import("./announcements.js");
+        announcementBanner = buildAnnouncementsBanner(annItems);
+      }
+      await ctx.editMessageText(announcementBanner + menuOut.result, { parse_mode: "Markdown", reply_markup: menuOut.keyboard });
     } catch (err) {
       const msg = (err as Error).message ?? "";
       if (!msg.includes("message is not modified")) console.error("Error en callback_query:", err);
@@ -1985,6 +2154,7 @@ bot.command("cancel", async (ctx) => {
     waitingTestingDate.delete(userId);
     waitingAdivinanzaNums.delete(userId);
     waitingFeedbackText.delete(userId);
+    waitingAnnouncementInput.delete(userId);
     progressiveSessionMap.delete(userId);
     waitingProgressiveDate.delete(userId);
     const wasInPlanFlow = creatingPlanFlow.has(userId) || editingPlanFlow.has(userId);
@@ -2144,6 +2314,41 @@ bot.on("message:text", async (ctx) => {
     return;
   }
   // ── fin Feedback ─────────────────────────────────────────────────────────
+
+  // ── Anuncios: captura del texto creado/editado por el admin ──────────────
+  if (userId && isOwner(userId) && waitingAnnouncementInput.has(userId)) {
+    const mode = waitingAnnouncementInput.get(userId)!;
+    waitingAnnouncementInput.delete(userId);
+    const trimmed = text.slice(0, 300);
+    try {
+      const { buildAdminAnnouncementsKeyboard, buildAdminAnnouncementsText } = await import("./announcements.js");
+      if (mode === "create") {
+        const { nowFeedbackDate } = await import("./feedback.js");
+        const updated = await addAnnouncement(trimmed, nowFeedbackDate());
+        invalidateAnnouncementsCache();
+        await ctx.reply(
+          "✅ *Anuncio creado.*\n\n" + buildAdminAnnouncementsText(updated),
+          { parse_mode: "Markdown", reply_markup: buildAdminAnnouncementsKeyboard(updated.length > 0) }
+        );
+      } else if (mode.startsWith("edit:")) {
+        const annId = mode.replace("edit:", "");
+        const updated = await editAnnouncement(annId, trimmed);
+        invalidateAnnouncementsCache();
+        const items = updated ?? await loadAnnouncementsFromSheet(true);
+        await ctx.reply(
+          (updated ? "✅ *Anuncio editado.*\n\n" : "❌ No se encontró el anuncio.\n\n") + buildAdminAnnouncementsText(items),
+          { parse_mode: "Markdown", reply_markup: buildAdminAnnouncementsKeyboard(items.length > 0) }
+        );
+      }
+    } catch (err) {
+      console.error("[announcements] Error al guardar:", err);
+      await ctx.reply("❌ Error al guardar el anuncio. Revisa los logs.", {
+        reply_markup: buildMainKb(userId),
+      });
+    }
+    return;
+  }
+  // ── fin Anuncios ──────────────────────────────────────────────────────────
 
   // ── Adivinanza: entrada de lista de números (solo dueño) ──────────────────
   if (userId && isOwner(userId) && waitingAdivinanzaNums.has(userId)) {

@@ -443,7 +443,7 @@ export async function initUserConfig(): Promise<void> {
   if (sheetId && !hasAuth) {
     console.warn(
       "[user-config] GOOGLE_SHEET_ID está definido pero las credenciales fallan o no están. " +
-        "Revisa GOOGLE_SERVICE_ACCOUNT_JSON (JSON en una línea) o EMAIL+PRIVATE_KEY. Los datos se guardarán solo en archivo."
+      "Revisa GOOGLE_SERVICE_ACCOUNT_JSON (JSON en una línea) o EMAIL+PRIVATE_KEY. Los datos se guardarán solo en archivo."
     );
   }
   if (useGoogleSheet()) {
@@ -1433,4 +1433,145 @@ export async function getFeedbackForUser(userId: number): Promise<FeedbackRow[]>
   const all = await loadFeedbackFromSheet();
   return all.filter((r) => r.userId === userId).reverse();
 }
+
+// ─── Announcements ────────────────────────────────────────────────────────────
+
+/** Fila de la 7ª pestaña (Announcements): id, texto, fecha. */
+export interface AnnouncementRow {
+  /** UUID simple (timestamp ms) que sirve como clave para editar/eliminar. */
+  id: string;
+  texto: string;
+  /** Fecha en formato DD/MM/YYYY HH:MM (hora Florida). */
+  fecha: string;
+}
+
+const ANNOUNCEMENTS_SHEET_TITLE = "Announcements";
+const ANNOUNCEMENTS_HEADERS = ["id", "texto", "fecha"] as const;
+export const ANNOUNCEMENTS_SHEET_INDEX = 6;
+
+/** TTL del caché de anuncios (2 min) para evitar leer el Sheet en cada interacción. */
+const ANNOUNCEMENTS_CACHE_TTL_MS = 2 * 60 * 1000;
+let announcementsCache: { at: number; items: AnnouncementRow[] } | null = null;
+
+/** Invalida la caché de anuncios para que la próxima lectura vaya al Sheet. */
+export function invalidateAnnouncementsCache(): void {
+  announcementsCache = null;
+}
+
+/**
+ * Carga todos los anuncios desde la 7ª pestaña del Sheet.
+ * Usa caché de 2 minutos para no leer el Sheet en cada interacción de usuario.
+ * Crea la pestaña si no existe.
+ */
+export async function loadAnnouncementsFromSheet(forceRefresh = false): Promise<AnnouncementRow[]> {
+  if (!forceRefresh && announcementsCache && Date.now() - announcementsCache.at < ANNOUNCEMENTS_CACHE_TTL_MS) {
+    return announcementsCache.items;
+  }
+  const sheetId = getSheetId();
+  if (!sheetId) return [];
+  const auth = getSheetAuth();
+  if (!auth) return [];
+  try {
+    const doc = new GoogleSpreadsheet(sheetId, auth);
+    await doc.loadInfo();
+    let sheet = doc.sheetsByIndex[ANNOUNCEMENTS_SHEET_INDEX];
+    if (!sheet) {
+      await doc.addSheet({
+        title: ANNOUNCEMENTS_SHEET_TITLE,
+        headerValues: [...ANNOUNCEMENTS_HEADERS],
+      });
+      console.log("[announcements] Pestaña 'Announcements' creada (7ª pestaña).");
+      announcementsCache = { at: Date.now(), items: [] };
+      return [];
+    }
+    try {
+      await sheet.loadHeaderRow(1);
+    } catch {
+      await sheet.setHeaderRow([...ANNOUNCEMENTS_HEADERS], 1);
+      announcementsCache = { at: Date.now(), items: [] };
+      return [];
+    }
+    const rows = await sheet.getRows({ offset: 0, limit: 500 });
+    const headers = sheet.headerValues;
+    const result: AnnouncementRow[] = [];
+    for (const row of rows) {
+      const obj = row.toObject() as Record<string, unknown>;
+      const values = headers.map((h) => (h ? String(obj[h] ?? "").trim() : ""));
+      const id = values[0] ?? "";
+      const texto = values[1] ?? "";
+      if (!id || !texto) continue;
+      result.push({ id, texto, fecha: values[2] ?? "" });
+    }
+    console.log("[announcements] Cargados", result.length, "anuncios desde la 7ª pestaña.");
+    announcementsCache = { at: Date.now(), items: result };
+    return result;
+  } catch (e) {
+    console.error("[announcements] Error al cargar desde Sheet:", (e as Error)?.message ?? e);
+    return announcementsCache?.items ?? [];
+  }
+}
+
+/** Persiste la lista completa de anuncios en la 7ª pestaña (reemplaza todo). Crea la pestaña si no existe. */
+export async function saveAnnouncementsToSheet(items: AnnouncementRow[]): Promise<void> {
+  const sheetId = getSheetId();
+  if (!sheetId) return;
+  const auth = getSheetAuth();
+  if (!auth) return;
+  try {
+    const doc = new GoogleSpreadsheet(sheetId, auth);
+    await doc.loadInfo();
+    let sheet = doc.sheetsByIndex[ANNOUNCEMENTS_SHEET_INDEX];
+    if (!sheet) {
+      sheet = await doc.addSheet({
+        title: ANNOUNCEMENTS_SHEET_TITLE,
+        headerValues: [...ANNOUNCEMENTS_HEADERS],
+      });
+    } else {
+      await sheet.setHeaderRow([...ANNOUNCEMENTS_HEADERS], 1);
+      await sheet.clearRows();
+    }
+    if (items.length > 0) {
+      await sheet.addRows(items.map((r) => ({ id: r.id, texto: r.texto, fecha: r.fecha })));
+    }
+    announcementsCache = { at: Date.now(), items };
+    console.log("[announcements] Guardados", items.length, "anuncios.");
+  } catch (e) {
+    console.error("[announcements] Error al guardar en Sheet:", (e as Error)?.message ?? e);
+    throw e;
+  }
+}
+
+/** Añade un nuevo anuncio. Devuelve la lista actualizada. */
+export async function addAnnouncement(texto: string, fecha: string): Promise<AnnouncementRow[]> {
+  const items = await loadAnnouncementsFromSheet(true);
+  const newItem: AnnouncementRow = { id: String(Date.now()), texto, fecha };
+  const updated = [...items, newItem];
+  await saveAnnouncementsToSheet(updated);
+  return updated;
+}
+
+/** Edita el texto de un anuncio por id. Devuelve la lista actualizada o null si no se encontró. */
+export async function editAnnouncement(id: string, newTexto: string): Promise<AnnouncementRow[] | null> {
+  const items = await loadAnnouncementsFromSheet(true);
+  const idx = items.findIndex((r) => r.id === id);
+  if (idx < 0) return null;
+  items[idx] = { ...items[idx]!, texto: newTexto };
+  await saveAnnouncementsToSheet(items);
+  return items;
+}
+
+/** Elimina un anuncio por id. Devuelve la lista actualizada o null si no se encontró. */
+export async function deleteAnnouncement(id: string): Promise<AnnouncementRow[] | null> {
+  const items = await loadAnnouncementsFromSheet(true);
+  const next = items.filter((r) => r.id !== id);
+  if (next.length === items.length) return null;
+  await saveAnnouncementsToSheet(next);
+  return next;
+}
+
+/** Elimina todos los anuncios de una vez. */
+export async function clearAllAnnouncements(): Promise<void> {
+  await saveAnnouncementsToSheet([]);
+}
+
 
