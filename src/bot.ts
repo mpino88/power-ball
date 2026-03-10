@@ -2135,7 +2135,7 @@ bot.on("callback_query:data", async (ctx) => {
     return;
   }
 
-  if (data === "charada_noop" || data === "noop_plan" || data === "noop_cambiar" || data === "noop") {
+  if (data === "charada_noop" || data === "noop_plan" || data === "noop_cambiar" || data === "noop" || data === "noop_list_page") {
     await ctx.answerCallbackQuery();
     return;
   }

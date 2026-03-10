@@ -171,29 +171,46 @@ export async function handleSecurityCallback(
     clearAllFlows(ctx.from.id);
     result = MAIN_MENU_MESSAGE;
     keyboard = deps.buildMainKeyboard(ctx.from.id);
-  } else if (data === "admin_list") {
+  } else if (data === "admin_list" || data.startsWith("admin_list_p:")) {
     await reloadConfigFromStorage();
+    const PAGE_SIZE = 20;
+    const page = data.startsWith("admin_list_p:")
+      ? (parseInt(data.replace("admin_list_p:", ""), 10) || 0)
+      : 0;
     const list = getAllowedUsers();
-    const slice = list.slice(0, 30);
+    const totalPages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+    const safePage = Math.max(0, Math.min(page, totalPages - 1));
+    const slice = list.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
     const lines = slice.map((uid) => {
       const name = escapeMd((getUsername(uid) || "").trim() || "—");
       const phone = escapeMd((getPhone(uid) || "").trim() || "—");
       const plan = escapeMd((getPlan(uid) || "").trim() || "—");
       const status = escapeMd((getPlanStatus(uid) || "").trim() || "—");
       const pending = getPendingPlan(uid);
-      const pendingNote = pending ? ` _(cambio pendiente → ${escapeMd(pending)})_` : "";
+      const pendingNote = pending ? ` _(→ ${escapeMd(pending)})_` : "";
       return `• *ID:* \`${uid}\` | *Nombre:* ${name} | *Teléfono:* ${phone}\n  *Plan:* ${plan}${pendingNote} | *Estado:* ${status}`;
     });
+    const pageInfo = totalPages > 1 ? ` — pág. ${safePage + 1}/${totalPages}` : "";
     result =
-      "👥 *Listar usuarios* (" + list.length + ")\n\n" +
+      `👥 *Listar usuarios* (${list.length})${pageInfo}\n\n` +
       "Toda la info del usuario. Usa *Agregar acceso* o *Quitar acceso* para gestionar.\n\n" +
       (lines.length ? lines.join("\n\n") : "_Ningún usuario con acceso_ (solo tú como dueño).");
-    keyboard = new InlineKeyboard().text("➕ Agregar acceso", "admin_add").row();
+    keyboard = new InlineKeyboard();
+    // Botón Contactar por cada usuario de la página
     for (const uid of slice) {
-      if (isOwner(uid)) continue;
-      const label = getUsername(uid) ? `➖ Quitar ${getUsername(uid)}` : `➖ Quitar ${uid}`;
-      keyboard.text(label.length > 64 ? `➖ Quitar ${uid}` : label, `admin_revoke_${uid}`).row();
+      const name = getUsername(uid) || String(uid);
+      const label = `📩 Contactar: ${name}`;
+      keyboard.url(label.length > 64 ? `📩 Contactar ${uid}` : label, `tg://user?id=${uid}`).row();
     }
+    // Paginación
+    if (totalPages > 1) {
+      keyboard.row();
+      if (safePage > 0) keyboard.text("◀️", `admin_list_p:${safePage - 1}`);
+      keyboard.text(`${safePage + 1}/${totalPages}`, "noop_list_page");
+      if (safePage < totalPages - 1) keyboard.text("▶️", `admin_list_p:${safePage + 1}`);
+      keyboard.row();
+    }
+    keyboard.text("➕ Agregar acceso", "admin_add").row();
     keyboard.text("◀️ Volver a Administrar", "security_open");
   } else if (data === "admin_add") {
     addingUserFlow.set(ctx.from.id, { step: 1 });
