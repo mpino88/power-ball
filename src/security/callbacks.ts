@@ -188,7 +188,7 @@ export async function handleSecurityCallback(
       const status = escapeMd((getPlanStatus(uid) || "").trim() || "—");
       const pending = getPendingPlan(uid);
       const pendingNote = pending ? ` _(→ ${escapeMd(pending)})_` : "";
-      return `• *ID:* \`${uid}\` | *Nombre:* ${name} | *Teléfono:* ${phone}\n  *Plan:* ${plan}${pendingNote} | *Estado:* ${status}`;
+      return `• *ID:* \`${uid}\` | *Nombre:* ${name} | *Teléfono:* ${phone} | [📩 Contactar](tg://user?id=${uid})\n  *Plan:* ${plan}${pendingNote} | *Estado:* ${status}`;
     });
     const pageInfo = totalPages > 1 ? ` — pág. ${safePage + 1}/${totalPages}` : "";
     result =
@@ -196,18 +196,8 @@ export async function handleSecurityCallback(
       "Toda la info del usuario. Usa *Agregar acceso* o *Quitar acceso* para gestionar.\n\n" +
       (lines.length ? lines.join("\n\n") : "_Ningún usuario con acceso_ (solo tú como dueño).");
     keyboard = new InlineKeyboard();
-    // Una fila por usuario: [👤 Nombre / ID] + [📩 Contactar]
-    for (const uid of slice) {
-      const name = getUsername(uid) || String(uid);
-      const infoLabel = name.length > 30 ? name.slice(0, 28) + "…" : name;
-      keyboard
-        .text(`👤 ${infoLabel}`, "noop_list_page")
-        .url("📩 Contactar", `tg://user?id=${uid}`)
-        .row();
-    }
     // Paginación
     if (totalPages > 1) {
-      keyboard.row();
       if (safePage > 0) keyboard.text("◀️", `admin_list_p:${safePage - 1}`);
       keyboard.text(`${safePage + 1}/${totalPages}`, "noop_list_page");
       if (safePage < totalPages - 1) keyboard.text("▶️", `admin_list_p:${safePage + 1}`);
