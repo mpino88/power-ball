@@ -30,6 +30,7 @@ import {
   getStrategyRequests,
   removeStrategyRequest,
   approveStrategyRequest,
+  loadLeadsFromSheet,
 } from "../user-config.js";
 import {
   getExtraMenuIds,
@@ -205,7 +206,7 @@ export async function handleSecurityCallback(
       list.length === 0
         ? "➖ *Quitar acceso*\n\n_No hay usuarios con acceso_ (solo tú como dueño)."
         : "➖ *Quitar acceso*\n\nToca ❌ para quitar el acceso a ese usuario.\n\n" +
-          slice.map((uid) => formatUserLine(uid, getUsername, getPhone)).join("\n");
+        slice.map((uid) => formatUserLine(uid, getUsername, getPhone)).join("\n");
     keyboard = new InlineKeyboard();
     for (const uid of slice) {
       const label = getUsername(uid) ? `❌ ${getUsername(uid)}` : `❌ ${uid}`;
@@ -225,7 +226,7 @@ export async function handleSecurityCallback(
         list.length === 0
           ? `✅ Usuario \`${uid}\` sin acceso. Ya no quedan otros usuarios en la lista.`
           : `✅ Usuario \`${uid}\` sin acceso. Toca ❌ para quitar a otro:\n\n` +
-            slice.map((uid) => formatUserLine(uid, getUsername, getPhone)).join("\n");
+          slice.map((uid) => formatUserLine(uid, getUsername, getPhone)).join("\n");
       keyboard = new InlineKeyboard();
       for (const id of slice) {
         const label = getUsername(id) ? `❌ ${getUsername(id)}` : `❌ ${id}`;
@@ -727,6 +728,34 @@ export async function handleSecurityCallback(
         result = (approveResult.error ?? "Error al aprobar.") + "\n\nVuelve a Solicitudes pendientes.";
       }
       keyboard = buildManagePlansKeyboard();
+    }
+  } else if (data === "admin_leads" || data === "admin_leads_refresh") {
+    const leads = await loadLeadsFromSheet();
+    if (leads.length === 0) {
+      result = "📊 *Leads*\n\n_No hay leads registrados aún._ Los leads se capturan cuando un usuario comparte su número al solicitar un plan.";
+      keyboard = new InlineKeyboard()
+        .text("🔄 Actualizar", "admin_leads_refresh")
+        .row()
+        .text("◀️ Volver a Administrar", "security_open");
+    } else {
+      const recent = leads.slice(-30).reverse();
+      const lines = recent.map((l) => {
+        const nombre = escapeMd((l.nombre && l.nombre.trim()) ? l.nombre.trim() : "—");
+        const telefono = escapeMd((l.telefono && l.telefono.trim()) ? l.telefono.trim() : "—");
+        const plan = escapeMd(l.plan || "—");
+        const fecha = escapeMd(l.fecha || "—");
+        const status = l.status || "—";
+        const statusIcon = status === "trial_active" ? "🟢" : status === "converted" ? "✅" : status === "lost" ? "🔴" : "⏳";
+        return `• *ID:* \`${l.userId}\` | ${nombre}\n  📞 ${telefono} | 📋 ${plan} | ${statusIcon} ${escapeMd(status)}\n  📅 ${fecha}`;
+      });
+      result =
+        `📊 *Leads* (${leads.length} total, últimos ${recent.length})\n\n` +
+        "🟢 trial\\_active · ✅ converted · ⏳ pendiente · 🔴 lost\n\n" +
+        lines.join("\n\n");
+      keyboard = new InlineKeyboard()
+        .text("🔄 Actualizar", "admin_leads_refresh")
+        .row()
+        .text("◀️ Volver a Administrar", "security_open");
     }
   } else {
     result = "🔒 *Seguridad* — Gestiona quién puede usar el bot y sus menús.";

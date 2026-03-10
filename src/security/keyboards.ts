@@ -23,6 +23,8 @@ export function buildSecurityKeyboard(): InlineKeyboard {
     .row()
     .text("💰 Gestionar planes", "admin_plans_manage")
     .row()
+    .text("📊 Ver Leads", "admin_leads")
+    .row()
     .text("◀️ Volver al menú principal", "security_main");
 }
 

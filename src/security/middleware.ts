@@ -6,7 +6,7 @@
 
 import { InlineKeyboard, Keyboard } from "grammy";
 import type { getOwnerId as GetOwnerId, isAllowed as IsAllowed } from "../user-config.js";
-import { addPlanRequest, assignPlanToUser, hasUsedTrial, isPlanExpired, refreshIfStale } from "../user-config.js";
+import { addPlanRequest, assignPlanToUser, hasUsedTrial, isPlanExpired, refreshIfStale, saveLead } from "../user-config.js";
 import { getPlans, getPriceForTemporality, REGULAR_TEMPORALITIES, TEMPORALITIES, TRIAL_TEMPORALITIES } from "../plans.js";
 
 export type BuildMainKeyboard = (userId: number | undefined) => InlineKeyboard;
@@ -112,17 +112,20 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
             if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery();
             if (plan.autoApprove || temporality === "1d") {
               if (hasUsedTrial(uid)) {
-                if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery({ text: "Ya usaste tu trial gratuito." }).catch(() => {});
+                if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery({ text: "Ya usaste tu trial gratuito." }).catch(() => { });
                 await ctx.reply(
                   "⚠️ *Ya usaste tu acceso de prueba*\n\nEl plan Trial solo puede activarse una vez por usuario. Elige un plan de pago para continuar.",
                   { parse_mode: "Markdown" }
                 );
                 return;
               }
-              await assignPlanToUser(uid, plan.title, plan.menuIds ?? [], temporality);
+              // Trial/autoApprove: pedir teléfono antes de activar
+              pendingRenewal.set(uid, { planId, planName: plan.title, temporality });
               await ctx.reply(
-                `✅ *Plan ${plan.title} activado*\n\nTu acceso de prueba está listo por *1 día*.`,
-                { parse_mode: "Markdown", reply_markup: options.buildMainKeyboard(uid) }
+                `🔄 *Renovar plan: ${plan.title}* (Trial — 1 Día)\n\n` +
+                "Para activar tu acceso necesitamos tu número de contacto.\n\n" +
+                "Toca el botón de abajo — Telegram te pedirá tu consentimiento antes de compartirlo.",
+                { parse_mode: "Markdown", reply_markup: contactRequestKb(`${plan.title} (Trial)`) }
               );
               return;
             }
@@ -137,7 +140,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
             return;
           }
         }
-        if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery({ text: "Plan no encontrado." }).catch(() => {});
+        if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery({ text: "Plan no encontrado." }).catch(() => { });
         return;
       }
 
@@ -155,16 +158,31 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
             [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ").trim() ||
             "—";
           pendingRenewal.delete(uid);
+          const plan = getPlans().find((p) => p.id === renewal.planId);
+          const isTrial = plan?.autoApprove || renewal.temporality === "1d";
           try {
-            await addPlanRequest(uid, renewal.planName, { name, phone, temporality: renewal.temporality });
-            await ctx.reply(
-              `✅ Solicitud de renovación registrada (*${renewal.planName}*). El administrador activará tu acceso.`,
-              { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } }
-            );
+            // Guardar lead siempre
+            saveLead(uid, name, phone, renewal.planName, renewal.temporality, isTrial ? "trial_active" : "renewal_requested").catch(() => { });
+            if (isTrial) {
+              // Trial/autoApprove: activar inmediatamente después de capturar teléfono
+              await assignPlanToUser(uid, renewal.planName, plan?.menuIds ?? [], renewal.temporality);
+              await ctx.reply(
+                `✅ *Plan ${renewal.planName} activado*\n\nTu acceso de prueba está listo por *1 día*.`,
+                { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } }
+              );
+              // Enviar menú principal en mensaje aparte
+              await ctx.reply("Selecciona una opción:", { reply_markup: options.buildMainKeyboard(uid) });
+            } else {
+              await addPlanRequest(uid, renewal.planName, { name, phone, temporality: renewal.temporality });
+              await ctx.reply(
+                `✅ Solicitud de renovación registrada (*${renewal.planName}*). El administrador activará tu acceso.`,
+                { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } }
+              );
+            }
           } catch {
             await ctx.reply("No se pudo guardar la solicitud. Intenta más tarde.", {
               reply_markup: { remove_keyboard: true },
-            }).catch(() => {});
+            }).catch(() => { });
           }
           return;
         }
@@ -207,7 +225,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
       kb.text("❓ Ayuda", "help");
       if (link) kb.row().url("📩 Contactar al administrador", link);
 
-      if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery().catch(() => {});
+      if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery().catch(() => { });
       await ctx.reply(expiryMsg, { parse_mode: "Markdown", reply_markup: kb });
       return;
     }
@@ -225,17 +243,21 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
           if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery();
           if (plan.autoApprove || temporality === "1d") {
             if (hasUsedTrial(uid)) {
-              if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery({ text: "Ya usaste tu trial gratuito." }).catch(() => {});
+              if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery({ text: "Ya usaste tu trial gratuito." }).catch(() => { });
               await ctx.reply(
                 "⚠️ *Ya usaste tu acceso de prueba*\n\nEl plan Trial solo puede activarse una vez por usuario. Elige un plan de pago para continuar.",
                 { parse_mode: "Markdown", reply_markup: options.buildMainKeyboard(uid) }
               );
               return;
             }
-            await assignPlanToUser(uid, plan.title, plan.menuIds ?? [], temporality);
+            // Trial/autoApprove: pedir teléfono antes de activar
+            const tLabel = TEMPORALITIES.find((t) => t.id === temporality)?.label ?? temporality;
+            pendingPlanRequest.set(uid, { planId, planName: plan.title, temporality });
             await ctx.reply(
-              `✅ *¡Plan ${plan.title} activado!*\n\nTienes *1 día* de acceso gratuito para explorar todas las funciones. ¡Disfrútalo!`,
-              { parse_mode: "Markdown", reply_markup: options.buildMainKeyboard(uid) }
+              `📋 Plan *${plan.title}* — ${tLabel}\n\n` +
+              "Para activar tu acceso gratuito necesitamos tu número de contacto.\n\n" +
+              "Toca el botón de abajo — Telegram te pedirá tu consentimiento antes de compartirlo.",
+              { parse_mode: "Markdown", reply_markup: contactRequestKb(`${plan.title} (${tLabel})`) }
             );
             return;
           }
@@ -250,7 +272,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
           return;
         }
       }
-      if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery({ text: "Plan no encontrado." }).catch(() => {});
+      if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery({ text: "Plan no encontrado." }).catch(() => { });
       return;
     }
 
@@ -264,17 +286,32 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
           [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ").trim() ||
           "—";
         pendingPlanRequest.delete(uid);
+        const plan = getPlans().find((p) => p.id === pending.planId);
+        const isTrial = plan?.autoApprove || pending.temporality === "1d";
         try {
-          await addPlanRequest(uid, pending.planName, { name, phone, temporality: pending.temporality });
-          const tLabel = TEMPORALITIES.find((t) => t.id === pending.temporality)?.label ?? pending.temporality;
-          await ctx.reply(
-            `✅ Solicitud registrada (*${pending.planName}* — ${tLabel}). El administrador revisará tu acceso.`,
-            { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } }
-          );
+          // Guardar lead siempre
+          saveLead(uid, name, phone, pending.planName, pending.temporality, isTrial ? "trial_active" : "plan_requested").catch(() => { });
+          if (isTrial) {
+            // Trial/autoApprove: activar inmediatamente después de capturar teléfono
+            await assignPlanToUser(uid, pending.planName, plan?.menuIds ?? [], pending.temporality);
+            await ctx.reply(
+              `✅ *¡Plan ${pending.planName} activado!*\n\nTienes *1 día* de acceso gratuito para explorar todas las funciones. ¡Disfrútalo!`,
+              { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } }
+            );
+            // Enviar menú principal en mensaje aparte
+            await ctx.reply("Selecciona una opción:", { reply_markup: options.buildMainKeyboard(uid) });
+          } else {
+            await addPlanRequest(uid, pending.planName, { name, phone, temporality: pending.temporality });
+            const tLabel = TEMPORALITIES.find((t) => t.id === pending.temporality)?.label ?? pending.temporality;
+            await ctx.reply(
+              `✅ Solicitud registrada (*${pending.planName}* — ${tLabel}). El administrador revisará tu acceso.`,
+              { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } }
+            );
+          }
         } catch {
           await ctx.reply("No se pudo guardar la solicitud. Intenta más tarde o contacta al administrador.", {
             reply_markup: { remove_keyboard: true },
-          }).catch(() => {});
+          }).catch(() => { });
         }
         return;
       }

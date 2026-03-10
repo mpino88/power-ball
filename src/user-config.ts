@@ -1574,4 +1574,141 @@ export async function clearAllAnnouncements(): Promise<void> {
   await saveAnnouncementsToSheet([]);
 }
 
+// ─── Leads ────────────────────────────────────────────────────────────────────
 
+/** Fila de la 8ª pestaña (Leads): registro permanente de prospectos. */
+export interface LeadRow {
+  userId: string;
+  nombre: string;
+  telefono: string;
+  plan: string;
+  temporality: string;
+  /** Fecha en formato DD/MM/YYYY HH:MM (hora Florida). */
+  fecha: string;
+  /** trial_active | trial_expired | converted | lost */
+  status: string;
+}
+
+const LEADS_SHEET_TITLE = "Leads";
+const LEADS_HEADERS = ["userId", "nombre", "telefono", "plan", "temporality", "fecha", "status"] as const;
+export const LEADS_SHEET_INDEX = 7;
+
+/** Formatea la fecha actual en zona horaria de Florida (America/New_York). */
+function floridaNow(): string {
+  return new Date().toLocaleString("es-ES", {
+    timeZone: "America/New_York",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).replace(",", "");
+}
+
+/**
+ * Guarda un lead (append-only) en la 8ª pestaña del Sheet.
+ * Crea la pestaña si no existe. Nunca borra filas existentes.
+ */
+export async function saveLead(
+  userId: number,
+  name: string,
+  phone: string,
+  plan: string,
+  temporality: string,
+  status = "trial_active"
+): Promise<void> {
+  const sheetId = getSheetId();
+  if (!sheetId) {
+    console.log("[leads] Sheet no configurado; lead no guardado para userId=", userId);
+    return;
+  }
+  const auth = getSheetAuth();
+  if (!auth) return;
+  try {
+    const doc = new GoogleSpreadsheet(sheetId, auth);
+    await doc.loadInfo();
+    let sheet = doc.sheetsByIndex[LEADS_SHEET_INDEX];
+    if (!sheet) {
+      sheet = await doc.addSheet({
+        title: LEADS_SHEET_TITLE,
+        headerValues: [...LEADS_HEADERS],
+      });
+      console.log("[leads] Pestaña 'Leads' creada (8ª pestaña).");
+    } else {
+      try {
+        await sheet.loadHeaderRow(1);
+      } catch {
+        await sheet.setHeaderRow([...LEADS_HEADERS], 1);
+      }
+    }
+    await sheet.addRow({
+      userId: String(userId),
+      nombre: name,
+      telefono: phone,
+      plan,
+      temporality,
+      fecha: floridaNow(),
+      status,
+    });
+    console.log("[leads] Lead guardado: userId=", userId, "plan=", plan, "temporality=", temporality);
+  } catch (e) {
+    console.error("[leads] Error al guardar lead en Sheet:", (e as Error)?.message ?? e);
+  }
+}
+
+/** Carga todos los leads desde la 8ª pestaña. Crea la pestaña si no existe. */
+export async function loadLeadsFromSheet(): Promise<LeadRow[]> {
+  const sheetId = getSheetId();
+  if (!sheetId) return [];
+  const auth = getSheetAuth();
+  if (!auth) return [];
+  try {
+    const doc = new GoogleSpreadsheet(sheetId, auth);
+    await doc.loadInfo();
+    let sheet = doc.sheetsByIndex[LEADS_SHEET_INDEX];
+    if (!sheet) {
+      await doc.addSheet({
+        title: LEADS_SHEET_TITLE,
+        headerValues: [...LEADS_HEADERS],
+      });
+      console.log("[leads] Pestaña 'Leads' creada (8ª pestaña).");
+      return [];
+    }
+    try {
+      await sheet.loadHeaderRow(1);
+    } catch {
+      await sheet.setHeaderRow([...LEADS_HEADERS], 1);
+      return [];
+    }
+    const rows = await sheet.getRows({ offset: 0, limit: 10000 });
+    const headers = sheet.headerValues;
+    const result: LeadRow[] = [];
+    for (const row of rows) {
+      const obj = row.toObject() as Record<string, unknown>;
+      const values = headers.map((h) => (h ? String(obj[h] ?? "").trim() : ""));
+      const userIdStr = values[0] ?? "";
+      if (!userIdStr) continue;
+      result.push({
+        userId: userIdStr,
+        nombre: values[1] ?? "",
+        telefono: values[2] ?? "",
+        plan: values[3] ?? "",
+        temporality: values[4] ?? "",
+        fecha: values[5] ?? "",
+        status: values[6] ?? "",
+      });
+    }
+    console.log("[leads] Cargados", result.length, "leads desde la 8ª pestaña.");
+    return result;
+  } catch (e) {
+    console.error("[leads] Error al cargar leads desde Sheet:", (e as Error)?.message ?? e);
+    return [];
+  }
+}
+
+/** Cuenta total de leads registrados. */
+export async function getLeadCount(): Promise<number> {
+  const leads = await loadLeadsFromSheet();
+  return leads.length;
+}
