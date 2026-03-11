@@ -2820,7 +2820,15 @@ async function main(): Promise<void> {
         async (ctx) => {
           await ctx.answerCallbackQuery();
           const label = getExtraMenuLabel(m.id) ?? m.label;
-          const text = getStrategyContextMessage(m.id, label);
+          let text = getStrategyContextMessage(m.id, label);
+          // Link Contactar al dueño de la estrategia (solo usuarios no-owner)
+          const viewerUserId = ctx.from?.id;
+          if (viewerUserId && !isOwner(viewerUserId)) {
+            const creatorId = getMenuCreatedBy(m.id) ?? getOwnerId();
+            if (creatorId) {
+              text += `\n\n[📩 Contactar al dueño](tg://user?id=${creatorId})`;
+            }
+          }
           const keyboard = buildStrategyContextKeyboard(m.id);
           try {
             await ctx.editMessageText(text, { parse_mode: "Markdown", reply_markup: keyboard });
