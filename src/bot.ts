@@ -1357,10 +1357,17 @@ bot.on("callback_query:data", async (ctx) => {
         await ctx.answerCallbackQuery({ text: "Calculando…" });
         try {
           const userId = ctx.from?.id;
-          const msg = await runStrategy(parsed.menuId, parsed.context, {
+          let msg = await runStrategy(parsed.menuId, parsed.context, {
             getP3Map: () => getStrategyP3Map(userId),
             getP4Map: () => getStrategyP4Map(userId),
           });
+          // Link "Contactar al dueño" de la estrategia (solo para usuarios no-owner)
+          if (userId && !isOwner(userId)) {
+            const creatorId = getMenuCreatedBy(parsed.menuId) ?? getOwnerId();
+            if (creatorId) {
+              msg += `\n\n[📩 Contactar al dueño](tg://user?id=${creatorId})`;
+            }
+          }
           // Botones post-estrategia: "Hacer parlé" y "Crear Adivinanza" (dueño)
           const stratDef = getStrategy(parsed.menuId);
           const resultKb = new InlineKeyboard();
