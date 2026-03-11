@@ -35,6 +35,12 @@ import {
   isPlanExpired,
 } from "../user-config.js";
 import {
+  getPaymentMethods,
+  getPaymentMethodById,
+  deleteAndSavePaymentMethod,
+  loadPaymentMethodsFromSheet,
+} from "../payment-methods.js";
+import {
   getExtraMenuIds,
   getExtraMenuLabel,
   getExtraMenuStatus,
@@ -804,6 +810,63 @@ export async function handleSecurityCallback(
         .row()
         .text("◀️ Volver a Administrar", "security_open");
     }
+  } else if (data === "admin_pm_open" || data === "admin_pm_refresh") {
+    await loadPaymentMethodsFromSheet();
+    const pms = getPaymentMethods();
+    const pmLines = pms.map((p, i) =>
+      `${i + 1}. *${escapeMd(p.description)}*\n   💳 ${escapeMd(p.account)} · 🌐 ${escapeMd(p.currency)}`
+    );
+    result =
+      `💳 *Formas de pago* (${pms.length})\n\n` +
+      (pmLines.length ? pmLines.join("\n\n") : "_Sin formas de pago configuradas._");
+    keyboard = new InlineKeyboard();
+    for (const pm of pms) {
+      const short = pm.description.length > 28 ? pm.description.slice(0, 26) + "…" : pm.description;
+      keyboard.text(`✏️ ${short}`, `admin_pm_edit:${pm.id}`).text("🗑", `admin_pm_del:${pm.id}`).row();
+    }
+    keyboard.text("➕ Nueva forma de pago", "admin_pm_new").row().text("◀️ Volver a Administrar", "security_open");
+  } else if (data === "admin_pm_new") {
+    result =
+      "💳 *Nueva forma de pago* (paso 1/3)\n\n" +
+      "Envía la *descripción* (ej: Zelle, PayPal, Transferencia).\n\n/cancel para cancelar.";
+    keyboard = new InlineKeyboard().text("◀️ Cancelar", "admin_pm_open");
+    const { creatingPaymentMethodFlow } = await import("./flows.js");
+    creatingPaymentMethodFlow.set(ctx.from.id, { step: 1 });
+  } else if (data.startsWith("admin_pm_edit:")) {
+    const pmId = data.slice("admin_pm_edit:".length);
+    const pm = getPaymentMethodById(pmId);
+    if (!pm) {
+      result = "❌ Forma de pago no encontrada.";
+      keyboard = new InlineKeyboard().text("◀️ Volver", "admin_pm_open");
+    } else {
+      result =
+        `✏️ *Editar forma de pago* (paso 1/3)\n\nActual: *${escapeMd(pm.description)}* | ${escapeMd(pm.account)} | ${escapeMd(pm.currency)}\n\nEnvía la nueva *descripción* (o *-* para mantener).\n\n/cancel para cancelar.`;
+      keyboard = new InlineKeyboard().text("◀️ Cancelar", "admin_pm_open");
+      const { editingPaymentMethodFlow } = await import("./flows.js");
+      editingPaymentMethodFlow.set(ctx.from.id, { step: 1, id: pmId });
+    }
+  } else if (data.startsWith("admin_pm_del:")) {
+    const pmId = data.slice("admin_pm_del:".length);
+    const pm = getPaymentMethodById(pmId);
+    if (!pm) {
+      result = "❌ Forma de pago no encontrada.";
+      keyboard = new InlineKeyboard().text("◀️ Volver", "admin_pm_open");
+    } else {
+      result = `🗑 *Eliminar forma de pago*\n\n${escapeMd(pm.description)} (${escapeMd(pm.account)})\n\n¿Confirmas?`;
+      keyboard = new InlineKeyboard()
+        .text("✅ Sí, eliminar", `admin_pm_del_confirm:${pmId}`)
+        .text("❌ Cancelar", "admin_pm_open");
+    }
+  } else if (data.startsWith("admin_pm_del_confirm:")) {
+    const pmId = data.slice("admin_pm_del_confirm:".length);
+    const pm = getPaymentMethodById(pmId);
+    const ok = await deleteAndSavePaymentMethod(pmId);
+    const pmsAfter = getPaymentMethods();
+    const linesAfter = pmsAfter.map((p, i) => `${i + 1}. *${escapeMd(p.description)}* | ${escapeMd(p.account)} · ${escapeMd(p.currency)}`);
+    result = (ok ? `✅ *${escapeMd(pm?.description ?? pmId)}* eliminada.` : "❌ No encontrada.") +
+      `\n\n💳 *Formas de pago* (${pmsAfter.length})\n\n` +
+      (linesAfter.length ? linesAfter.join("\n") : "_Sin formas de pago._");
+    keyboard = new InlineKeyboard().text("➕ Nueva", "admin_pm_new").row().text("◀️ Volver a Administrar", "security_open");
   } else {
     result = "🔒 *Seguridad* — Gestiona quién puede usar el bot y sus menús.";
     keyboard = buildSecurityKeyboard();

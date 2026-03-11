@@ -52,6 +52,20 @@ export const editingPlanFlow = new Map<number, EditingPlanStep>();
 export const deletingPlanFlow = new Map<number, { planId: string }>();
 export const assigningPlanFlow = new Map<number, AssigningPlanStep>();
 
+/** Tipos para el flujo de Formas de Pago. */
+export type CreatingPaymentMethodStep =
+  | { step: 1 }
+  | { step: 2; description: string }
+  | { step: 3; description: string; account: string };
+
+export type EditingPaymentMethodStep =
+  | { step: 1; id: string }
+  | { step: 2; id: string; description: string }
+  | { step: 3; id: string; description: string; account: string };
+
+export const creatingPaymentMethodFlow = new Map<number, CreatingPaymentMethodStep>();
+export const editingPaymentMethodFlow = new Map<number, EditingPaymentMethodStep>();
+
 export function clearAllFlows(userId: number): void {
   addingUserFlow.delete(userId);
   creatingMenuFlow.delete(userId);
@@ -61,4 +75,6 @@ export function clearAllFlows(userId: number): void {
   editingPlanFlow.delete(userId);
   deletingPlanFlow.delete(userId);
   assigningPlanFlow.delete(userId);
+  creatingPaymentMethodFlow.delete(userId);
+  editingPaymentMethodFlow.delete(userId);
 }

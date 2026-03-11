@@ -28,8 +28,15 @@ import {
   creatingPlanFlow,
   editingPlanFlow,
   assigningPlanFlow,
+  creatingPaymentMethodFlow,
+  editingPaymentMethodFlow,
   clearAllFlows,
 } from "./flows.js";
+import {
+  addAndSavePaymentMethod,
+  updateAndSavePaymentMethod,
+  getPaymentMethodById,
+} from "../payment-methods.js";
 
 export interface SecurityMessageDeps {
   isOwner: (userId: number) => boolean;
@@ -367,6 +374,89 @@ export async function handleSecurityMessage(
         price_1a,
       });
       await ctx.reply(`✅ Plan actualizado: *${editingPlan.title}*`, { parse_mode: "Markdown", reply_markup: buildManagePlansKeyboard() });
+      return true;
+    }
+  }
+
+  // ─── Crear forma de pago ─────────────────────────────────────────────────
+  const creatingPm = creatingPaymentMethodFlow.get(userId);
+  if (creatingPm) {
+    const cancelKb = new InlineKeyboard().text("◀️ Cancelar", "admin_pm_open");
+    if (creatingPm.step === 1) {
+      const description = text.trim();
+      if (!description) {
+        await ctx.reply("Envía la *descripción* de la forma de pago (ej: Zelle, PayPal).", { parse_mode: "Markdown", reply_markup: cancelKb });
+        return true;
+      }
+      creatingPaymentMethodFlow.set(userId, { step: 2, description });
+      await ctx.reply("💳 *Nueva forma de pago* (paso 2/3)\n\nEnvía el *número/cuenta* (ej: +1 305-555-0100 o usuario@example.com).", { parse_mode: "Markdown", reply_markup: cancelKb });
+      return true;
+    }
+    if (creatingPm.step === 2) {
+      const account = text.trim();
+      if (!account) {
+        await ctx.reply("Envía el número o cuenta.", { reply_markup: cancelKb });
+        return true;
+      }
+      creatingPaymentMethodFlow.set(userId, { step: 3, description: creatingPm.description, account });
+      await ctx.reply("💳 *Nueva forma de pago* (paso 3/3)\n\nEnvía la *moneda* (ej: USD, EUR).", { parse_mode: "Markdown", reply_markup: cancelKb });
+      return true;
+    }
+    if (creatingPm.step === 3) {
+      const currency = text.trim();
+      creatingPaymentMethodFlow.delete(userId);
+      const pm = await addAndSavePaymentMethod(creatingPm.description, creatingPm.account, currency || "USD");
+      await ctx.reply(
+        `✅ *Forma de pago creada*\n\n📌 ${pm.description}\n💳 ${pm.account}\n🌐 ${pm.currency}`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: new InlineKeyboard().text("◀️ Volver a Formas de pago", "admin_pm_open"),
+        }
+      );
+      return true;
+    }
+  }
+
+  // ─── Editar forma de pago ─────────────────────────────────────────────────
+  const editingPm = editingPaymentMethodFlow.get(userId);
+  if (editingPm) {
+    const cancelKb = new InlineKeyboard().text("◀️ Cancelar", "admin_pm_open");
+    const existing = getPaymentMethodById(editingPm.id);
+    if (editingPm.step === 1) {
+      const description = text.trim() === "-" ? (existing?.description ?? "") : text.trim();
+      if (!description) {
+        await ctx.reply("Envía la nueva descripción o *-* para mantener la actual.", { parse_mode: "Markdown", reply_markup: cancelKb });
+        return true;
+      }
+      editingPaymentMethodFlow.set(userId, { step: 2, id: editingPm.id, description });
+      await ctx.reply(
+        `✏️ *Editar forma de pago* (paso 2/3)\n\nActual: \`${existing?.account ?? ""}\`\nEnvía el nuevo *número/cuenta* (o *-* para mantener).`,
+        { parse_mode: "Markdown", reply_markup: cancelKb }
+      );
+      return true;
+    }
+    if (editingPm.step === 2) {
+      const account = text.trim() === "-" ? (existing?.account ?? "") : text.trim();
+      editingPaymentMethodFlow.set(userId, { step: 3, id: editingPm.id, description: editingPm.description, account });
+      await ctx.reply(
+        `✏️ *Editar forma de pago* (paso 3/3)\n\nActual: \`${existing?.currency ?? ""}\`\nEnvía la nueva *moneda* (o *-* para mantener).`,
+        { parse_mode: "Markdown", reply_markup: cancelKb }
+      );
+      return true;
+    }
+    if (editingPm.step === 3) {
+      const currency = text.trim() === "-" ? (existing?.currency ?? "USD") : text.trim() || (existing?.currency ?? "USD");
+      editingPaymentMethodFlow.delete(userId);
+      const ok = await updateAndSavePaymentMethod(editingPm.id, editingPm.description, editingPm.account, currency);
+      await ctx.reply(
+        ok
+          ? `✅ *Forma de pago actualizada*\n\n📌 ${editingPm.description}\n💳 ${editingPm.account}\n🌐 ${currency}`
+          : "❌ No se encontró la forma de pago.",
+        {
+          parse_mode: "Markdown",
+          reply_markup: new InlineKeyboard().text("◀️ Volver a Formas de pago", "admin_pm_open"),
+        }
+      );
       return true;
     }
   }

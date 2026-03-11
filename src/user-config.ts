@@ -156,7 +156,7 @@ function parseSheetJson(json: string): Record<string, unknown> | null {
   }
 }
 
-function getSheetAuth(): JWT | null {
+export function getSheetAuth(): JWT | null {
   const json = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const key = process.env.GOOGLE_PRIVATE_KEY;
