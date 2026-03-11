@@ -822,7 +822,11 @@ export async function handleSecurityCallback(
     keyboard = new InlineKeyboard();
     for (const pm of pms) {
       const short = pm.description.length > 28 ? pm.description.slice(0, 26) + "…" : pm.description;
-      keyboard.text(`✏️ ${short}`, `admin_pm_edit:${pm.id}`).text("🗑", `admin_pm_del:${pm.id}`).row();
+      keyboard
+        .text(`✏️ ${short}`, `admin_pm_edit:${pm.id}`)
+        .copyText("📋", pm.account)
+        .text("🗑", `admin_pm_del:${pm.id}`)
+        .row();
     }
     keyboard.text("➕ Nueva forma de pago", "admin_pm_new").row().text("◀️ Volver a Administrar", "security_open");
   } else if (data === "admin_pm_new") {
