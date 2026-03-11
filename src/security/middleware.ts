@@ -109,10 +109,10 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
           const temporality = rest.slice(lastUnderscore + 1);
           const plan = getPlans().find((p) => p.id === planId);
           if (plan && TEMPORALITIES.some((t) => t.id === temporality)) {
-            if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery();
+            if (ctx.callbackQuery) await ctx.answerCallbackQuery?.().catch(() => {});
             if (plan.autoApprove || temporality === "1d") {
               if (await hasUsedTrial(uid)) {
-                if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery({ text: "Ya usaste tu trial gratuito." }).catch(() => { });
+                if (ctx.callbackQuery) await ctx.answerCallbackQuery?.({ text: "Ya usaste tu trial gratuito." }).catch(() => { });
                 await ctx.reply(
                   "⚠️ *Ya usaste tu acceso de prueba*\n\nEl plan Trial solo puede activarse una vez por usuario. Elige un plan de pago para continuar.",
                   { parse_mode: "Markdown" }
@@ -140,7 +140,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
             return;
           }
         }
-        if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery({ text: "Plan no encontrado." }).catch(() => { });
+        if (ctx.callbackQuery) await ctx.answerCallbackQuery?.({ text: "Plan no encontrado." }).catch(() => { });
         return;
       }
 
@@ -229,7 +229,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
       kb.text("❓ Ayuda", "help");
       if (link) kb.row().url("📩 Contactar al administrador", link);
 
-      if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery().catch(() => { });
+      if (ctx.callbackQuery) await ctx.answerCallbackQuery?.().catch(() => { });
       try {
         await ctx.reply(expiryMsg, { parse_mode: "Markdown", reply_markup: kb });
       } catch (e) {
@@ -248,10 +248,10 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
         const temporality = rest.slice(lastUnderscore + 1);
         const plan = getPlans().find((p) => p.id === planId);
         if (plan && TEMPORALITIES.some((t) => t.id === temporality)) {
-          if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery();
+          if (ctx.callbackQuery) await ctx.answerCallbackQuery?.().catch(() => {});
           if (plan.autoApprove || temporality === "1d") {
             if (await hasUsedTrial(uid)) {
-              if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery({ text: "Ya usaste tu trial gratuito." }).catch(() => { });
+              if (ctx.callbackQuery) await ctx.answerCallbackQuery?.({ text: "Ya usaste tu trial gratuito." }).catch(() => { });
               await ctx.reply(
                 "⚠️ *Ya usaste tu acceso de prueba*\n\nEl plan Trial solo puede activarse una vez por usuario. Elige un plan de pago para continuar.",
                 { parse_mode: "Markdown", reply_markup: options.buildMainKeyboard(uid) }
@@ -280,7 +280,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
           return;
         }
       }
-      if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery({ text: "Plan no encontrado." }).catch(() => { });
+      if (ctx.callbackQuery) await ctx.answerCallbackQuery?.({ text: "Plan no encontrado." }).catch(() => { });
       return;
     }
 
@@ -394,7 +394,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
 
     // ── Paso 2: "Ver Planes" — editar caption con info completa + botones ───
     if (data === "ver_planes_open") {
-      if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery();
+      if (ctx.callbackQuery) await ctx.answerCallbackQuery?.().catch(() => {});
       const ctxEdit = ctx as {
         editMessageCaption?: (caption: string, opts?: object) => Promise<unknown>;
       };
