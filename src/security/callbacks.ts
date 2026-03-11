@@ -824,7 +824,7 @@ export async function handleSecurityCallback(
       const short = pm.description.length > 28 ? pm.description.slice(0, 26) + "…" : pm.description;
       keyboard
         .text(`✏️ ${short}`, `admin_pm_edit:${pm.id}`)
-        .copyText("📋", pm.account)
+        .copyText(`📋 ${pm.account}`, pm.account)
         .text("🗑", `admin_pm_del:${pm.id}`)
         .row();
     }
