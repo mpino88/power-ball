@@ -111,7 +111,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
           if (plan && TEMPORALITIES.some((t) => t.id === temporality)) {
             if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery();
             if (plan.autoApprove || temporality === "1d") {
-              if (hasUsedTrial(uid)) {
+              if (await hasUsedTrial(uid)) {
                 if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery({ text: "Ya usaste tu trial gratuito." }).catch(() => { });
                 await ctx.reply(
                   "⚠️ *Ya usaste tu acceso de prueba*\n\nEl plan Trial solo puede activarse una vez por usuario. Elige un plan de pago para continuar.",
@@ -165,7 +165,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
             saveLead(uid, name, phone, renewal.planName, renewal.temporality, isTrial ? "trial_active" : "renewal_requested").catch(() => { });
             if (isTrial) {
               // Trial/autoApprove: activar inmediatamente después de capturar teléfono
-              await assignPlanToUser(uid, renewal.planName, plan?.menuIds ?? [], renewal.temporality);
+              await assignPlanToUser(uid, renewal.planName, plan?.menuIds ?? [], renewal.temporality, name, phone);
               await ctx.reply(
                 `✅ *Plan ${renewal.planName} activado*\n\nTu acceso de prueba está listo por *1 día*.`,
                 { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } }
@@ -242,7 +242,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
         if (plan && TEMPORALITIES.some((t) => t.id === temporality)) {
           if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery();
           if (plan.autoApprove || temporality === "1d") {
-            if (hasUsedTrial(uid)) {
+            if (await hasUsedTrial(uid)) {
               if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery({ text: "Ya usaste tu trial gratuito." }).catch(() => { });
               await ctx.reply(
                 "⚠️ *Ya usaste tu acceso de prueba*\n\nEl plan Trial solo puede activarse una vez por usuario. Elige un plan de pago para continuar.",
@@ -293,7 +293,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
           saveLead(uid, name, phone, pending.planName, pending.temporality, isTrial ? "trial_active" : "plan_requested").catch(() => { });
           if (isTrial) {
             // Trial/autoApprove: activar inmediatamente después de capturar teléfono
-            await assignPlanToUser(uid, pending.planName, plan?.menuIds ?? [], pending.temporality);
+            await assignPlanToUser(uid, pending.planName, plan?.menuIds ?? [], pending.temporality, name, phone);
             await ctx.reply(
               `✅ *¡Plan ${pending.planName} activado!*\n\nTienes *1 día* de acceso gratuito para explorar todas las funciones. ¡Disfrútalo!`,
               { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } }

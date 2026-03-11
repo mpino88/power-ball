@@ -875,9 +875,21 @@ function parseMMDDYY(s: string): Date | null {
   return new Date(year, month, day);
 }
 
-/** Devuelve true si el usuario ya usó el trial (1d) alguna vez. */
-export function hasUsedTrial(userId: number): boolean {
-  return config.userInfo[String(userId)]?.trial_used === true;
+/** Devuelve true si el usuario ya usó el trial (1d) alguna vez.
+ * Consulta tanto el config en memoria como el historial en la hoja de Leads.
+ */
+export async function hasUsedTrial(userId: number): Promise<boolean> {
+  // 1. Verificar en memoria (estado actual)
+  if (config.userInfo[String(userId)]?.trial_used === true) return true;
+
+  // 2. Verificar en historial de Leads (persistente)
+  const leads = await loadLeadsFromSheet();
+  const alreadyHadTrial = leads.some(l => 
+    String(l.userId) === String(userId) && 
+    (l.temporality === "1d" || String(l.plan).toLowerCase().includes("trial"))
+  );
+
+  return alreadyHadTrial;
 }
 
 /** Devuelve true si el plan del usuario ha caducado. Si no tiene fecha de caducidad, no caduca. */
@@ -977,7 +989,10 @@ export function getRequestedPlanUsers(): RequestedPlanUser[] {
 
 /** Calcula la fecha de caducidad y la devuelve como "MM/DD/YY". */
 function computeExpiryStr(temporality: string): string {
-  const d = new Date();
+  // Obtener fecha actual en Florida
+  const nowStr = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
+  const d = new Date(nowStr);
+
   switch (temporality) {
     case "1d": d.setDate(d.getDate() + 1); break;
     case "1m": d.setMonth(d.getMonth() + 1); break;
@@ -996,13 +1011,17 @@ export async function assignPlanToUser(
   targetUserId: number,
   planName: string,
   _planMenuIds: string[],
-  temporality?: string
+  temporality?: string,
+  name?: string,
+  phone?: string
 ): Promise<PersistResult> {
   const key = String(targetUserId);
   if (!config.allowed.includes(targetUserId)) config.allowed.push(targetUserId);
   delete config.requestedPlans[key];
   config.userInfo[key] = {
     ...config.userInfo[key],
+    name: name ?? config.userInfo[key]?.name,
+    phone: phone ?? config.userInfo[key]?.phone,
     plan: planName,
     plan_status: "approved",
     plan_temporality: temporality || undefined,
@@ -1641,7 +1660,12 @@ export async function saveLead(
         await sheet.setHeaderRow([...LEADS_HEADERS], 1);
       }
     }
-    await sheet.addRow({
+
+    // --- Lógica UPSERT (Bliss Protocol) ---
+    const rows = await sheet.getRows();
+    const existingRow = rows.find(r => String(r.get("userId")) === String(userId));
+
+    const leadData = {
       userId: String(userId),
       nombre: name,
       telefono: phone,
@@ -1649,8 +1673,18 @@ export async function saveLead(
       temporality,
       fecha: floridaNow(),
       status,
-    });
-    console.log("[leads] Lead guardado: userId=", userId, "plan=", plan, "temporality=", temporality);
+    };
+
+    if (existingRow) {
+      // Actualizar fila existente
+      Object.assign(existingRow, leadData);
+      await existingRow.save();
+      console.log("[leads] Lead actualizado (UPSERT): userId=", userId);
+    } else {
+      // Crear nueva fila
+      await sheet.addRow(leadData);
+      console.log("[leads] Lead nuevo guardado: userId=", userId);
+    }
   } catch (e) {
     console.error("[leads] Error al guardar lead en Sheet:", (e as Error)?.message ?? e);
   }
