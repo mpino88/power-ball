@@ -6,7 +6,7 @@
 
 import { InlineKeyboard, Keyboard } from "grammy";
 import type { getOwnerId as GetOwnerId, isAllowed as IsAllowed } from "../user-config.js";
-import { addPlanRequest, assignPlanToUser, hasUsedTrial, isPlanExpired, refreshIfStale, saveLead } from "../user-config.js";
+import { addPlanRequest, assignPlanToUser, getPlanTemporality, hasUsedTrial, isPlanExpired, refreshIfStale, saveLead } from "../user-config.js";
 import { getPlans, getPriceForTemporality, REGULAR_TEMPORALITIES, TEMPORALITIES, TRIAL_TEMPORALITIES } from "../plans.js";
 
 export type BuildMainKeyboard = (userId: number | undefined) => InlineKeyboard;
@@ -212,10 +212,14 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
         link = `tg://user?id=${ownerId}`;
       }
 
-      const expiryMsg =
-        "⏰ *Tu plan ha caducado*\n\n" +
-        "Ya no tienes acceso al bot. Para seguir usando todas las funciones, renueva tu plan.\n\n" +
-        "_Elige el plan y la temporalidad que deseas renovar:_";
+      const wasTrial = getPlanTemporality(uid) === "1d";
+      const expiryMsg = wasTrial
+        ? "⏳ *Tu acceso de prueba (Trial 1 Día) ha expirado*\n\n" +
+          "El periodo gratuito ha terminado. Para seguir disfrutando de todas las funciones, elige uno de nuestros planes:\n\n" +
+          "_Selecciona el plan y la duración que prefieras:_"
+        : "⏰ *Tu plan ha caducado*\n\n" +
+          "Ya no tienes acceso al bot. Para seguir usando todas las funciones, renueva tu plan.\n\n" +
+          "_Elige el plan y la temporalidad que deseas renovar:_";
 
       const kb = new InlineKeyboard();
       for (const p of plans) {
@@ -226,7 +230,11 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
       if (link) kb.row().url("📩 Contactar al administrador", link);
 
       if (ctx.answerCallbackQuery) await ctx.answerCallbackQuery().catch(() => { });
-      await ctx.reply(expiryMsg, { parse_mode: "Markdown", reply_markup: kb });
+      try {
+        await ctx.reply(expiryMsg, { parse_mode: "Markdown", reply_markup: kb });
+      } catch (e) {
+        console.error("[middleware] Error al mostrar mensaje de caducidad:", (e as Error)?.message ?? e);
+      }
       return;
     }
 
