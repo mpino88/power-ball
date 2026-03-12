@@ -725,7 +725,7 @@ export function buildProgressiveStrategyKeyboard(
     kb.text(`${isSelected ? "✅" : "⬜"} ${shortName}`, `prog_st_${id}`).row();
   }
 
-  if (selectedIds.size >= 2) {
+  if (selectedIds.size >= 1) {
     const nS = Math.min(selectedIds.size, PROGRESSIVE_MAX_STRATEGIES);
     kb.text(`▶️ Analizar (${(1 << nS) - 1} combos)`, "prog_run").row();
   }

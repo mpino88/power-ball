@@ -253,6 +253,7 @@ const adivinanzaLastNums = new Map<number, number[]>();
 
 /** Sesiones activas del Análisis Progresivo (solo para el dueño del bot). */
 const progressiveSessionMap = new Map<number, ProgressiveSession>();
+const progressiveResultCache = new Map<number, Buffer>();
 
 /**
  * Retorna los IDs de estrategias seleccionables en Consenso Multi-Estrategia
@@ -1744,6 +1745,29 @@ bot.on("callback_query:data", async (ctx) => {
           const resultMsg = buildProgressiveResultMessage(result, strategyLabels);
 
           await ctx.api.editMessageText(chatId, msgId, resultMsg, { parse_mode: "Markdown" });
+
+          // ── Exportación JSON crudo para CRM/Dashboard (solo dueños) ──
+          if (isOwner(userId)) {
+            try {
+              const jsonStr = JSON.stringify(result, null, 2);
+              const buffer = Buffer.from(jsonStr, "utf-8");
+              progressiveResultCache.set(userId, buffer);
+              
+              const keyboard = new InlineKeyboard()
+                .text("📥 Exportar JSON", "prog_export_json")
+                .row();
+                
+              await ctx.api.editMessageText(chatId, msgId, resultMsg, { 
+                parse_mode: "Markdown", 
+                reply_markup: keyboard 
+              });
+            } catch (jsonErr) {
+              console.error("[progressive] Error caching JSON:", jsonErr);
+              await ctx.api.editMessageText(chatId, msgId, resultMsg, { parse_mode: "Markdown" });
+            }
+          } else {
+            await ctx.api.editMessageText(chatId, msgId, resultMsg, { parse_mode: "Markdown" });
+          }
         } catch (err) {
           console.error("[progressive] Error:", err);
           try {
@@ -1755,6 +1779,22 @@ bot.on("callback_query:data", async (ctx) => {
         return;
       }
     }
+  }
+
+  // ── Exportar JSON crudo a on-demand ───────────────────────────────────────
+  if (data === "prog_export_json" && ctx.from && isOwner(ctx.from.id)) {
+    const userId = ctx.from.id;
+    const buffer = progressiveResultCache.get(userId);
+    if (!buffer) {
+      await ctx.answerCallbackQuery({ text: "⚠️ Caché de análisis expirado o no encontrado.", show_alert: true });
+      return;
+    }
+    await ctx.answerCallbackQuery({ text: "Generando archivo JSON..." });
+    await ctx.replyWithDocument(new InputFile(buffer, `progressive_analysis_export.json`), {
+      caption: "📊 *Exportación datos crudos (JSON)* para Integración CRM/Dashboard",
+      parse_mode: "Markdown",
+    });
+    return;
   }
 
   // ── Parlé: combinaciones de 2 sin repetición ──────────────────────────────
