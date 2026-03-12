@@ -115,6 +115,7 @@ export interface ProgressiveSubset {
   skipped: number;
   hitRate: number;
   conditions?: SubsetConditions;
+  history?: number[];
 }
 
 export interface ProgressiveResult {
@@ -128,6 +129,7 @@ export interface ProgressiveResult {
   totalInRange: number;
   topN: number;
   strategyCount: number;
+  analyzedDates?: string[];
 }
 
 export interface ProgressiveSession {
@@ -249,6 +251,9 @@ export async function runProgressiveAnalysis(
   const hitsArr    = new Uint32Array(totalSubsets);
   const missesArr  = new Uint32Array(totalSubsets);
   const skippedArr = new Uint32Array(totalSubsets);
+  
+  // History (0=miss, 1=hit, 2=skipped)
+  const historyMap = new Uint8Array(totalSubsets * totalDates).fill(2);
 
   // Día / mes del sorteo objetivo
   const hitsByDow   = new Uint16Array(totalSubsets * 7);
@@ -314,7 +319,10 @@ export async function runProgressiveAnalysis(
     // Siguiente sorteo real
     const nextDateStr = allValidDates[validIdx.get(cutoffDate)! + 1];
     if (!nextDateStr) {
-      for (let i = 0; i < totalSubsets; i++) skippedArr[i]++;
+      for (let i = 0; i < totalSubsets; i++) {
+        skippedArr[i]++;
+        historyMap[i * totalDates + dateIdx] = 2; // Mark as skipped
+      }
       if (onProgress && totalDates > 0) {
         const pct = Math.floor(((dateIdx + 1) / totalDates) * 100);
         if (pct >= lastReportedPct + 10) { lastReportedPct = pct; await onProgress(pct); }
@@ -324,7 +332,10 @@ export async function runProgressiveAnalysis(
 
     const nextDraw = fullMap[nextDateStr]?.[context.period];
     if (!nextDraw || nextDraw.length < minLen) {
-      for (let i = 0; i < totalSubsets; i++) skippedArr[i]++;
+      for (let i = 0; i < totalSubsets; i++) {
+        skippedArr[i]++;
+        historyMap[i * totalDates + dateIdx] = 2; // Mark as skipped
+      }
       if (onProgress && totalDates > 0) {
         const pct = Math.floor(((dateIdx + 1) / totalDates) * 100);
         if (pct >= lastReportedPct + 10) { lastReportedPct = pct; await onProgress(pct); }
@@ -334,7 +345,10 @@ export async function runProgressiveAnalysis(
 
     const actuals = twoDigitNumbers(nextDraw, context.mapSource);
     if (actuals.length === 0) {
-      for (let i = 0; i < totalSubsets; i++) skippedArr[i]++;
+      for (let i = 0; i < totalSubsets; i++) {
+        skippedArr[i]++;
+        historyMap[i * totalDates + dateIdx] = 2; // Mark as skipped
+      }
       if (onProgress && totalDates > 0) {
         const pct = Math.floor(((dateIdx + 1) / totalDates) * 100);
         if (pct >= lastReportedPct + 10) { lastReportedPct = pct; await onProgress(pct); }
@@ -374,6 +388,7 @@ export async function runProgressiveAnalysis(
 
       if (usedNums.length === 0) {
         skippedArr[maskIdx]++;
+        historyMap[maskIdx * totalDates + dateIdx] = 2; // Mark as skipped
         // Reset votes
         for (const num of usedNums) voteCounts[num] = 0;
         continue;
@@ -392,6 +407,7 @@ export async function runProgressiveAnalysis(
 
       if (isHit) {
         hitsArr[maskIdx]++;
+        historyMap[maskIdx * totalDates + dateIdx] = 1; // Mark as hit
 
         // ── Día / mes ────────────────────────────────────────────────────
         if (nextDow >= 0) {
@@ -435,6 +451,7 @@ export async function runProgressiveAnalysis(
 
       } else {
         missesArr[maskIdx]++;
+        historyMap[maskIdx * totalDates + dateIdx] = 0; // Mark as miss
         currentMissStreak[maskIdx]++;
 
         // Totales día/mes para no-aciertos también (para hit rate relativo)
