@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/bot.js",
-    "dev": "tsx --env-file=.env src/bot.ts"
+    "dev": "tsx --env-file=.env src/bot.ts",
+    "test:data": "tsx src/test-data-timing.ts"
   },
   "keywords": [
     "telegram",

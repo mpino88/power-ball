@@ -2761,24 +2761,61 @@ async function pdfToText(pdfBuffer: ArrayBuffer): Promise<string> {
   return pageTexts.join("\n");
 }
 
+/**
+ * Determina el momento esperado de la última actualización de datos en Florida.
+ * Horarios de sorteos: Midday (13:30 sorteo, ~14:05 PDF), Evening (21:45 sorteo, ~20:20 PDF? wait!)
+ * El usuario indica 14:05 y 20:20.
+ */
+function getLastExpectedUpdateTime(): number {
+  const floridaNowStr = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
+  const floridaNow = new Date(floridaNowStr);
+  
+  const t1405 = new Date(floridaNow);
+  t1405.setHours(14, 5, 0, 0);
+  
+  const t2020 = new Date(floridaNow);
+  t2020.setHours(20, 20, 0, 0);
+
+  if (floridaNow.getTime() >= t2020.getTime()) return t2020.getTime();
+  if (floridaNow.getTime() >= t1405.getTime()) return t1405.getTime();
+  
+  // Si es antes de las 14:05, el último fue a las 20:20 del día anterior
+  const yesterday2020 = new Date(t2020);
+  yesterday2020.setDate(yesterday2020.getDate() - 1);
+  return yesterday2020.getTime();
+}
+
 let cachedP3Map: DateDrawsMap | null = null;
 let cachedP4Map: DateDrawsMapP4 | null = null;
+let lastP3Fetch = 0;
+let lastP4Fetch = 0;
 
 async function getP3Map(): Promise<DateDrawsMap> {
-  if (cachedP3Map) return cachedP3Map;
+  const leut = getLastExpectedUpdateTime();
+  // Refrescar si no hay caché O si el último fetch es anterior al LEUT
+  if (cachedP3Map && lastP3Fetch >= leut) return cachedP3Map;
+  
+  console.log(`[data] Refrescando mapa P3 (Evento: ${lastP3Fetch < leut ? "Nuevo sorteo disponible" : "Inicio"})`);
   const res = await fetch(P3_PDF_URL, { headers: { "User-Agent": "FloridaLotteryBot/1.0" } });
   if (!res.ok) throw new Error(`P3 PDF ${res.status}`);
-  const txt = await pdfToText(await res.arrayBuffer());
+  const data = await res.arrayBuffer();
+  const txt = await pdfToText(data);
   cachedP3Map = parseP3FullText(txt);
+  lastP3Fetch = Date.now();
   return cachedP3Map;
 }
 
 async function getP4Map(): Promise<DateDrawsMapP4> {
-  if (cachedP4Map) return cachedP4Map;
+  const leut = getLastExpectedUpdateTime();
+  if (cachedP4Map && lastP4Fetch >= leut) return cachedP4Map;
+  
+  console.log(`[data] Refrescando mapa P4 (Evento: ${lastP4Fetch < leut ? "Nuevo sorteo disponible" : "Inicio"})`);
   const res = await fetch(P4_PDF_URL, { headers: { "User-Agent": "FloridaLotteryBot/1.0" } });
   if (!res.ok) throw new Error(`P4 PDF ${res.status}`);
-  const txt = await pdfToText(await res.arrayBuffer());
+  const data = await res.arrayBuffer();
+  const txt = await pdfToText(data);
   cachedP4Map = parseP4FullText(txt);
+  lastP4Fetch = Date.now();
   return cachedP4Map;
 }
 
