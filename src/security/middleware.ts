@@ -322,14 +322,17 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
             const ownerId = options.getOwnerId();
             const contactMsg = ownerId ? `\n\n[📩 Contactar al administrador](tg://user?id=${ownerId})` : "";
             
-            let message = `✅ Solicitud registrada (*${pending.planName}* — ${tLabel}). El administrador revisará tu acceso.`;
-            
-            if (pmLines.length > 0) {
-              message += `\n\n💳 *Formas de pago disponibles:*\n` + pmLines.join("\n\n");
-            }
-            message += contactMsg;
-
+            const message = `✅ Solicitud registrada (*${pending.planName}* — ${tLabel}). El administrador revisará tu acceso.` + contactMsg;
             await ctx.reply(message, { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } });
+
+            if (pms.length > 0) {
+              const pmText = `💳 *Formas de pago disponibles:*\n\n` + pmLines.join("\n\n");
+              const pmKb = new InlineKeyboard();
+              for (const pm of pms) {
+                pmKb.copyText(`📋 ${pm.description}`, pm.account).row();
+              }
+              await ctx.reply(pmText, { parse_mode: "Markdown", reply_markup: pmKb });
+            }
           }
         } catch {
           await ctx.reply("No se pudo guardar la solicitud. Intenta más tarde o contacta al administrador.", {
