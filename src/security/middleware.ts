@@ -8,6 +8,7 @@ import { InlineKeyboard, Keyboard } from "grammy";
 import type { getOwnerId as GetOwnerId, isAllowed as IsAllowed } from "../user-config.js";
 import { addPlanRequest, assignPlanToUser, getPlanTemporality, hasUsedTrial, isPlanExpired, refreshIfStale, saveLead } from "../user-config.js";
 import { getPlans, getPriceForTemporality, REGULAR_TEMPORALITIES, TEMPORALITIES, TRIAL_TEMPORALITIES } from "../plans.js";
+import { getPaymentMethods, loadPaymentMethodsFromSheet } from "../payment-methods.js";
 
 export type BuildMainKeyboard = (userId: number | undefined) => InlineKeyboard;
 
@@ -311,10 +312,24 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
           } else {
             await addPlanRequest(uid, pending.planName, { name, phone, temporality: pending.temporality });
             const tLabel = TEMPORALITIES.find((t) => t.id === pending.temporality)?.label ?? pending.temporality;
-            await ctx.reply(
-              `✅ Solicitud registrada (*${pending.planName}* — ${tLabel}). El administrador revisará tu acceso.`,
-              { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } }
+            
+            await loadPaymentMethodsFromSheet();
+            const pms = getPaymentMethods();
+            const pmLines = pms.map((p, i) =>
+              `${i + 1}. *${p.description}*\n   💳 \`${p.account}\` · 🌐 ${p.currency}`
             );
+            
+            const ownerId = options.getOwnerId();
+            const contactMsg = ownerId ? `\n\n[📩 Contactar al administrador](tg://user?id=${ownerId})` : "";
+            
+            let message = `✅ Solicitud registrada (*${pending.planName}* — ${tLabel}). El administrador revisará tu acceso.`;
+            
+            if (pmLines.length > 0) {
+              message += `\n\n💳 *Formas de pago disponibles:*\n` + pmLines.join("\n\n");
+            }
+            message += contactMsg;
+
+            await ctx.reply(message, { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } });
           }
         } catch {
           await ctx.reply("No se pudo guardar la solicitud. Intenta más tarde o contacta al administrador.", {
