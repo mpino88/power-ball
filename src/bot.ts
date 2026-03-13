@@ -2066,16 +2066,17 @@ bot.on("callback_query:data", async (ctx) => {
       });
       return;
     }
+  }
 
-    // ── Exportar JSON crudo a on-demand ───────────────────────────────────────
-    if (data === "prog_export_json" && ctx.from && isOwner(ctx.from.id)) {
-      const userId = ctx.from.id;
-      const buffer = progressiveResultCache.get(userId);
-      if (!buffer) {
-        await ctx.answerCallbackQuery({ text: "⚠️ Caché de análisis expirado o no encontrado.", show_alert: true });
-        return;
-      }
-      await ctx.answerCallbackQuery({ text: "Generando archivo JSON..." });
+  // ── Exportar JSON crudo a on-demand ───────────────────────────────────────
+  if (data === "prog_export_json" && ctx.from && isOwner(ctx.from.id)) {
+    const userId = ctx.from.id;
+    const buffer = progressiveResultCache.get(userId);
+    if (!buffer) {
+      await ctx.answerCallbackQuery({ text: "⚠️ Caché de análisis expirado o no encontrado.", show_alert: true });
+      return;
+    }
+    await ctx.answerCallbackQuery({ text: "Generando archivo JSON..." });
       await ctx.replyWithDocument(new InputFile(buffer, `progressive_analysis_export.json`), {
         caption: "📊 *Exportación datos crudos (JSON)* para Integración CRM/Dashboard",
         parse_mode: "Markdown",
@@ -2488,7 +2489,6 @@ bot.on("callback_query:data", async (ctx) => {
       const msg = (err as Error).message ?? "";
       if (!msg.includes("message is not modified")) console.error("Error en callback_query:", err);
     }
-  }
 });
 
 bot.command("cancel", async (ctx) => {
