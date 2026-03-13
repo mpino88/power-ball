@@ -3334,6 +3334,12 @@ async function main(): Promise<void> {
     initCustomMenus();
   }
   for (const m of getCustomMenus()) {
+    // Protección BLISS: Si el ID ya está registrado con un handler real (ej: est_grupos, est_individuales,
+    // o cualquier corredor de estrategia estándar), NO lo sobreescribimos.
+    if (getExtraMenuStatus(m.id) === "implemented") {
+      continue;
+    }
+
     if (hasStrategyRunner(m.id)) {
       registerExtraMenu(
         m.id,
