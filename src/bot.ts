@@ -2428,8 +2428,8 @@ bot.on("callback_query:data", async (ctx) => {
     await ctx.answerCallbackQuery();
     try {
       await ctx.editMessageText(
-        "🃏 *Charada Cubana*\n\nSistema de numerología popular cubano: 100 números \\(00–99\\) con sus significados tradicionales\\.\n\nElige una opción:",
-        { parse_mode: "MarkdownV2", reply_markup: buildCharadaMenuKeyboard() }
+        "🃏 *Charada Cubana*\n\nSistema de numerología popular cubano: 100 números (00–99) con sus significados tradicionales.\n\nElige una opción:",
+        { parse_mode: "Markdown", reply_markup: buildCharadaMenuKeyboard() }
       );
     } catch (e) {
       if (!(e as Error).message?.includes("message is not modified")) console.error(e);
@@ -2460,12 +2460,12 @@ bot.on("callback_query:data", async (ctx) => {
       await ctx.editMessageText(
         "🔍 *Buscar en la Charada Cubana*\n\n" +
         "✍️ *¿Qué quieres buscar?*\n\n" +
-        "• Escribe un *número* del `00` al `99` para ver su significado\\.\n" +
-        "• Escribe una *palabra* \\(ej\\: `gato`, `agua`, `muerte`\\) para encontrar todas las entradas que la contengan\\.\n\n" +
+        "• Escribe un *número* del `00` al `99` para ver su significado.\n" +
+        "• Escribe una *palabra* (ej: `gato`, `agua`, `muerte`) para encontrar todas las entradas que la contengan.\n\n" +
         "👇 *Escribe tu búsqueda aquí abajo y pulsa Enviar*\n\n" +
-        "_Usa /cancel para cancelar\\._",
+        "_Usa /cancel para cancelar._",
         {
-          parse_mode: "MarkdownV2",
+          parse_mode: "Markdown",
           reply_markup: new InlineKeyboard().text("❌ Cancelar búsqueda", "charada_cancel_search"),
         }
       );
@@ -2480,8 +2480,8 @@ bot.on("callback_query:data", async (ctx) => {
     await ctx.answerCallbackQuery({ text: "Búsqueda cancelada" });
     try {
       await ctx.editMessageText(
-        "🃏 *Charada Cubana*\n\nSistema de numerología popular cubano\\.\n\nElige una opción:",
-        { parse_mode: "MarkdownV2", reply_markup: buildCharadaMenuKeyboard() }
+        "🃏 *Charada Cubana*\n\nSistema de numerología popular cubano.\n\nElige una opción:",
+        { parse_mode: "Markdown", reply_markup: buildCharadaMenuKeyboard() }
       );
     } catch (e) {
       if (!(e as Error).message?.includes("message is not modified")) console.error(e);
@@ -2763,8 +2763,8 @@ bot.on("message:text", async (ctx) => {
     waitingTestingDate.delete(userId);
     if (!/^\d{1,2}\/\d{1,2}\/\d{2}$/.test(text)) {
       await ctx.reply(
-        "❌ Formato inválido. Usa *MM/DD/YY* \\(ej: `12/31/25`\\)\\. Vuelve a intentarlo desde el menú\\.",
-        { parse_mode: "MarkdownV2", reply_markup: buildMainKb(userId) }
+        "❌ Formato inválido. Usa *MM/DD/YY* (ej: `12/31/25`). Vuelve a intentarlo desde el menú.",
+        { parse_mode: "Markdown", reply_markup: buildMainKb(userId) }
       );
       return;
     }
@@ -3333,9 +3333,15 @@ async function main(): Promise<void> {
   } else {
     initCustomMenus();
   }
+  // 1. Sembrar estrategias integradas (NUEVO ORDEN: antes del registro de handlers)
+  // Esto asegura que BUILT_IN_STRATEGIES existan en el catálogo antes de iterar
+  await seedBuiltInStrategies(getOwnerIds());
+
+  // 2. Registrar menús base del sistema (ej: est_grupos)
+  registerExtraMenus();
+
   for (const m of getCustomMenus()) {
-    // Protección BLISS: Si el ID ya está registrado con un handler real (ej: est_grupos, est_individuales,
-    // o cualquier corredor de estrategia estándar), NO lo sobreescribimos.
+    // Protección BLISS: Si el ID ya está registrado con un handler real (ej: est_grupos), NO lo sobreescribimos.
     if (getExtraMenuStatus(m.id) === "implemented") {
       continue;
     }
@@ -3375,9 +3381,6 @@ async function main(): Promise<void> {
   if (getStorageBackend() !== "sheet") {
     initPlans();
   }
-
-  // Seed built-in strategies and assign them to the owner before registering menus.
-  await seedBuiltInStrategies(getOwnerIds());
 
   await normalizeUserMenusAfterLoad();
   await bot.init();

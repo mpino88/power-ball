@@ -133,7 +133,18 @@ function resolveExtraMenuId(validIds: string[], idFragment: string): string {
 
 /** Escapa caracteres especiales de Telegram Markdown (legacy) para evitar "can't parse entities". */
 export function escapeMd(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/_/g, "\\_").replace(/\*/g, "\\*").replace(/`/g, "\\`").replace(/\[/g, "\\[");
+  if (!s) return "";
+  // En Markdown (legacy), los caracteres que suelen romper son: _, *, `, [
+  // También escapamos ] y ( ) para mayor seguridad en descripciones largas.
+  return s
+    .replace(/\\/g, "\\\\")
+    .replace(/_/g, "\\_")
+    .replace(/\*/g, "\\*")
+    .replace(/`/g, "\\`")
+    .replace(/\[/g, "\\[")
+    .replace(/\]/g, "\\]")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)");
 }
 
 export interface SecurityCallbackDeps {

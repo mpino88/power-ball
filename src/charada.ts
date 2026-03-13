@@ -124,11 +124,15 @@ function numLabel(n: number): string {
   return String(n).padStart(2, "0");
 }
 
+import { escapeMd } from "./security/callbacks.js";
+
 /** Formatea una entrada de la charada como una línea de texto. */
 export function formatEntryLine(num: number): string {
   const keywords = CHARADA[num];
   if (!keywords || keywords.length === 0) return `*${numLabel(num)}* · _(sin datos)_`;
-  return `*${numLabel(num)}* · ${keywords.join(", ")}`;
+  // Escapamos los keywords para evitar errores en Markdown (legacy)
+  const escapedKeywords = keywords.map((k) => escapeMd(k));
+  return `*${numLabel(num)}* · ${escapedKeywords.join(", ")}`;
 }
 
 /** Construye el mensaje del catálogo paginado (page 0-indexed). */

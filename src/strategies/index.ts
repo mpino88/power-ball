@@ -54,6 +54,8 @@ export function buildStrategyContextKeyboard(menuId: string): InlineKeyboard {
   return s ? s.buildContextKeyboard(menuId) : new InlineKeyboard().text("◀️ Volver", "volver");
 }
 
+import { escapeMd } from "../security/callbacks.js";
+
 export function getStrategyContextMessage(menuId: string, menuLabel: string): string {
   const s = registry.get(menuId);
   if (!s) return `Estrategia _${menuId}_ no encontrada.`;
@@ -61,7 +63,9 @@ export function getStrategyContextMessage(menuId: string, menuLabel: string): st
   if (!s.description) return base;
   const firstBreak = base.indexOf("\n\n");
   if (firstBreak === -1) return base;
-  return base.slice(0, firstBreak) + `\n\n_${s.description}_` + base.slice(firstBreak);
+  // Escapamos la descripción para evitar errores de parseo en Telegram (Legacy Markdown)
+  const escapedDesc = escapeMd(s.description);
+  return base.slice(0, firstBreak) + `\n\n_${escapedDesc}_` + base.slice(firstBreak);
 }
 
 export async function runStrategy(
