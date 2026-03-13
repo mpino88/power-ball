@@ -142,9 +142,7 @@ export function escapeMd(s: string): string {
     .replace(/\*/g, "\\*")
     .replace(/`/g, "\\`")
     .replace(/\[/g, "\\[")
-    .replace(/\]/g, "\\]")
-    .replace(/\(/g, "\\(")
-    .replace(/\)/g, "\\)");
+    .replace(/\]/g, "\\]");
 }
 
 export interface SecurityCallbackDeps {

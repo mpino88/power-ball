@@ -49,7 +49,7 @@ export function initCustomMenusFromSheet(rows: {
   subscribers?: number;
 }[]): void {
   customMenus = rows.map((r) => ({
-    id: r.id,
+    id: r.id.trim(),
     label: r.titulo,
     description: r.descripcion?.trim() || undefined,
     status: "pendiente" as const,
