@@ -142,6 +142,15 @@ import {
   PROGRESSIVE_MAX_STRATEGIES,
   type ProgressiveSession,
 } from "./strategies/progressive.js";
+import {
+  runBallBackTest,
+  buildBBTContextKeyboard,
+  buildBBTStrategyKeyboard,
+  buildBBTStrategyMessage,
+  buildBBTResultMessage,
+  BBT_MAX_STRATEGIES,
+  type BallBackTestSession,
+} from "./strategies/ball-backtest.js";
 import type { StrategyContext } from "./strategies/types.js";
 import {
   buildCharadaMenuKeyboard,
@@ -254,6 +263,11 @@ const adivinanzaLastNums = new Map<number, number[]>();
 /** Sesiones activas del Análisis Progresivo (solo para el dueño del bot). */
 const progressiveSessionMap = new Map<number, ProgressiveSession>();
 const progressiveResultCache = new Map<number, Buffer>();
+
+const bbtSessionMap = new Map<number, BallBackTestSession>();
+const bbtResultCache = new Map<number, Buffer>();
+const waitingBBTDate = new Map<number, "start" | "end">();
+const waitingBBTTopN = new Set<number>();
 
 /**
  * Retorna los IDs de estrategias seleccionables en Consenso Multi-Estrategia
@@ -1781,6 +1795,253 @@ bot.on("callback_query:data", async (ctx) => {
     }
   }
 
+  // ── BallBackTest (Fusión Dinámica) ──────────────────────────────────────────
+  if (data.startsWith("bbt_") && ctx.from && isOwner(ctx.from.id)) {
+    const userId = ctx.from.id;
+
+    if (data === "bbt_cancel") {
+      bbtSessionMap.delete(userId);
+      waitingBBTDate.delete(userId);
+      waitingBBTTopN.delete(userId);
+      await ctx.answerCallbackQuery({ text: "Cancelado" });
+      const current = await loadTestingCutoffDate();
+      try {
+        await ctx.editMessageText(buildTestingMessage(current), {
+          parse_mode: "Markdown",
+          reply_markup: buildTestingKeyboard(current),
+        });
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
+
+    if (data === "bbt_open") {
+      bbtSessionMap.set(userId, { step: "context", selectedIds: new Set() });
+      await ctx.answerCallbackQuery();
+      try {
+        await ctx.editMessageText(
+          `🚀 *BallBackTest — Auditoría Forense*\n\n` +
+          `_Crea fusiones dinámicas: múltiples estrategias, rango de fechas extendido y Top N variable._\n\n` +
+          `Elige el tipo de datos a analizar:`,
+          { parse_mode: "Markdown", reply_markup: buildBBTContextKeyboard() }
+        );
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
+
+    // Selección de contexto
+    if (data.startsWith("bbt_ctx_")) {
+      const parts = data.slice("bbt_ctx_".length).split("_");
+      const mapSource = parts[0] as "p3" | "p4";
+      const period = parts[1] as "m" | "e";
+      if ((mapSource === "p3" || mapSource === "p4") && (period === "m" || period === "e")) {
+        const session = bbtSessionMap.get(userId) ?? { step: "context" as const, selectedIds: new Set<string>() };
+        session.context = { mapSource, period };
+        session.step = "start_date";
+        bbtSessionMap.set(userId, session);
+        waitingBBTDate.set(userId, "start");
+
+        const mapLabel = mapSource === "p3" ? "P3 (Fijos)" : "P4 (Corridos)";
+        const periodLabel = period === "m" ? "☀️ Mediodía" : "🌙 Noche";
+        await ctx.answerCallbackQuery();
+        try {
+          await ctx.editMessageText(
+            `🚀 *BallBackTest* — ${mapLabel} · ${periodLabel}\n\n` +
+            `📅 Ingresa la *fecha inicial* del análisis.\n` +
+            `Formato: \`MM/DD/YY\` _(ej: \`01/01/25\`)_\n\n` +
+            `_/cancel para cancelar._`,
+            {
+              parse_mode: "Markdown",
+              reply_markup: new InlineKeyboard().text("❌ Cancelar", "bbt_cancel"),
+            }
+          );
+        } catch (e) {
+          if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+        }
+        return;
+      }
+    }
+
+    // Toggle de estrategia
+    if (data.startsWith("bbt_st_")) {
+      const session = bbtSessionMap.get(userId);
+      if (session?.step === "strategies") {
+        const stratId = data.slice("bbt_st_".length);
+        const selectableIds = getAccessibleStrategyIds(userId);
+        if (selectableIds.includes(stratId)) {
+          if (session.selectedIds.has(stratId)) {
+            session.selectedIds.delete(stratId);
+          } else {
+            session.selectedIds.add(stratId);
+          }
+          await ctx.answerCallbackQuery();
+          const msg = buildBBTStrategyMessage(
+            session.selectedIds,
+            session.context!,
+            selectableIds,
+            session.startDate!,
+            session.endDate!
+          );
+          const kb = buildBBTStrategyKeyboard(session.selectedIds, selectableIds);
+          try {
+            await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
+          } catch (e) {
+            if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+          }
+          return;
+        }
+      }
+    }
+
+    // Solicitar Top N
+    if (data === "bbt_run") {
+      const session = bbtSessionMap.get(userId);
+      if (session?.step === "strategies") {
+        if (session.selectedIds.size === 0) {
+          await ctx.answerCallbackQuery({ text: "⚠️ Selecciona al menos 1 estrategia" });
+          return;
+        }
+        session.step = "top_n";
+        waitingBBTTopN.add(userId);
+        await ctx.answerCallbackQuery();
+        try {
+          await ctx.editMessageText(
+            `🚀 *BallBackTest — Configuración del Top N*\n\n` +
+            `¿Cuántos candidatos por sorteo quieres analizar?\n\n` +
+            `• Envía un número (ej: \`5\`, \`10\`, \`20\`)\n` +
+            `• Envía \`0\` para analizar *TODOS* los candidatos que devuelvan las estrategias.\n\n` +
+            `_/cancel para cancelar._`,
+            {
+              parse_mode: "Markdown",
+              reply_markup: new InlineKeyboard().text("❌ Cancelar", "bbt_cancel"),
+            }
+          );
+        } catch (e) {
+          if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+        }
+        return;
+      }
+    }
+
+    // Confirmación y ejecución
+    if (data === "bbt_confirm") {
+      const session = bbtSessionMap.get(userId);
+      if (session?.step === "confirm" && session.context && session.startDate && session.endDate) {
+        const strategyIds = [...session.selectedIds];
+        const topN = session.topN ?? 0;
+
+        await ctx.answerCallbackQuery({ text: "Iniciando BallBackTest…" });
+        bbtSessionMap.delete(userId);
+
+        const isP3 = session.context.mapSource === "p3";
+        const fullMap = isP3 ? await getP3Map() : (await getP4Map()) as DateDrawsMap;
+        const capped = session.estimatedDates ?? 0;
+
+        const mapLabelShort = session.context.mapSource === "p3" ? "P3" : "P4";
+        const periodLabelShort = session.context.period === "m" ? "☀️" : "🌙";
+        const nStrats = Math.min(strategyIds.length, BBT_MAX_STRATEGIES);
+        const numCombos = (1 << nStrats) - 1;
+
+        // Mensaje de progreso
+        const progressMsg = await ctx.reply(
+          `⏳ *Ejecutando BallBackTest…* ${mapLabelShort} · ${periodLabelShort}\n\n` +
+          `📅 \`${session.startDate}\` → \`${session.endDate}\`\n` +
+          `🎯 Top N: ${topN === 0 ? "TODOS" : topN}\n` +
+          `🔢 ${capped} fechas · ${nStrats} strats · ${numCombos} combos\n\n` +
+          `▓░░░░░░░░░  0%`,
+          { parse_mode: "Markdown" }
+        );
+
+        const chatId = progressMsg.chat.id;
+        const msgId = progressMsg.message_id;
+
+        const bar = (pct: number): string => {
+          const filled = Math.floor(pct / 10);
+          return "▓".repeat(filled) + "░".repeat(10 - filled) + `  ${pct}%`;
+        };
+
+        try {
+          const result = await runBallBackTest({
+            startDate: session.startDate,
+            endDate: session.endDate,
+            strategyIds,
+            context: session.context,
+            topN: topN,
+            fullMap,
+            getStrategy,
+            onProgress: async (pct) => {
+              try {
+                await ctx.api.editMessageText(
+                  chatId,
+                  msgId,
+                  `⏳ *Ejecutando BallBackTest…* ${mapLabelShort} · ${periodLabelShort}\n\n` +
+                  `📅 \`${session.startDate}\` → \`${session.endDate}\`\n` +
+                  `🎯 Top N: ${topN === 0 ? "TODOS" : topN}\n\n` +
+                  `${bar(pct)}`,
+                  { parse_mode: "Markdown" }
+                );
+              } catch { /* ignore rate limits */ }
+            },
+          });
+
+          const strategyLabels = strategyIds.map((id) => STRATEGY_LABEL_BY_ID.get(id) ?? id);
+          const resultMsg = buildBBTResultMessage(result, strategyLabels);
+
+          await ctx.api.editMessageText(chatId, msgId, resultMsg, { parse_mode: "Markdown" });
+
+          // Exportación JSON para BBT
+          if (isOwner(userId)) {
+            try {
+              const jsonStr = JSON.stringify(result, null, 2);
+              const buffer = Buffer.from(jsonStr, "utf-8");
+              bbtResultCache.set(userId, buffer);
+              
+              const keyboard = new InlineKeyboard()
+                .text("📥 Exportar JSON (Audit)", "bbt_export_json")
+                .row()
+                .text("🏠 Inicio", "volver");
+                
+              await ctx.api.editMessageText(chatId, msgId, resultMsg, { 
+                parse_mode: "Markdown", 
+                reply_markup: keyboard 
+              });
+            } catch (jsonErr) {
+              console.error("[bbt] Error caching JSON:", jsonErr);
+              await ctx.api.editMessageText(chatId, msgId, resultMsg, { parse_mode: "Markdown" });
+            }
+          }
+        } catch (err) {
+          console.error("[bbt] Error:", err);
+          try {
+            await ctx.api.editMessageText(
+              chatId, msgId, "❌ Error al ejecutar BallBackTest. Revisa los logs."
+            );
+          } catch { /* ignore */ }
+        }
+        return;
+      }
+    }
+  }
+
+  // ── BallBackTest JSON Export ─────────────────────────────────────────────
+  if (data === "bbt_export_json" && ctx.from && isOwner(ctx.from.id)) {
+    const userId = ctx.from.id;
+    const buffer = bbtResultCache.get(userId);
+    if (!buffer) {
+      await ctx.answerCallbackQuery({ text: "⚠️ Caché expirado.", show_alert: true });
+      return;
+    }
+    await ctx.answerCallbackQuery({ text: "Generando reporte forense..." });
+    await ctx.replyWithDocument(new InputFile(buffer, `ballbacktest_audit_report.json`), {
+      caption: "🚀 *Reporte de Auditoría Forense (JSON)*\nBallBackTest Dynamics Fusion",
+      parse_mode: "Markdown",
+    });
+    return;
+  }
+
   // ── Exportar JSON crudo a on-demand ───────────────────────────────────────
   if (data === "prog_export_json" && ctx.from && isOwner(ctx.from.id)) {
     const userId = ctx.from.id;
@@ -2312,6 +2573,124 @@ bot.on("message:text", async (ctx) => {
       await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: kb });
       return;
     }
+  }
+
+  // ── BallBackTest: entrada de fechas inicial/final (solo dueño) ─────────────
+  if (userId && isOwner(userId) && waitingBBTDate.has(userId)) {
+    const which = waitingBBTDate.get(userId)!;
+    const session = bbtSessionMap.get(userId);
+
+    if (!session) {
+      waitingBBTDate.delete(userId);
+      return;
+    }
+
+    const key = parseUserDateToMMDDYY(text);
+    if (!key) {
+      await ctx.reply(
+        "❌ Fecha no válida. Usa el formato `MM/DD/YY` (ej: `01/01/25`).",
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    if (which === "start") {
+      session.startDate = key;
+      session.step = "end_date";
+      waitingBBTDate.set(userId, "end");
+
+      const mapSource = session.context!.mapSource;
+      const period = session.context!.period;
+      const mapLabel = mapSource === "p3" ? "P3 (Fijos)" : "P4 (Corridos)";
+      const periodLabel = period === "m" ? "☀️ Mediodía" : "🌙 Noche";
+
+      await ctx.reply(
+        `🚀 *BallBackTest* — ${mapLabel} · ${periodLabel}\n\n` +
+        `✅ Fecha inicial: \`${key}\`\n\n` +
+        `📅 Ahora ingresa la *fecha final* del análisis.\n` +
+        `Formato: \`MM/DD/YY\` _(ej: \`12/31/25\`)_\n\n` +
+        `_/cancel para cancelar._`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: new InlineKeyboard().text("❌ Cancelar", "bbt_cancel"),
+        }
+      );
+      return;
+    }
+
+    if (which === "end") {
+      const startDt = mmddyyToDate(session.startDate!);
+      const endDt = mmddyyToDate(key);
+
+      if (!startDt || !endDt || endDt <= startDt) {
+        await ctx.reply(
+          `❌ La fecha final debe ser posterior a la inicial (\`${session.startDate}\`).`,
+          { parse_mode: "Markdown" }
+        );
+        return;
+      }
+
+      session.endDate = key;
+      session.step = "strategies";
+      waitingBBTDate.delete(userId);
+
+      const selectableIds = getAccessibleStrategyIds(userId);
+      const msg = buildBBTStrategyMessage(
+        session.selectedIds,
+        session.context!,
+        selectableIds,
+        session.startDate!,
+        session.endDate!
+      );
+      const kb = buildBBTStrategyKeyboard(session.selectedIds, selectableIds);
+      await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: kb });
+      return;
+    }
+  }
+
+  // ── BallBackTest: entrada de Top N (solo dueño) ───────────────────────────
+  if (userId && isOwner(userId) && waitingBBTTopN.has(userId)) {
+    const session = bbtSessionMap.get(userId);
+    if (!session || session.step !== "top_n") {
+      waitingBBTTopN.delete(userId);
+      return;
+    }
+
+    const n = parseInt(text, 10);
+    if (isNaN(n) || n < 0) {
+      await ctx.reply("❌ Ingresa un número válido (0 o mayor).");
+      return;
+    }
+
+    session.topN = n;
+    session.step = "confirm";
+    waitingBBTTopN.delete(userId);
+
+    // Estimar fechas
+    const isP3 = session.context!.mapSource === "p3";
+    const fullMap = isP3 ? await getP3Map() : (await getP4Map()) as DateDrawsMap;
+    const estimated = countDatesInRange(fullMap, session.startDate!, session.endDate!, session.context!);
+    session.estimatedDates = estimated;
+
+    const mapLabel = session.context!.mapSource === "p3" ? "P3" : "P4";
+    const periodLabel = session.context!.period === "m" ? "☀️ Mediodía" : "🌙 Noche";
+    const numCombos = (1 << Math.min(session.selectedIds.size, BBT_MAX_STRATEGIES)) - 1;
+
+    await ctx.reply(
+      `🚀 *BallBackTest — Confirmación*\n\n` +
+      `📅 *Rango:* \`${session.startDate}\` → \`${session.endDate}\`\n` +
+      `🎯 *Top N:* ${n === 0 ? "TODOS" : n}\n` +
+      `🔢 *Sorteos:* ${estimated}\n` +
+      `📊 *Estrategias:* ${session.selectedIds.size} (${numCombos} combos)\n\n` +
+      `¿Confirmas el inicio de la auditoría forense?`,
+      {
+        parse_mode: "Markdown",
+        reply_markup: new InlineKeyboard()
+          .text("✅ Confirmar", "bbt_confirm")
+          .text("❌ Cancelar", "bbt_cancel"),
+      }
+    );
+    return;
   }
 
   // ── Testing: entrada de fecha de corte (solo dueño) ───────────────────────

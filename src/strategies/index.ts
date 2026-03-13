@@ -23,9 +23,12 @@ import { cycleDetector } from "./cycle-detector.js";
 import { streakAnalysis } from "./streak-analysis.js";
 import { bayesianScore } from "./bayesian-score.js";
 import { unodostres } from "./unodostres.js";
+import * as ballBacktest from "./ball-backtest.js";
 
 export type { DateDrawsMap, StrategyContext, StrategyDefinition, StrategyMapSource, StrategyPeriod } from "./types.js";
 export { parseStrategyContextCallback, STRATEGY_CONTEXT_CALLBACK_PREFIX } from "./types.js";
+export { ballBacktest };
+export { buildBBTStrategyMessage, buildBBTResultMessage } from "./ball-backtest.js";
 
 export interface StrategyDeps {
   getP3Map: () => Promise<DateDrawsMap>;
