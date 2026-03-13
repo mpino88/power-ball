@@ -107,13 +107,17 @@ function menuCb(prefix: string, uid: number, menuId: string): string {
 export function buildUserMenusKeyboard(
   uid: number,
   getExtraMenuIds: typeof GetExtraMenuIds,
-  getExtraMenuLabel: typeof GetExtraMenuLabel
+  getExtraMenuLabel: typeof GetExtraMenuLabel,
+  requestedMenuIds: string[] = []
 ): InlineKeyboard {
   const kb = new InlineKeyboard();
   const addPrefix = "admin_menu_add_";
   const removePrefix = "admin_menu_remove_";
   for (const menuId of getExtraMenuIds()) {
+    const label = getExtraMenuLabel(menuId) ?? menuId;
+    const isRequested = requestedMenuIds.includes(menuId);
     kb
+      .text(`${isRequested ? "🔔 " : ""}${label}`, menuCb(addPrefix, uid, menuId))
       .text("➕", menuCb(addPrefix, uid, menuId))
       .text("➖", menuCb(removePrefix, uid, menuId))
       .row();

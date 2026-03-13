@@ -1817,14 +1817,14 @@ bot.on("callback_query:data", async (ctx) => {
     }
 
     if (data === "bbt_open") {
-      bbtSessionMap.set(userId, { step: "context", selectedIds: new Set() });
+      bbtSessionMap.set(userId, { step: "context", selectedContexts: new Set(), selectedIds: new Set() });
       await ctx.answerCallbackQuery();
       try {
         await ctx.editMessageText(
           `🚀 *BallBackTest — Auditoría Forense*\n\n` +
           `_Crea fusiones dinámicas: múltiples estrategias, rango de fechas extendido y Top N variable._\n\n` +
-          `Elige el tipo de datos a analizar:`,
-          { parse_mode: "Markdown", reply_markup: buildBBTContextKeyboard() }
+          `Elige los tipos de datos a analizar (Selección Múltiple):`,
+          { parse_mode: "Markdown", reply_markup: buildBBTContextKeyboard(new Set()) }
         );
       } catch (e) {
         if (!(e as Error).message?.includes("message is not modified")) console.error(e);
@@ -1832,24 +1832,22 @@ bot.on("callback_query:data", async (ctx) => {
       return;
     }
 
-    // Selección de contexto
+    // Selección de contexto (Toggle)
     if (data.startsWith("bbt_ctx_")) {
-      const parts = data.slice("bbt_ctx_".length).split("_");
-      const mapSource = parts[0] as "p3" | "p4";
-      const period = parts[1] as "m" | "e";
-      if ((mapSource === "p3" || mapSource === "p4") && (period === "m" || period === "e")) {
-        const session = bbtSessionMap.get(userId) ?? { step: "context" as const, selectedIds: new Set<string>() };
-        session.context = { mapSource, period };
-        session.step = "start_date";
-        bbtSessionMap.set(userId, session);
-        waitingBBTDate.set(userId, "start");
+      const session = bbtSessionMap.get(userId);
+      if (!session || session.step !== "context") return;
 
-        const mapLabel = mapSource === "p3" ? "P3 (Fijos)" : "P4 (Corridos)";
-        const periodLabel = period === "m" ? "☀️ Mediodía" : "🌙 Noche";
+      if (data === "bbt_ctx_done") {
+        if (session.selectedContexts.size === 0) {
+          await ctx.answerCallbackQuery({ text: "⚠️ Selecciona al menos un contexto" });
+          return;
+        }
+        session.step = "start_date";
+        waitingBBTDate.set(userId, "start");
         await ctx.answerCallbackQuery();
         try {
           await ctx.editMessageText(
-            `🚀 *BallBackTest* — ${mapLabel} · ${periodLabel}\n\n` +
+            `🚀 *BallBackTest* — ${session.selectedContexts.size} contextos seleccionados\n\n` +
             `📅 Ingresa la *fecha inicial* del análisis.\n` +
             `Formato: \`MM/DD/YY\` _(ej: \`01/01/25\`)_\n\n` +
             `_/cancel para cancelar._`,
@@ -1863,6 +1861,22 @@ bot.on("callback_query:data", async (ctx) => {
         }
         return;
       }
+
+      const ctxId = data.slice("bbt_ctx_".length);
+      if (session.selectedContexts.has(ctxId)) {
+        session.selectedContexts.delete(ctxId);
+      } else {
+        session.selectedContexts.add(ctxId);
+      }
+      await ctx.answerCallbackQuery();
+      try {
+        await ctx.editMessageReplyMarkup({
+          reply_markup: buildBBTContextKeyboard(session.selectedContexts)
+        });
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
     }
 
     // Toggle de estrategia
@@ -1878,9 +1892,13 @@ bot.on("callback_query:data", async (ctx) => {
             session.selectedIds.add(stratId);
           }
           await ctx.answerCallbackQuery();
+          const contextsArray: StrategyContext[] = [...session.selectedContexts].map(cid => {
+            const [ms, p] = cid.split("_");
+            return { mapSource: ms as "p3"|"p4", period: p as "m"|"e" };
+          });
           const msg = buildBBTStrategyMessage(
             session.selectedIds,
-            session.context!,
+            contextsArray,
             selectableIds,
             session.startDate!,
             session.endDate!
@@ -1929,25 +1947,42 @@ bot.on("callback_query:data", async (ctx) => {
     // Confirmación y ejecución
     if (data === "bbt_confirm") {
       const session = bbtSessionMap.get(userId);
-      if (session?.step === "confirm" && session.context && session.startDate && session.endDate) {
+      if (session?.step === "confirm" && session.selectedContexts.size > 0 && session.startDate && session.endDate) {
         const strategyIds = [...session.selectedIds];
         const topN = session.topN ?? 0;
 
         await ctx.answerCallbackQuery({ text: "Iniciando BallBackTest…" });
         bbtSessionMap.delete(userId);
 
-        const isP3 = session.context.mapSource === "p3";
-        const fullMap = isP3 ? await getP3Map() : (await getP4Map()) as DateDrawsMap;
-        const capped = session.estimatedDates ?? 0;
+        const contexts: StrategyContext[] = [...session.selectedContexts].map(cid => {
+          const [ms, p] = cid.split("_");
+          return { mapSource: ms as "p3"|"p4", period: p as "m"|"e" };
+        });
 
-        const mapLabelShort = session.context.mapSource === "p3" ? "P3" : "P4";
-        const periodLabelShort = session.context.period === "m" ? "☀️" : "🌙";
+        const hasP3 = contexts.some(c => c.mapSource === "p3");
+        const hasP4 = contexts.some(c => c.mapSource === "p4");
+        
+        let fullMap: DateDrawsMap = {};
+        if (hasP3 && hasP4) {
+          const [p3, p4] = await Promise.all([getP3Map(), getP4Map()]);
+          const allDates = new Set([...Object.keys(p3), ...Object.keys(p4)]);
+          for (const d of allDates) {
+            fullMap[d] = { ...(p3[d] || {}), ...(p4[d] || {}) };
+          }
+        } else if (hasP3) {
+          fullMap = await getP3Map();
+        } else {
+          fullMap = (await getP4Map()) as DateDrawsMap;
+        }
+
+        const capped = session.estimatedDates ?? 0;
+        const ctxHeader = contexts.map(c => `${c.mapSource.toUpperCase()}${c.period.toUpperCase()}`).join("+");
         const nStrats = Math.min(strategyIds.length, BBT_MAX_STRATEGIES);
         const numCombos = (1 << nStrats) - 1;
 
         // Mensaje de progreso
         const progressMsg = await ctx.reply(
-          `⏳ *Ejecutando BallBackTest…* ${mapLabelShort} · ${periodLabelShort}\n\n` +
+          `⏳ *Ejecutando BallBackTest…* [${ctxHeader}]\n\n` +
           `📅 \`${session.startDate}\` → \`${session.endDate}\`\n` +
           `🎯 Top N: ${topN === 0 ? "TODOS" : topN}\n` +
           `🔢 ${capped} fechas · ${nStrats} strats · ${numCombos} combos\n\n` +
@@ -1968,7 +2003,7 @@ bot.on("callback_query:data", async (ctx) => {
             startDate: session.startDate,
             endDate: session.endDate,
             strategyIds,
-            context: session.context,
+            contexts: contexts,
             topN: topN,
             fullMap,
             getStrategy,
@@ -1977,7 +2012,7 @@ bot.on("callback_query:data", async (ctx) => {
                 await ctx.api.editMessageText(
                   chatId,
                   msgId,
-                  `⏳ *Ejecutando BallBackTest…* ${mapLabelShort} · ${periodLabelShort}\n\n` +
+                  `⏳ *Ejecutando BallBackTest…* [${ctxHeader}]\n\n` +
                   `📅 \`${session.startDate}\` → \`${session.endDate}\`\n` +
                   `🎯 Top N: ${topN === 0 ? "TODOS" : topN}\n\n` +
                   `${bar(pct)}`,
@@ -1989,8 +2024,6 @@ bot.on("callback_query:data", async (ctx) => {
 
           const strategyLabels = strategyIds.map((id) => STRATEGY_LABEL_BY_ID.get(id) ?? id);
           const resultMsg = buildBBTResultMessage(result, strategyLabels);
-
-          await ctx.api.editMessageText(chatId, msgId, resultMsg, { parse_mode: "Markdown" });
 
           // Exportación JSON para BBT
           if (isOwner(userId)) {
@@ -2012,6 +2045,8 @@ bot.on("callback_query:data", async (ctx) => {
               console.error("[bbt] Error caching JSON:", jsonErr);
               await ctx.api.editMessageText(chatId, msgId, resultMsg, { parse_mode: "Markdown" });
             }
+          } else {
+            await ctx.api.editMessageText(chatId, msgId, resultMsg, { parse_mode: "Markdown" });
           }
         } catch (err) {
           console.error("[bbt] Error:", err);
@@ -2024,8 +2059,6 @@ bot.on("callback_query:data", async (ctx) => {
         return;
       }
     }
-  }
-
   // ── BallBackTest JSON Export ─────────────────────────────────────────────
   if (data === "bbt_export_json" && ctx.from && isOwner(ctx.from.id)) {
     const userId = ctx.from.id;
@@ -2458,6 +2491,7 @@ bot.on("callback_query:data", async (ctx) => {
     const msg = (err as Error).message ?? "";
     if (!msg.includes("message is not modified")) console.error("Error en callback_query:", err);
   }
+}
 });
 
 bot.command("cancel", async (ctx) => {
@@ -2599,13 +2633,10 @@ bot.on("message:text", async (ctx) => {
       session.step = "end_date";
       waitingBBTDate.set(userId, "end");
 
-      const mapSource = session.context!.mapSource;
-      const period = session.context!.period;
-      const mapLabel = mapSource === "p3" ? "P3 (Fijos)" : "P4 (Corridos)";
-      const periodLabel = period === "m" ? "☀️ Mediodía" : "🌙 Noche";
+      const ctxHeader = [...session.selectedContexts].map(c => c.toUpperCase().replace("_", "")).join("+");
 
       await ctx.reply(
-        `🚀 *BallBackTest* — ${mapLabel} · ${periodLabel}\n\n` +
+        `🚀 *BallBackTest* — ${ctxHeader}\n\n` +
         `✅ Fecha inicial: \`${key}\`\n\n` +
         `📅 Ahora ingresa la *fecha final* del análisis.\n` +
         `Formato: \`MM/DD/YY\` _(ej: \`12/31/25\`)_\n\n` +
@@ -2634,10 +2665,15 @@ bot.on("message:text", async (ctx) => {
       session.step = "strategies";
       waitingBBTDate.delete(userId);
 
+      const contextsArray: StrategyContext[] = [...session.selectedContexts].map(cid => {
+        const [ms, p] = cid.split("_");
+        return { mapSource: ms as "p3"|"p4", period: p as "m"|"e" };
+      });
+
       const selectableIds = getAccessibleStrategyIds(userId);
       const msg = buildBBTStrategyMessage(
         session.selectedIds,
-        session.context!,
+        contextsArray,
         selectableIds,
         session.startDate!,
         session.endDate!
@@ -2666,19 +2702,35 @@ bot.on("message:text", async (ctx) => {
     session.step = "confirm";
     waitingBBTTopN.delete(userId);
 
-    // Estimar fechas
-    const isP3 = session.context!.mapSource === "p3";
-    const fullMap = isP3 ? await getP3Map() : (await getP4Map()) as DateDrawsMap;
-    const estimated = countDatesInRange(fullMap, session.startDate!, session.endDate!, session.context!);
+    // Estimar fechas (Logic fusionada para P3+P4)
+    const hasP3 = [...session.selectedContexts].some(c => c.startsWith("p3"));
+    const hasP4 = [...session.selectedContexts].some(c => c.startsWith("p4"));
+    
+    let fullMap: DateDrawsMap = {};
+    if (hasP3 && hasP4) {
+      const [p3, p4] = await Promise.all([getP3Map(), getP4Map()]);
+      const allDates = new Set([...Object.keys(p3), ...Object.keys(p4)]);
+      for (const d of allDates) fullMap[d] = { ...(p3[d] || {}), ...(p4[d] || {}) };
+    } else if (hasP3) {
+      fullMap = await getP3Map();
+    } else {
+      fullMap = (await getP4Map()) as DateDrawsMap;
+    }
+
+    const firstCtxId = [...session.selectedContexts][0]!;
+    const [ms, p] = firstCtxId.split("_");
+    const firstCtx = { mapSource: ms as "p3"|"p4", period: p as "m"|"e" };
+    
+    const estimated = countDatesInRange(fullMap, session.startDate!, session.endDate!, firstCtx);
     session.estimatedDates = estimated;
 
-    const mapLabel = session.context!.mapSource === "p3" ? "P3" : "P4";
-    const periodLabel = session.context!.period === "m" ? "☀️ Mediodía" : "🌙 Noche";
+    const ctxHeader = [...session.selectedContexts].map(c => c.toUpperCase().replace("_", "")).join("+");
     const numCombos = (1 << Math.min(session.selectedIds.size, BBT_MAX_STRATEGIES)) - 1;
 
     await ctx.reply(
       `🚀 *BallBackTest — Confirmación*\n\n` +
       `📅 *Rango:* \`${session.startDate}\` → \`${session.endDate}\`\n` +
+      `📦 *Contextos:* \`${ctxHeader}\`\n` +
       `🎯 *Top N:* ${n === 0 ? "TODOS" : n}\n` +
       `🔢 *Sorteos:* ${estimated}\n` +
       `📊 *Estrategias:* ${session.selectedIds.size} (${numCombos} combos)\n\n` +

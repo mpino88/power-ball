@@ -60,11 +60,11 @@ export interface BBTSubset {
 
 export interface BBTForensicEntry {
   x: string;         // Fecha
-  type: string;      // Contexto (MD/N)
-  y_hit: boolean;    // Acierto
-  z_miss: boolean;   // Fallo
+  type: string;      // Contextos (ej: "P3M+P4N")
+  y_hit: boolean;    // Acierto en cualquiera
+  z_miss: boolean;   // Fallo en todos
   d_convergence: number; // Grado de convergencia (0-1)
-  winning: number[]; // Números ganadores
+  winning: number[]; // Todos los números ganadores combinados
   candidates: number[]; // Top candidatos generados
 }
 
@@ -73,7 +73,7 @@ export interface BBTResult {
   bestBySize: BBTSubset[];
   forensicLog: BBTForensicEntry[];
   totalSubsets: number;
-  context: StrategyContext;
+  contexts: StrategyContext[];
   startDate: string;
   endDate: string;
   datesAnalyzed: number;
@@ -86,7 +86,7 @@ export interface BBTParams {
   startDate: string;
   endDate: string;
   strategyIds: string[];
-  context: StrategyContext;
+  contexts: StrategyContext[];
   topN: number;
   fullMap: DateDrawsMap;
   getStrategy: (id: string) => StrategyDefinition | undefined;
@@ -95,7 +95,7 @@ export interface BBTParams {
 
 export interface BallBackTestSession {
   step: "context" | "start_date" | "end_date" | "strategies" | "top_n" | "confirm";
-  context?: StrategyContext;
+  selectedContexts: Set<string>; // "p3_m", "p4_e", etc.
   startDate?: string;
   endDate?: string;
   selectedIds: Set<string>;
@@ -127,7 +127,7 @@ function buildSubsetMeta(n: number): SubsetMeta[] {
 }
 
 export async function runBallBackTest(params: BBTParams): Promise<BBTResult> {
-  const { startDate, endDate, strategyIds, context, topN, fullMap, getStrategy, onProgress } = params;
+  const { startDate, endDate, strategyIds, contexts, topN, fullMap, getStrategy, onProgress } = params;
 
   const n = Math.min(strategyIds.length, BBT_MAX_STRATEGIES);
   const effectiveIds = strategyIds.slice(0, n);
@@ -138,18 +138,22 @@ export async function runBallBackTest(params: BBTParams): Promise<BBTResult> {
 
   const startTime = startDt.getTime();
   const endTime = endDt.getTime();
-  const minLen = context.mapSource === "p4" ? 4 : 3;
-
   const keyTimeArr = Object.keys(fullMap).map((k) => ({ k, t: mmddyyToDate(k)?.getTime() ?? 0 }));
   keyTimeArr.sort((a, b) => a.t - b.t);
   const allMapKeys = keyTimeArr.map((x) => x.k);
   const keyTime = new Map<string, number>(keyTimeArr.map((x) => [x.k, x.t]));
 
-  const allValidDates = allMapKeys.filter((d) => {
-    const draw = fullMap[d]?.[context.period];
+  // Un día es válido si tiene al menos un sorteo en cualquiera de los contextos seleccionados
+  const validateDraw = (date: string, ctx: StrategyContext) => {
+    const draw = fullMap[date]?.[ctx.period];
+    const minLen = ctx.mapSource === "p4" ? 4 : 3;
     return draw != null && draw.length >= minLen;
-  });
-  const validIdx = new Map<string, number>(allValidDates.map((d, i) => [d, i]));
+  };
+
+  const allValidDates = allMapKeys.filter((d: string) => 
+    contexts.some(c => validateDraw(d, c))
+  );
+  const validIdx = new Map<string, number>(allValidDates.map((d: string, i: number) => [d, i]));
 
   const datesInRange = allValidDates.filter((d) => {
     const t = keyTime.get(d)!;
@@ -215,76 +219,118 @@ export async function runBallBackTest(params: BBTParams): Promise<BBTResult> {
       continue;
     }
 
-    const nextDraw = fullMap[nextDateStr]?.[context.period];
-    if (!nextDraw || nextDraw.length < minLen) {
+    // Obtener ganadores combinados de todos los contextos activos para este sorteo
+    const actualsSet = new Set<number>();
+    const activeContextNames: string[] = [];
+
+    for (const ctx of contexts) {
+      const draw = fullMap[nextDateStr]?.[ctx.period];
+      const minLen = ctx.mapSource === "p4" ? 4 : 3;
+      if (draw && draw.length >= minLen) {
+        twoDigitNumbers(draw, ctx.mapSource).forEach(n => actualsSet.add(n));
+        activeContextNames.push(`${ctx.mapSource.toUpperCase()}${ctx.period.toUpperCase()}`);
+      }
+    }
+
+    if (actualsSet.size === 0) {
       for (let i = 0; i < totalSubsets; i++) skippedArr[i]++;
       continue;
     }
 
-    const actuals = twoDigitNumbers(nextDraw, context.mapSource);
-    const actualsSet = new Set(actuals);
+    const actuals = Array.from(actualsSet);
     const nextDt = mmddyyToDate(nextDateStr);
     const nextDow = nextDt ? nextDt.getDay() : -1;
     const nextMonth = nextDt ? nextDt.getMonth() : -1;
 
-    const strategyCandidates = await Promise.all(
-      effectiveIds.map(async (id) => {
-        const strat = getStrategy(id);
-        if (!strat?.getCandidates) return null;
-        try { return await strat.getCandidates(context, filteredMap); } catch { return null; }
+    // Acumular candidatos de todas las estrategias en TODOS los contextos
+    // Formato: contextIdx -> strategyIdx -> candidates
+    const multiContextCandidates = await Promise.all(
+      contexts.map(async (ctx) => {
+        return Promise.all(
+          effectiveIds.map(async (id) => {
+            const strat = getStrategy(id);
+            if (!strat?.getCandidates) return null;
+            try { return await strat.getCandidates(ctx, filteredMap); } catch { return null; }
+          })
+        );
       })
     );
 
+    // Identificar qué contextos tienen sorteo real para este "nextDate"
+    const activeContexts = contexts.filter(ctx => {
+      const d = fullMap[nextDateStr]?.[ctx.period];
+      return d && d.length >= (ctx.mapSource === "p4" ? 4 : 3);
+    });
+
+    if (activeContexts.length === 0) {
+      for (let i = 0; i < totalSubsets; i++) skippedArr[i]++;
+      continue;
+    }
+
+    const allWinningNums = new Set<number>();
+    activeContexts.forEach(ctx => {
+      const d = fullMap[nextDateStr]![ctx.period]!;
+      twoDigitNumbers(d, ctx.mapSource).forEach(n => allWinningNums.add(n));
+    });
+
     const forensicEntry: BBTForensicEntry = {
       x: nextDateStr,
-      type: context.period === "m" ? "☀️" : "🌙",
+      type: activeContexts.map(c => `${c.mapSource.toUpperCase()}${c.period.toUpperCase()}`).join("+"),
       y_hit: false,
       z_miss: true,
       d_convergence: 0,
-      winning: actuals,
+      winning: [...allWinningNums],
       candidates: []
     };
 
     for (let maskIdx = 0; maskIdx < totalSubsets; maskIdx++) {
       const meta = subsetMeta[maskIdx]!;
       usedNums.length = 0;
-      for (const idx of meta.indices) {
-        const cands = strategyCandidates[idx];
-        if (!cands) continue;
-        for (const num of cands) {
-          if (voteCounts[num] === 0) usedNums.push(num);
-          voteCounts[num]++;
+
+      // Reset vote counts
+      // (voteCounts ya fue inicializado a 0 en el constructor del motor anterior)
+
+      // Votación Multi-Contexto: Sumamos votos de cada estrategia en cada contexto seleccionado
+      for (const stratIdx of meta.indices) {
+        for (let ctxIdx = 0; ctxIdx < contexts.length; ctxIdx++) {
+          const cands = multiContextCandidates[ctxIdx]![stratIdx];
+          if (!cands) continue;
+          for (const num of cands) {
+            if (voteCounts[num] === 0) usedNums.push(num);
+            voteCounts[num]++;
+          }
         }
       }
 
       if (usedNums.length === 0) {
         skippedArr[maskIdx]++;
-        for (const num of usedNums) voteCounts[num] = 0;
         continue;
       }
 
       usedNums.sort((a, b) => voteCounts[b]! - voteCounts[a]!);
       let isHit = false;
       const limit = (topN === 0) ? usedNums.length : Math.min(topN, usedNums.length);
-      
+
       // Para el log forense, usamos el set COMPLETO de estrategias (último subset)
       if (maskIdx === totalSubsets - 1) {
         forensicEntry.candidates = usedNums.slice(0, Math.min(20, usedNums.length));
         let totalVotes = 0;
         for (let j = 0; j < limit; j++) totalVotes += voteCounts[usedNums[j]!]!;
-        forensicEntry.d_convergence = totalVotes / (limit * meta.indices.length || 1);
+        // Normalización: votos / (registros * contextos * estrategias_en_subset)
+        forensicEntry.d_convergence = totalVotes / (limit * contexts.length * meta.indices.length || 1);
       }
 
       for (let j = 0; j < limit && !isHit; j++) {
-        if (actualsSet.has(usedNums[j]!)) isHit = true;
+        if (allWinningNums.has(usedNums[j]!)) isHit = true;
       }
-      
+
       if (maskIdx === totalSubsets - 1) {
         forensicEntry.y_hit = isHit;
         forensicEntry.z_miss = !isHit;
         forensicLog.push(forensicEntry);
       }
 
+      // Cleanup voteCounts for next mask
       for (const num of usedNums) voteCounts[num] = 0;
 
       if (isHit) {
@@ -396,18 +442,30 @@ export async function runBallBackTest(params: BBTParams): Promise<BBTResult> {
     }
   }
 
-  return { topSubsets, bestBySize, forensicLog, totalSubsets, context, startDate, endDate, datesAnalyzed: cutoffDates.length, totalInRange, topN, strategyCount: n };
+  return { topSubsets, bestBySize, forensicLog, totalSubsets, contexts, startDate, endDate, datesAnalyzed: cutoffDates.length, totalInRange, topN, strategyCount: n };
 }
 
 // ── Mensajes y teclados ───────────────────────────────────────────────────────
 
-export function buildBBTContextKeyboard(): InlineKeyboard {
-  return new InlineKeyboard()
-    .text("📌 P3 Fijos · ☀️ Mediodía", "bbt_ctx_p3_m").row()
-    .text("📌 P3 Fijos · 🌙 Noche",     "bbt_ctx_p3_e").row()
-    .text("🎲 P4 Corridos · ☀️ Mediodía","bbt_ctx_p4_m").row()
-    .text("🎲 P4 Corridos · 🌙 Noche",  "bbt_ctx_p4_e").row()
-    .text("❌ Cancelar", "bbt_cancel");
+export function buildBBTContextKeyboard(selected?: Set<string>): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  const options = [
+    { id: "p3_m", label: "📌 P3 Fijos · ☀️ Mediodía" },
+    { id: "p3_e", label: "📌 P3 Fijos · 🌙 Noche" },
+    { id: "p4_m", label: "🎲 P4 Corridos · ☀️ Mediodía" },
+    { id: "p4_e", label: "🎲 P4 Corridos · 🌙 Noche" },
+  ];
+
+  for (const opt of options) {
+    const isSelected = selected?.has(opt.id);
+    kb.text(`${isSelected ? "✅" : "⬜"} ${opt.label}`, `bbt_ctx_${opt.id}`).row();
+  }
+
+  if (selected && selected.size > 0) {
+    kb.text(`▶️ Continuar (${selected.size} seleccionados)`, "bbt_ctx_done").row();
+  }
+  kb.text("❌ Cancelar", "bbt_cancel");
+  return kb;
 }
 
 export function buildBBTStrategyKeyboard(selectedIds: Set<string>, selectableIds: string[]): InlineKeyboard {
@@ -428,18 +486,17 @@ export function buildBBTStrategyKeyboard(selectedIds: Set<string>, selectableIds
 
 export function buildBBTStrategyMessage(
   selectedIds: Set<string>,
-  context: StrategyContext,
+  contexts: StrategyContext[],
   selectableIds: string[],
   startDate: string,
   endDate: string
 ): string {
-  const mapLabel = context.mapSource === "p3" ? "P3 (Fijos)" : "P4 (Corridos)";
-  const periodLabel = context.period === "m" ? "☀️ Mediodía" : "🌙 Noche";
+  const ctxLabels = contexts.map(c => `${c.mapSource.toUpperCase()}${c.period.toUpperCase()}`).join(", ");
   const n = Math.min(selectedIds.size, BBT_MAX_STRATEGIES);
   const numCombos = (1 << n) - 1;
 
   let msg = `🚀 *BallBackTest — Configuración*\n\n`;
-  msg += `📊 *Contexto:* ${mapLabel} · ${periodLabel}\n`;
+  msg += `📊 *Contextos:* ${ctxLabels}\n`;
   msg += `📅 *Rango:* \`${startDate}\` → \`${endDate}\`\n\n`;
   msg += `✅ *Seleccionadas:* ${selectedIds.size} estrategias\n`;
   msg += `🔢 *Combinaciones:* ${numCombos}\n\n`;
@@ -448,12 +505,11 @@ export function buildBBTStrategyMessage(
 }
 
 export function buildBBTResultMessage(result: BBTResult, strategyLabels: string[]): string {
-  const { topSubsets, bestBySize, context, startDate, endDate, datesAnalyzed, totalInRange, topN } = result;
-  const mapLabel = context.mapSource === "p3" ? "P3" : "P4";
-  const periodLabel = context.period === "m" ? "☀️" : "🌙";
+  const { topSubsets, bestBySize, contexts, startDate, endDate, datesAnalyzed, totalInRange, topN } = result;
+  const ctxHeader = contexts.map(c => `${c.mapSource.toUpperCase()}${c.period.toUpperCase()}`).join("+");
 
   let msg = `🏆 *RESULTADOS BALLBACKTEST*\n`;
-  msg += `📊 ${mapLabel} ${periodLabel} | \`${startDate}\` → \`${endDate}\`\n`;
+  msg += `📊 [${ctxHeader}] | \`${startDate}\` → \`${endDate}\`\n`;
   msg += `🔢 Analizadas: *${datesAnalyzed}* / ${totalInRange} fechas\n`;
   msg += `🎯 Top N candidatos: *${topN === 0 ? "TODOS" : topN}*\n\n`;
 

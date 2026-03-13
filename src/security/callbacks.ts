@@ -43,6 +43,7 @@ import {
 import {
   getExtraMenuIds,
   getExtraMenuLabel,
+  getExtraMenuDescription,
   getExtraMenuStatus,
   unregisterExtraMenu,
   updateExtraMenuLabel,
@@ -266,7 +267,9 @@ export async function handleSecurityCallback(
     keyboard.text("◀️ Volver a Administrar", "security_open");
   } else if (/^admin_menus_\d+$/.test(data)) {
     const uid = parseInt(data.replace("admin_menus_", ""), 10);
-    keyboard = buildUserMenusKeyboard(uid, getExtraMenuIds, getExtraMenuLabel);
+    const requests = await getStrategyRequests();
+    const userRequestedIds = requests.filter((r) => r.userId === uid).map((r) => r.menuId);
+    keyboard = buildUserMenusKeyboard(uid, getExtraMenuIds, getExtraMenuLabel, userRequestedIds);
     const extra = getExtraMenus(uid);
     const ids = getExtraMenuIds();
     const menuList = ids
@@ -287,7 +290,9 @@ export async function handleSecurityCallback(
     } else {
       const extra = getExtraMenus(uid);
       if (!extra.includes(menuId)) await toggleExtraMenu(uid, menuId);
-      keyboard = buildUserMenusKeyboard(uid, getExtraMenuIds, getExtraMenuLabel);
+      const requests = await getStrategyRequests();
+      const userRequestedIds = requests.filter((r) => r.userId === uid).map((r) => r.menuId);
+      keyboard = buildUserMenusKeyboard(uid, getExtraMenuIds, getExtraMenuLabel, userRequestedIds);
       const extraAfter = getExtraMenus(uid);
       const menuList = validIds
         .map((id) => `• ${getExtraMenuLabel(id) ?? id}${extraAfter.includes(id) ? " ✓" : ""}`)
@@ -308,7 +313,9 @@ export async function handleSecurityCallback(
     } else {
       const extra = getExtraMenus(uid);
       if (extra.includes(menuId)) await toggleExtraMenu(uid, menuId);
-      keyboard = buildUserMenusKeyboard(uid, getExtraMenuIds, getExtraMenuLabel);
+      const requests = await getStrategyRequests();
+      const userRequestedIds = requests.filter((r) => r.userId === uid).map((r) => r.menuId);
+      keyboard = buildUserMenusKeyboard(uid, getExtraMenuIds, getExtraMenuLabel, userRequestedIds);
       const extraAfter = getExtraMenus(uid);
       const menuList = validIds
         .map((id) => `• ${getExtraMenuLabel(id) ?? id}${extraAfter.includes(id) ? " ✓" : ""}`)
@@ -983,6 +990,26 @@ export async function handleEstrategiasUserCallback(
       keyboard = new InlineKeyboard().text("◀️ Volver a Tienda", "estrategias_tienda");
       return { result, keyboard };
     }
+
+    const label = deps.getExtraMenuLabel(menuId) ?? menuId;
+    const desc = getExtraMenuDescription(menuId) || "Sin descripción disponible.";
+    const price = getMenuPrice(menuId) || "10";
+
+    result = `🛒 *Detalles de la Estrategia*\n\n` +
+             `*Nombre:* ${escapeMd(label)}\n` +
+             `*Precio:* ${escapeMd(price)}\n\n` +
+             `*Descripción:* \n_${escapeMd(desc)}_\n\n` +
+             `¿Deseas enviar la solicitud de acceso?`;
+
+    keyboard = new InlineKeyboard()
+      .text("✅ Enviar Solicitud", `estrategias_confirm_request_${menuId}`)
+      .row()
+      .text("◀️ Volver a Tienda", "estrategias_tienda");
+    return { result, keyboard };
+  }
+
+  if (data.startsWith("estrategias_confirm_request_")) {
+    const menuId = data.replace("estrategias_confirm_request_", "");
     const added = await addStrategyRequest(userId, menuId);
     const label = deps.getExtraMenuLabel(menuId) ?? menuId;
     result = added
