@@ -102,6 +102,7 @@ import {
   MAIN_MENU_MESSAGE,
   type GameMenu,
 } from "./menus/index.js";
+import type { StrategyContext } from "./strategies/types.js";
 import {
   buildStrategyContextKeyboard,
   getStrategyContextMessage,
@@ -147,7 +148,6 @@ import {
   BBT_MAX_STRATEGIES,
   type BallBackTestSession,
 } from "./strategies/ball-backtest.js";
-import type { StrategyContext } from "./strategies/types.js";
 import {
   buildCharadaMenuKeyboard,
   buildCharadaCatalogKeyboard,
@@ -341,6 +341,98 @@ async function getStrategyP4Map(userId?: number): Promise<DateDrawsMap> {
 
 /** Timeout (ms) para ejecutar una estrategia; evita "Calculando…" infinito si getP3Map/run tardan. */
 const STRATEGY_RUN_TIMEOUT_MS = 90_000;
+
+/** Contexto por defecto al abrir una estrategia desde el menú (P3 Mediodía). */
+const DEFAULT_STRATEGY_CONTEXT: StrategyContext = { mapSource: "p3", period: "m" };
+
+/**
+ * Ejecuta la estrategia con el contexto dado y muestra la salida en el mensaje.
+ * Usado tanto al pulsar "menu_<id>" (un clic = salida) como al pulsar "strat_<id>_p3_m" (cambio de base/período).
+ */
+async function runStrategyAndShowResult(
+  ctx: {
+    from?: { id: number };
+    answerCallbackQuery: (opts?: { text?: string }) => Promise<unknown>;
+    editMessageText: (text: string, opts?: object) => Promise<unknown>;
+    reply?: (text: string, opts?: object) => Promise<unknown>;
+  },
+  menuId: string,
+  context: StrategyContext
+): Promise<void> {
+  await ctx.answerCallbackQuery({ text: "Calculando…" });
+  const userId = ctx.from?.id;
+  try {
+    const runPromise = runStrategy(menuId, context, {
+      getP3Map: () => getStrategyP3Map(userId),
+      getP4Map: () => getStrategyP4Map(userId),
+    });
+    const timeoutPromise = new Promise<string>((_, reject) => {
+      setTimeout(() => reject(new Error("STRATEGY_TIMEOUT")), STRATEGY_RUN_TIMEOUT_MS);
+    });
+    let msg = await Promise.race([runPromise, timeoutPromise]);
+    if (userId && !isOwner(userId)) {
+      const creatorId = getMenuCreatedBy(menuId) ?? getOwnerId();
+      if (creatorId) msg += `\n\n[📩 Contactar al dueño](tg://user?id=${creatorId})`;
+    }
+    const stratDef = getStrategy(menuId);
+    const resultKb = new InlineKeyboard();
+    if (stratDef?.getCandidates) {
+      resultKb.text("🎰 Hacer parlé", buildParleCallback(menuId, context.mapSource, context.period));
+      if (userId && isOwner(userId)) {
+        resultKb.text("🔮 Crear Adivinanza", buildAdivinanzaStratCallback(menuId, context.mapSource, context.period));
+      }
+      resultKb.row();
+    }
+    const pre = `${STRATEGY_CONTEXT_CALLBACK_PREFIX}${menuId}_`;
+    resultKb
+      .text("P3 (Fijos) ☀️ Mediodía", `${pre}p3_m`)
+      .text("P3 (Fijos) 🌙 Noche", `${pre}p3_e`)
+      .row()
+      .text("P4 (Corridos) ☀️ Mediodía", `${pre}p4_m`)
+      .text("P4 (Corridos) 🌙 Noche", `${pre}p4_e`)
+      .row();
+    resultKb.text("🔄 Probar otra estrategia", ESTRATEGIAS_OPEN_CALLBACK).row();
+    resultKb.text("🏠 Volver al Inicio", "volver");
+    await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: resultKb });
+    if (userId && isOwner(userId) && ctx.reply) {
+      const cutoff = await getTestingCutoff();
+      if (cutoff) {
+        try {
+          const isP3 = context.mapSource === "p3";
+          const fullMap = isP3 ? await getP3Map() : (await getP4Map()) as DateDrawsMap;
+          const nextResult = getNextDrawResult(fullMap, cutoff, context.period, context.mapSource);
+          if (nextResult) {
+            const strat = getStrategy(menuId);
+            let candidates: number[] = [];
+            if (strat?.getCandidates) {
+              const filteredMap = isP3 ? await getStrategyP3Map(userId) : await getStrategyP4Map(userId);
+              candidates = await strat.getCandidates(context, filteredMap);
+            }
+            const verifBlock = buildTestingVerificationBlock(nextResult, candidates, context);
+            await ctx.reply(verifBlock, { parse_mode: "Markdown" });
+          }
+        } catch (verifErr) {
+          console.error("[testing-verif] Error al generar verificación:", verifErr);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Error runStrategy:", err);
+    await ctx.answerCallbackQuery({ text: "Error al calcular" }).catch(() => {});
+    const isTimeout = err instanceof Error && err.message === "STRATEGY_TIMEOUT";
+    const userMsg = isTimeout
+      ? "⏱ _La estrategia tardó demasiado._ Vuelve a intentarlo o prueba más tarde."
+      : "❌ Error al ejecutar la estrategia. Vuelve a intentarlo.";
+    try {
+      await ctx.editMessageText(userMsg, {
+        parse_mode: isTimeout ? "Markdown" : undefined,
+        reply_markup: buildMainKb(ctx.from?.id),
+      });
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+  }
+}
 
 /** Caché del scrape "Hoy" (10 min); solo la fuente PDF se precarga, el resto es on demand. */
 const HOY_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -1338,98 +1430,7 @@ bot.on("callback_query:data", async (ctx) => {
       }
 
       if (hasStrategyRunner(parsed.menuId)) {
-        await ctx.answerCallbackQuery({ text: "Calculando…" });
-        try {
-          const userId = ctx.from?.id;
-          const runPromise = runStrategy(parsed.menuId, parsed.context, {
-            getP3Map: () => getStrategyP3Map(userId),
-            getP4Map: () => getStrategyP4Map(userId),
-          });
-          const timeoutPromise = new Promise<string>((_, reject) => {
-            setTimeout(() => reject(new Error("STRATEGY_TIMEOUT")), STRATEGY_RUN_TIMEOUT_MS);
-          });
-          let msg = await Promise.race([runPromise, timeoutPromise]);
-          // Link "Contactar al dueño" de la estrategia (solo para usuarios no-owner)
-          if (userId && !isOwner(userId)) {
-            const creatorId = getMenuCreatedBy(parsed.menuId) ?? getOwnerId();
-            if (creatorId) {
-              msg += `\n\n[📩 Contactar al dueño](tg://user?id=${creatorId})`;
-            }
-          }
-          // Botones post-estrategia: "Hacer parlé" y "Crear Adivinanza" (dueño)
-          const stratDef = getStrategy(parsed.menuId);
-          const resultKb = new InlineKeyboard();
-          if (stratDef?.getCandidates) {
-            const parleCallback = buildParleCallback(
-              parsed.menuId,
-              parsed.context.mapSource,
-              parsed.context.period
-            );
-            resultKb.text("🎰 Hacer parlé", parleCallback);
-            if (userId && isOwner(userId)) {
-              const adivinanzaCallback = buildAdivinanzaStratCallback(
-                parsed.menuId,
-                parsed.context.mapSource,
-                parsed.context.period
-              );
-              resultKb.text("🔮 Crear Adivinanza", adivinanzaCallback);
-            }
-            resultKb.row();
-          }
-          // Botones de cambio rápido de base y período
-          const pre = `${STRATEGY_CONTEXT_CALLBACK_PREFIX}${parsed.menuId}_`;
-          resultKb
-            .text("P3 (Fijos) ☀️ Mediodía", `${pre}p3_m`)
-            .text("P3 (Fijos) 🌙 Noche", `${pre}p3_e`)
-            .row()
-            .text("P4 (Corridos) ☀️ Mediodía", `${pre}p4_m`)
-            .text("P4 (Corridos) 🌙 Noche", `${pre}p4_e`)
-            .row();
-          resultKb.text("🔄 Probar otra estrategia", ESTRATEGIAS_OPEN_CALLBACK).row();
-          resultKb.text("🏠 Volver al Inicio", "volver");
-          await ctx.editMessageText(msg, {
-            parse_mode: "Markdown",
-            reply_markup: resultKb,
-          });
-          // Verificación testing: solo para dueños con fecha de corte activa
-          if (userId && isOwner(userId)) {
-            const cutoff = await getTestingCutoff();
-            if (cutoff) {
-              try {
-                const isP3 = parsed.context.mapSource === "p3";
-                const fullMap = isP3 ? await getP3Map() : (await getP4Map()) as DateDrawsMap;
-                const nextResult = getNextDrawResult(fullMap, cutoff, parsed.context.period, parsed.context.mapSource);
-                if (nextResult) {
-                  const strat = getStrategy(parsed.menuId);
-                  let candidates: number[] = [];
-                  if (strat?.getCandidates) {
-                    const filteredMap = isP3 ? await getStrategyP3Map(userId) : await getStrategyP4Map(userId);
-                    candidates = await strat.getCandidates(parsed.context, filteredMap);
-                  }
-                  const verifBlock = buildTestingVerificationBlock(nextResult, candidates, parsed.context);
-                  await ctx.reply(verifBlock, { parse_mode: "Markdown" });
-                }
-              } catch (verifErr) {
-                console.error("[testing-verif] Error al generar verificación:", verifErr);
-              }
-            }
-          }
-        } catch (err) {
-          console.error("Error runStrategy:", err);
-          await ctx.answerCallbackQuery({ text: "Error al calcular" }).catch(() => { });
-          const isTimeout = err instanceof Error && err.message === "STRATEGY_TIMEOUT";
-          const userMsg = isTimeout
-            ? "⏱ _La estrategia tardó demasiado._ Vuelve a intentarlo o prueba más tarde."
-            : "❌ Error al ejecutar la estrategia. Vuelve a intentarlo.";
-          try {
-            await ctx.editMessageText(userMsg, {
-              parse_mode: isTimeout ? "Markdown" : undefined,
-              reply_markup: buildMainKb(ctx.from?.id),
-            });
-          } catch (e) {
-            if (!(e as Error).message?.includes("message is not modified")) console.error(e);
-          }
-        }
+        await runStrategyAndShowResult(ctx, parsed.menuId, parsed.context);
         return;
       }
     }
@@ -2381,20 +2382,7 @@ bot.on("callback_query:data", async (ctx) => {
       }
       // Fallback: estrategia con runner pero sin handler registrado (ej. arranque sin Sheet)
       if (hasStrategyRunner(menuId)) {
-        await ctx.answerCallbackQuery();
-        const label = getExtraMenuLabel(menuId) ?? menuId;
-        let text = getStrategyContextMessage(menuId, label);
-        const viewerUserId = ctx.from?.id;
-        if (viewerUserId && !isOwner(viewerUserId)) {
-          const creatorId = getMenuCreatedBy(menuId) ?? getOwnerId();
-          if (creatorId) text += `\n\n[📩 Contactar al dueño](tg://user?id=${creatorId})`;
-        }
-        const keyboard = buildStrategyContextKeyboard(menuId);
-        try {
-          await ctx.editMessageText(text, { parse_mode: "Markdown", reply_markup: keyboard });
-        } catch (e) {
-          if (!(e as Error).message?.includes("message is not modified")) console.error(e);
-        }
+        await runStrategyAndShowResult(ctx, menuId, DEFAULT_STRATEGY_CONTEXT);
         return;
       }
     }
@@ -3347,23 +3335,7 @@ async function main(): Promise<void> {
         m.id,
         m.label,
         async (ctx) => {
-          await ctx.answerCallbackQuery();
-          const label = getExtraMenuLabel(m.id) ?? m.label;
-          let text = getStrategyContextMessage(m.id, label);
-          // Link Contactar al dueño de la estrategia (solo usuarios no-owner)
-          const viewerUserId = ctx.from?.id;
-          if (viewerUserId && !isOwner(viewerUserId)) {
-            const creatorId = getMenuCreatedBy(m.id) ?? getOwnerId();
-            if (creatorId) {
-              text += `\n\n[📩 Contactar al dueño](tg://user?id=${creatorId})`;
-            }
-          }
-          const keyboard = buildStrategyContextKeyboard(m.id);
-          try {
-            await ctx.editMessageText(text, { parse_mode: "Markdown", reply_markup: keyboard });
-          } catch (e) {
-            if (!(e as Error).message?.includes("message is not modified")) console.error(e);
-          }
+          await runStrategyAndShowResult(ctx, m.id, DEFAULT_STRATEGY_CONTEXT);
         },
         { description: m.description, isPlaceholder: false }
       );
