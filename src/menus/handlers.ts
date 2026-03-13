@@ -41,10 +41,6 @@ export interface MenuHandlersDeps extends MainKeyboardDeps {
     period: "M" | "E"
   ) => string;
   /** Scrape "Hoy" P3+P4 (cacheado unos minutos). */
-  getCachedScrapeToday: () => Promise<{
-    p3: { isToday: boolean; key: string; m?: number[]; e?: number[] };
-    p4: { isToday: boolean; key: string; m?: number[]; e?: number[] };
-  }>;
   buildResultOneDay: (
     key: string,
     d3: { m?: number[]; e?: number[] },
@@ -212,35 +208,8 @@ export async function handleMenuCallback(
     try {
       let result: string;
       if (scope === "hoy") {
-        try {
-          const { p3, p4 } = await deps.getCachedScrapeToday();
-          if (!p3.isToday || !p4.isToday) {
-            result = "☀️🌙 *Hoy*\n\nNo hay datos disponible aún." + getHoyConsultaLink(game);
-            return { result, keyboard: mainKb() };
-          }
-          const key = p3.key;
-          const d3 = { m: p3.m, e: p3.e };
-          const d4 = { m: p4.m, e: p4.e };
-          result = deps.buildResultOneDay(key, d3, d4, game, "Hoy");
-          return { result, keyboard: mainKb() };
-        } catch (scrapeErr) {
-          const msg = scrapeErr instanceof Error ? scrapeErr.message : String(scrapeErr);
-          if (msg.includes("Puppeteer not available")) {
-            console.log("[Hoy] Usando PDF (Puppeteer no disponible en este entorno).");
-          } else {
-            console.warn("Scrape Hoy no disponible (ej. Puppeteer no instalado), usando PDF:", scrapeErr);
-          }
-          try {
-            const [map3, map4] = await Promise.all([deps.getP3Map(), deps.getP4Map()]);
-            const key = deps.getTodayFloridaMMDDYY();
-            const d3 = map3[key] ?? {};
-            const d4 = map4[key] ?? {};
-            result = deps.buildResultOneDay(key, d3, d4, game, "Hoy") + getHoyConsultaLink(game);
-          } catch {
-            result = "☀️🌙 *Hoy*\n\nNo pude obtener los resultados de hoy." + getHoyConsultaLink(game);
-          }
-          return { result, keyboard: mainKb() };
-        }
+        result = "☀️🌙 *Hoy*\n\nNo hay datos disponible aún." + getHoyConsultaLink(game);
+        return { result, keyboard: mainKb() };
       }
       const [map3, map4] = await Promise.all([deps.getP3Map(), deps.getP4Map()]);
       if (scope === "ayer") {

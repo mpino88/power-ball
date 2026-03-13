@@ -73,11 +73,7 @@ import {
   buildGroupStatsMessage as buildGroupStatsMessageFromStats,
   buildIndividualTop10Message as buildIndividualTop10MessageFromStats,
 } from "./stats-p3.js";
-import {
-  scrapeTodayPick3,
-  scrapeTodayPick4,
-  type TodayScrapeResult,
-} from "./florida-lottery.js";
+
 import {
   createRestrictMiddleware,
   handleSecurityCallback,
@@ -345,41 +341,12 @@ async function getStrategyP4Map(userId?: number): Promise<DateDrawsMap> {
 
 /** Caché del scrape "Hoy" (10 min); solo la fuente PDF se precarga, el resto es on demand. */
 const HOY_CACHE_TTL_MS = 10 * 60 * 1000;
-let cachedScrapeToday: {
-  at: number;
-  p3: TodayScrapeResult;
-  p4: TodayScrapeResult;
-} | null = null;
 
 /** En Render (o DISABLE_PUPPETEER) no se usa navegador; "Hoy" se obtiene del PDF oficial. */
 const PUPPETEER_DISABLED =
   process.env.RENDER === "true" || process.env.DISABLE_PUPPETEER === "true";
 
-async function getCachedScrapeToday(): Promise<{
-  p3: TodayScrapeResult;
-  p4: TodayScrapeResult;
-}> {
-  const now = Date.now();
-  if (cachedScrapeToday && now - cachedScrapeToday.at < HOY_CACHE_TTL_MS) {
-    return { p3: cachedScrapeToday.p3, p4: cachedScrapeToday.p4 };
-  }
 
-  if (PUPPETEER_DISABLED) {
-    const todayKey = getTodayFloridaMMDDYY();
-    const [map3, map4] = await Promise.all([getP3Map(), getP4Map()]);
-    const d3 = map3[todayKey] ?? {};
-    const d4 = map4[todayKey] ?? {};
-    const hasToday = !!((d3.m || d3.e) && (d4.m || d4.e));
-    const p3: TodayScrapeResult = { isToday: hasToday, key: todayKey, m: d3.m, e: d3.e };
-    const p4: TodayScrapeResult = { isToday: hasToday, key: todayKey, m: d4.m, e: d4.e };
-    cachedScrapeToday = { at: now, p3, p4 };
-    return { p3, p4 };
-  }
-
-  const [p3, p4] = await Promise.all([scrapeTodayPick3(), scrapeTodayPick4()]);
-  cachedScrapeToday = { at: now, p3, p4 };
-  return { p3, p4 };
-}
 
 const mainKbDeps = {
   getOwnerId,
@@ -1313,7 +1280,6 @@ bot.on("callback_query:data", async (ctx) => {
     getP4Map,
     buildGroupStatsMessage: buildGroupStatsMessageFromStats,
     buildIndividualTop10Message: buildIndividualTop10MessageFromStats,
-    getCachedScrapeToday,
     buildResultOneDay,
     buildResultWeek,
     getTodayFloridaMMDDYY,
