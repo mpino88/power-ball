@@ -1192,7 +1192,7 @@ bot.on("callback_query:data", async (ctx) => {
     return;
   }
 
-  if (ctx.from && isAllowed(ctx.from.id) && (data === "estrategias_manage" || data === "estrategias_list" || data === "estrategias_tienda" || data.startsWith("estrategias_request_") || data === "estrategias_visibility" || data.startsWith("estrategias_visibility_toggle_") || data === "estrategias_create" || data === "estrategias_delete" || data.startsWith("estrategias_delete_"))) {
+  if (ctx.from && isAllowed(ctx.from.id) && (data === "estrategias_manage" || data === "estrategias_list" || data === "estrategias_tienda" || data.startsWith("estrategias_request_") || data.startsWith("estrategias_confirm_request_") || data === "estrategias_visibility" || data.startsWith("estrategias_visibility_toggle_") || data === "estrategias_create" || data === "estrategias_delete" || data.startsWith("estrategias_delete_"))) {
     const estrategiasOut = await handleEstrategiasUserCallback(ctx, data, {
       getExtraMenuIds,
       getExtraMenuLabel,
@@ -1862,11 +1862,24 @@ bot.on("callback_query:data", async (ctx) => {
         return;
       }
 
-      const ctxId = data.slice("bbt_ctx_".length);
-      if (session.selectedContexts.has(ctxId)) {
-        session.selectedContexts.delete(ctxId);
+      if (data === "bbt_ctx_p3_both") {
+        session.selectedContexts.add("p3_m");
+        session.selectedContexts.add("p3_e");
+      } else if (data === "bbt_ctx_p4_both") {
+        session.selectedContexts.add("p4_m");
+        session.selectedContexts.add("p4_e");
+      } else if (data === "bbt_ctx_all") {
+        session.selectedContexts.add("p3_m");
+        session.selectedContexts.add("p3_e");
+        session.selectedContexts.add("p4_m");
+        session.selectedContexts.add("p4_e");
       } else {
-        session.selectedContexts.add(ctxId);
+        const ctxId = data.slice("bbt_ctx_".length);
+        if (session.selectedContexts.has(ctxId)) {
+          session.selectedContexts.delete(ctxId);
+        } else {
+          session.selectedContexts.add(ctxId);
+        }
       }
       await ctx.answerCallbackQuery();
       try {

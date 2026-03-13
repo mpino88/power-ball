@@ -1012,6 +1012,17 @@ export async function handleEstrategiasUserCallback(
     const menuId = data.replace("estrategias_confirm_request_", "");
     const added = await addStrategyRequest(userId, menuId);
     const label = deps.getExtraMenuLabel(menuId) ?? menuId;
+    
+    if (added) {
+      // Notificar al admin
+      const adminId = getOwnerId();
+      if (adminId && adminId !== userId) {
+        const username = ctx.from?.username ? `@${ctx.from.username}` : (ctx.from?.first_name || String(userId));
+        const adminMsg = `🔔 *Nueva solicitud de estrategia*\n\nUsuario: ${escapeMd(username)} (\`${userId}\`)\nEstrategia: *${escapeMd(label)}* (\`${menuId}\`)\n\nPuedes gestionarla desde el panel administrativo.`;
+        ctx.api.sendMessage(adminId, adminMsg, { parse_mode: "Markdown" }).catch(() => {});
+      }
+    }
+
     result = added
       ? `✅ Solicitud enviada: *${escapeMd(label)}* (\`${menuId}\`). El administrador la revisará.`
       : "Ya tenías una solicitud pendiente para esta estrategia.";

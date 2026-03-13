@@ -461,6 +461,11 @@ export function buildBBTContextKeyboard(selected?: Set<string>): InlineKeyboard 
     kb.text(`${isSelected ? "✅" : "⬜"} ${opt.label}`, `bbt_ctx_${opt.id}`).row();
   }
 
+  // Botones de acción rápida
+  kb.text("⚡ P3 Ambos", "bbt_ctx_p3_both")
+    .text("⚡ P4 Ambos", "bbt_ctx_p4_both").row()
+    .text("🌟 Seleccionar TODO", "bbt_ctx_all").row();
+
   if (selected && selected.size > 0) {
     kb.text(`▶️ Continuar (${selected.size} seleccionados)`, "bbt_ctx_done").row();
   }
