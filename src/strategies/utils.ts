@@ -46,21 +46,6 @@ export function twoDigitNumbers(draw: number[], mapSource: StrategyMapSource): n
   }
 }
 
-/**
- * Extrae la centena (primer dígito) de un sorteo P3.
- * Retorna null si el draw tiene menos de 3 dígitos.
- */
-export function p3Centena(draw: number[]): number | null {
-  return draw.length >= 3 ? draw[0]! : null;
-}
-
-/** Formatea una Date como "MM/DD/YY". */
-export function dateToMMDDYY(date: Date): string {
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  const yy = String(date.getFullYear()).slice(-2);
-  return `${mm}/${dd}/${yy}`;
-}
 
 /** Retorna las fechas del mapa que tienen sorteo válido para el período y fuente dados. */
 export function validDateKeys(map: DateDrawsMap, period: StrategyPeriod, mapSource: StrategyMapSource): string[] {

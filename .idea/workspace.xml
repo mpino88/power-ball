@@ -4,13 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="df562286-8ef1-4d76-97cf-b1f7c8796a02" name="Changes" comment="">
+    <list default="true" id="df562286-8ef1-4d76-97cf-b1f7c8796a02" name="Changes" comment="remove some unnecessary things">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/bot.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/bot.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/downtack.ts" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/florida-lottery.ts" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/menus/handlers.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/menus/handlers.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/yarn.lock" beforeDir="false" afterPath="$PROJECT_DIR$/yarn.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/security/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/security/index.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/strategies/utils.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/strategies/utils.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -28,22 +25,22 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "main",
-    "last_opened_file_path": "/Users/maikelpino/free/power-ball",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "yarn",
-    "settings.editor.selected.configurable": "preferences.pluginManager",
-    "ts.external.directory.path": "/Users/maikelpino/free/power-ball/node_modules/typescript/lib",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/maikelpino/free/power-ball&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;yarn&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;,
+    &quot;ts.external.directory.path&quot;: &quot;/Users/maikelpino/free/power-ball/node_modules/typescript/lib&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
@@ -60,11 +57,24 @@
       <option name="presentableId" value="Default" />
       <updated>1772282685078</updated>
       <workItem from="1772282686300" duration="4166000" />
-      <workItem from="1772834262381" duration="2081000" />
+      <workItem from="1772834262381" duration="3019000" />
     </task>
+    <task id="LOCAL-00001" summary="remove some unnecessary things">
+      <option name="closed" value="true" />
+      <created>1773402584037</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1773402584038</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="remove some unnecessary things" />
+    <option name="LAST_COMMIT_MESSAGE" value="remove some unnecessary things" />
   </component>
 </project>
