@@ -1360,7 +1360,7 @@ bot.on("callback_query:data", async (ctx) => {
     let headerMsg = "📋 *Cambiar de plan*\n\n";
     if (pendingTitle) {
       const tPendLabel = pendingTemp ? ` (${TEMPORALITIES.find((t) => t.id === pendingTemp)?.label ?? pendingTemp})` : "";
-      headerMsg += `_Solicitud pendiente: *${escapeMd(pendingTitle)}*${tPendLabel}. Puedes reemplazarla eligiendo otra opción._\n\n`;
+      headerMsg += `Solicitud pendiente: *${escapeMd(pendingTitle)}*${tPendLabel}. Puedes reemplazarla eligiendo otra opción.\n\n`;
     } else if (currentPlan) {
       const tCurLabel = currentTemporality ? ` (${TEMPORALITIES.find((t) => t.id === currentTemporality)?.label ?? currentTemporality})` : "";
       const expiryInfo = currentExpiry ? ` · caduca: ${currentExpiry}` : "";

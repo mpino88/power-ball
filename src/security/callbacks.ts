@@ -203,7 +203,7 @@ export async function handleSecurityCallback(
       const plan = escapeMd((getPlan(uid) || "").trim() || "—");
       const status = escapeMd((getPlanStatus(uid) || "").trim() || "—");
       const pending = getPendingPlan(uid);
-      const pendingNote = pending ? ` _(→ ${escapeMd(pending)})_` : "";
+      const pendingNote = pending ? ` (→ ${escapeMd(pending)})` : "";
       return `• *ID:* \`${uid}\` | *Nombre:* ${name} | *Teléfono:* ${phone} | [📩 Contactar](tg://user?id=${uid})\n  *Plan:* ${plan}${pendingNote} | *Estado:* ${status}`;
     });
     const pageInfo = totalPages > 1 ? ` — pág. ${safePage + 1}/${totalPages}` : "";
@@ -563,7 +563,7 @@ export async function handleSecurityCallback(
         .map((t) => { const pr = getPriceForTemporality(p, t.id); return pr ? `${t.label}: *${escapeMd(pr)}*` : null; })
         .filter(Boolean).join(" · ");
       const autoTag = p.autoApprove ? " _(auto-aprobado)_" : "";
-      return `• *${escapeMd(p.title)}*${autoTag}${prices ? `\n  ${prices}` : ""}\n  _${escapeMd(p.description.slice(0, 50))}${p.description.length > 50 ? "…" : ""}_\n  Menús: \`${menus}\``;
+      return `• *${escapeMd(p.title)}*${autoTag}${prices ? `\n  ${prices}` : ""}\n  ${escapeMd(p.description.slice(0, 50))}${p.description.length > 50 ? "…" : ""}\n  Menús: \`${menus}\``;
     });
     result = "📋 *Planes*\n\n" + (lines.length ? lines.join("\n\n") : "_Ningún plan. Añade uno desde Gestionar planes._");
     keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar planes", "admin_plans_manage");
@@ -996,7 +996,7 @@ export async function handleEstrategiasUserCallback(
     result = `🛒 *Detalles de la Estrategia*\n\n` +
              `*Nombre:* ${escapeMd(label)}\n` +
              `*Precio:* ${escapeMd(price)}\n\n` +
-             `*Descripción:* \n_${escapeMd(desc)}_\n\n`;
+             `*Descripción:* \n${escapeMd(desc)}\n\n`;
 
     const createdBy = (userId !== undefined) ? deps.getMenuCreatedBy?.(menuId) : undefined;
     const hasAccess = (userId !== undefined) && (deps.getExtraMenus(userId).includes(menuId) || createdBy === userId || deps.isOwner(userId));
