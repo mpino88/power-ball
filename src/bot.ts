@@ -177,6 +177,7 @@ const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const WEBHOOK_URL = process.env.WEBHOOK_URL ?? "";
 const FLORIDA_TZ = "America/New_York";
 const REQUEST_ACCESS_LINK = process.env.REQUEST_ACCESS_LINK?.trim() ?? "";
+const STRATEGY_STORE_PREVIEW_CALLBACK_PREFIX = "stpv_";
 
 /** Ruta local de la imagen de onboarding para nuevos usuarios. */
 const ONBOARDING_IMAGE_PATH = path.join(process.cwd(), "src", "assets", "onboarding-new-user.png");
@@ -349,6 +350,45 @@ const DEFAULT_STRATEGY_CONTEXT: StrategyContext = { mapSource: "p3", period: "m"
  * Ejecuta la estrategia con el contexto dado y muestra la salida en el mensaje.
  * Usado tanto al pulsar "menu_<id>" (un clic = salida) como al pulsar "strat_<id>_p3_m" (cambio de base/período).
  */
+async function showStrategyContextSelection(
+  ctx: {
+    from?: { id: number };
+    answerCallbackQuery: (opts?: { text?: string }) => Promise<unknown>;
+    editMessageText: (text: string, opts?: object) => Promise<unknown>;
+  },
+  menuId: string,
+  source: "mine" | "store" = "mine"
+): Promise<void> {
+  await ctx.answerCallbackQuery();
+  const title = getExtraMenuLabel(menuId) || menuId;
+  
+  const resultKb = new InlineKeyboard();
+  const pre = source === "store" 
+    ? `${STRATEGY_STORE_PREVIEW_CALLBACK_PREFIX}${menuId}_`
+    : `${STRATEGY_CONTEXT_CALLBACK_PREFIX}${menuId}_`;
+    
+  resultKb
+    .text("P3 (Fijos) ☀️ Mediodía", `${pre}p3_m`)
+    .text("P3 (Fijos) 🌙 Noche", `${pre}p3_e`)
+    .row()
+    .text("P4 (Corridos) ☀️ Mediodía", `${pre}p4_m`)
+    .text("P4 (Corridos) 🌙 Noche", `${pre}p4_e`)
+    .row();
+    
+  if (source === "store") {
+    resultKb.text("🔙 Volver a Detalles", `estrategias_request_${menuId}`).row();
+    resultKb.text("🛒 Volver a Tienda", "estrategias_tienda");
+  } else {
+    resultKb.text("🔙 Volver a Estrategias", ESTRATEGIAS_OPEN_CALLBACK).row();
+    resultKb.text("🏠 Volver al Inicio", "volver");
+  }
+
+  const promptText = source === "store" ? "Previa de Estrategia" : "Estrategia";
+  const msg = `🎯 *${promptText}:* ${title}\n\nPor favor, selecciona la base de conocimiento y el período que deseas usar para la previsualización:`;
+  
+  await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: resultKb });
+}
+
 async function runStrategyAndShowResult(
   ctx: {
     from?: { id: number };
@@ -357,7 +397,8 @@ async function runStrategyAndShowResult(
     reply?: (text: string, opts?: object) => Promise<unknown>;
   },
   menuId: string,
-  context: StrategyContext
+  context: StrategyContext,
+  isPreview = false
 ): Promise<void> {
   await ctx.answerCallbackQuery({ text: "Calculando…" });
   const userId = ctx.from?.id;
@@ -376,25 +417,40 @@ async function runStrategyAndShowResult(
     }
     const stratDef = getStrategy(menuId);
     const resultKb = new InlineKeyboard();
-    if (stratDef?.getCandidates) {
-      resultKb.text("🎰 Hacer parlé", buildParleCallback(menuId, context.mapSource, context.period));
-      if (userId && isOwner(userId)) {
-        resultKb.text("🔮 Crear Adivinanza", buildAdivinanzaStratCallback(menuId, context.mapSource, context.period));
+    if (isPreview) {
+      resultKb.text("✅ Solicitar Acceso", `estrategias_confirm_request_${menuId}`).row();
+      const stPre = `${STRATEGY_STORE_PREVIEW_CALLBACK_PREFIX}${menuId}_`;
+      resultKb
+        .text("P3 (Fijos) ☀️ Mediodía", `${stPre}p3_m`)
+        .text("P3 (Fijos) 🌙 Noche", `${stPre}p3_e`)
+        .row()
+        .text("P4 (Corridos) ☀️ Mediodía", `${stPre}p4_m`)
+        .text("P4 (Corridos) 🌙 Noche", `${stPre}p4_e`)
+        .row();
+      resultKb.text("◀️ Volver a Detalles", `estrategias_request_${menuId}`).row();
+      resultKb.text("🛒 Volver a Tienda", "estrategias_tienda");
+    } else {
+      if (stratDef?.getCandidates) {
+        resultKb.text("🎰 Hacer parlé", buildParleCallback(menuId, context.mapSource, context.period));
+        if (userId && isOwner(userId)) {
+          resultKb.text("🔮 Crear Adivinanza", buildAdivinanzaStratCallback(menuId, context.mapSource, context.period));
+        }
+        resultKb.row();
       }
-      resultKb.row();
+      const pre = `${STRATEGY_CONTEXT_CALLBACK_PREFIX}${menuId}_`;
+      resultKb
+        .text("P3 (Fijos) ☀️ Mediodía", `${pre}p3_m`)
+        .text("P3 (Fijos) 🌙 Noche", `${pre}p3_e`)
+        .row()
+        .text("P4 (Corridos) ☀️ Mediodía", `${pre}p4_m`)
+        .text("P4 (Corridos) 🌙 Noche", `${pre}p4_e`)
+        .row();
+      resultKb.text("🔄 Probar otra estrategia", ESTRATEGIAS_OPEN_CALLBACK).row();
+      resultKb.text("🏠 Volver al Inicio", "volver");
     }
-    const pre = `${STRATEGY_CONTEXT_CALLBACK_PREFIX}${menuId}_`;
-    resultKb
-      .text("P3 (Fijos) ☀️ Mediodía", `${pre}p3_m`)
-      .text("P3 (Fijos) 🌙 Noche", `${pre}p3_e`)
-      .row()
-      .text("P4 (Corridos) ☀️ Mediodía", `${pre}p4_m`)
-      .text("P4 (Corridos) 🌙 Noche", `${pre}p4_e`)
-      .row();
-    resultKb.text("🔄 Probar otra estrategia", ESTRATEGIAS_OPEN_CALLBACK).row();
-    resultKb.text("🏠 Volver al Inicio", "volver");
+
     await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: resultKb });
-    if (userId && isOwner(userId) && ctx.reply) {
+    if (userId && isOwner(userId) && ctx.reply && !isPreview) {
       const cutoff = await getTestingCutoff();
       if (cutoff) {
         try {
@@ -1436,6 +1492,26 @@ bot.on("callback_query:data", async (ctx) => {
     }
   }
 
+  if (data.startsWith(STRATEGY_STORE_PREVIEW_CALLBACK_PREFIX)) {
+    const rest = data.slice(STRATEGY_STORE_PREVIEW_CALLBACK_PREFIX.length);
+    const parts = rest.split("_");
+    if (parts.length >= 3) {
+      const mapSource = parts[parts.length - 2];
+      const period = parts[parts.length - 1];
+      const menuId = parts.slice(0, -2).join("_");
+      if ((mapSource === "p3" || mapSource === "p4") && (period === "m" || period === "e")) {
+        await runStrategyAndShowResult(ctx, menuId, { mapSource, period } as any, true);
+        return;
+      }
+    }
+  }
+
+  if (data.startsWith("strat_store_preview_")) {
+    const menuId = data.replace("strat_store_preview_", "");
+    await showStrategyContextSelection(ctx, menuId, "store");
+    return;
+  }
+
   // ── Análisis Progresivo ────────────────────────────────────────────────────
   if (data.startsWith("prog_") && ctx.from && isOwner(ctx.from.id)) {
     const userId = ctx.from.id;
@@ -2383,7 +2459,7 @@ bot.on("callback_query:data", async (ctx) => {
       }
       // Fallback: estrategia con runner pero sin handler registrado (ej. arranque sin Sheet)
       if (hasStrategyRunner(menuId)) {
-        await runStrategyAndShowResult(ctx, menuId, DEFAULT_STRATEGY_CONTEXT);
+        await showStrategyContextSelection(ctx, menuId);
         return;
       }
     }
@@ -3335,7 +3411,7 @@ async function main(): Promise<void> {
         m.id,
         m.label,
         async (ctx) => {
-          await runStrategyAndShowResult(ctx, m.id, DEFAULT_STRATEGY_CONTEXT);
+          await showStrategyContextSelection(ctx, m.id);
         },
         { description: m.description, isPlaceholder: false }
       );

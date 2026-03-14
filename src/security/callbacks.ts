@@ -983,19 +983,8 @@ export async function handleEstrategiasUserCallback(
 
   if (data.startsWith("estrategias_request_")) {
     const menuId = data.replace("estrategias_request_", "");
-    const createdBy = deps.getMenuCreatedBy?.(menuId);
-    if (deps.isOwner(userId) || createdBy === userId) {
-      result = "Solo otros usuarios pueden solicitar esta estrategia.";
-      keyboard = new InlineKeyboard().text("◀️ Volver a Tienda", "estrategias_tienda");
-      return { result, keyboard };
-    }
     if (!isCustomMenu(menuId) || getMenuVisibility(menuId) !== "public") {
       result = "Estrategia no disponible.";
-      keyboard = new InlineKeyboard().text("◀️ Volver a Tienda", "estrategias_tienda");
-      return { result, keyboard };
-    }
-    if (deps.getExtraMenus(userId).includes(menuId)) {
-      result = "Ya tienes acceso a esta estrategia.";
       keyboard = new InlineKeyboard().text("◀️ Volver a Tienda", "estrategias_tienda");
       return { result, keyboard };
     }
@@ -1007,13 +996,23 @@ export async function handleEstrategiasUserCallback(
     result = `🛒 *Detalles de la Estrategia*\n\n` +
              `*Nombre:* ${escapeMd(label)}\n` +
              `*Precio:* ${escapeMd(price)}\n\n` +
-             `*Descripción:* \n_${escapeMd(desc)}_\n\n` +
-             `¿Deseas enviar la solicitud de acceso?`;
+             `*Descripción:* \n_${escapeMd(desc)}_\n\n`;
 
-    keyboard = new InlineKeyboard()
-      .text("✅ Enviar Solicitud", `estrategias_confirm_request_${menuId}`)
-      .row()
-      .text("◀️ Volver a Tienda", "estrategias_tienda");
+    const createdBy = (userId !== undefined) ? deps.getMenuCreatedBy?.(menuId) : undefined;
+    const hasAccess = (userId !== undefined) && (deps.getExtraMenus(userId).includes(menuId) || createdBy === userId || deps.isOwner(userId));
+
+    keyboard = new InlineKeyboard();
+    if (hasAccess) {
+      result += "✅ *Ya tienes acceso a esta estrategia.*";
+    } else {
+      result += "¿Deseas enviar la solicitud de acceso?";
+      keyboard.text("✅ Enviar Solicitud", `estrategias_confirm_request_${menuId}`).row();
+      
+      // Vista previa solo para estrategias con runner
+      keyboard.text("🎰 Ver Previa (Cálculo)", `strat_store_preview_${menuId}`).row();
+    }
+
+    keyboard.text("◀️ Volver a Tienda", "estrategias_tienda");
     return { result, keyboard };
   }
 
