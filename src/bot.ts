@@ -3406,8 +3406,6 @@ async function main(): Promise<void> {
     const planRows = await loadPlansFromSheet();
     if (planRows.length > 0) {
       setPlanSheetPersist((items) => savePlansToSheet(items));
-      initPlansFromSheet(planRows);
-      
       // Auto-update descripciones de planes por defecto
       let modified = false;
       const defaults = new Map([
@@ -3415,15 +3413,21 @@ async function main(): Promise<void> {
         ["pro", "Todo lo del plan Básico + Estadísticas Individuales (Top 10 Hot)."],
         ["trial", "Acceso gratis (2 Días). Resultados P3/P4 y Estadísticas Básicas."]
       ]);
-      const currentPlans = getPlans();
-      for (const p of currentPlans) {
-        if (defaults.has(p.id) && p.description !== defaults.get(p.id)) {
-          updatePlan(p.id, { description: defaults.get(p.id) });
+      
+      for (const row of planRows) {
+        if (defaults.has(row.id) && row.description !== defaults.get(row.id)) {
+          row.description = defaults.get(row.id)!;
           modified = true;
         }
       }
+      
+      initPlansFromSheet(planRows);
+
+      // Si los planes estaban duplicados (porque planRows tiene menos elementos que la hoja original
+      // gracias al Set deduplicador de loadPlansFromSheet) o si se modificó alguna descripción:
       if (modified) {
-        console.log("[plans] Sincronizadas descripciones actualizadas a Google Sheets.");
+        await savePlansToSheet(planRows);
+        console.log("[plans] Sincronizadas descripciones actualizadas (y desduplicadas) a Google Sheets.");
       }
     } else {
       initPlans();

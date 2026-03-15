@@ -191,7 +191,7 @@ const DEFAULT_PLANS: Plan[] = [
     id: "basico",
     title: "Básico",
     description:
-      "Consultas por período: Fijo (P3), Corrido (P4) — Hoy, Ayer, Semana o fecha elegida. Incluye Estadísticas por grupo (Mediodía y Noche).",
+      "Consultas por período: Fijo (P3), Corrido (P4) — Hoy, Ayer, Semana o fecha elegida. Incluye Análisis estadísticos de sorteos.",
     price: "",
     menuIds: ["est_grupos"],
   },
