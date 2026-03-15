@@ -13,6 +13,7 @@ import {
   getPlanStatus,
   getPendingPlan,
   getOwnerId,
+  getOwnerIds,
   isOwner,
   addAllowed,
   removeAllowed,
@@ -780,8 +781,8 @@ export async function handleSecurityCallback(
           ? ` (${TEMPORALITIES.find((t) => t.id === requested.temporality)?.label ?? requested.temporality})`
           : "";
         result = isPlanChange
-          ? `✅ Cambio de plan aprobado para usuario \`${userId}\`. Nuevo plan: *${escapeMd(requested?.plan ?? "")}*${tLabel}.${menuInfo}`
-          : `✅ Usuario \`${userId}\` aprobado. Plan: *${escapeMd(requested?.plan ?? "")}*${tLabel}.${menuInfo} Puedes asignar más menús en *Menús por usuario*.`;
+          ? `✅ *Cambio de plan aprobado*\n\nUsuario \`${userId}\` tiene ahora el plan *${escapeMd(requested?.plan ?? "")}*${tLabel}.${menuInfo}`
+          : `✅ *Solicitud aprobada*\n\nUsuario \`${userId}\` tiene acceso al plan *${escapeMd(requested?.plan ?? "")}*${tLabel}.${menuInfo}`;
         // Notificar al solicitante
         const planLabel = escapeMd(requested?.plan ?? "");
         const tLabelClean = requested?.temporality
@@ -792,9 +793,9 @@ export async function handleSecurityCallback(
           { parse_mode: "Markdown" }
         ).catch(() => {});
       } else {
-        result = (approveResult.error ?? "Error al aprobar.") + "\n\nVuelve a Solicitudes pendientes.";
+        result = `❌ *Error al aprobar*\n\n${approveResult.error ?? "No se pudo procesar la solicitud."}\n\nRevisa las solicitudes pendientes.`;
       }
-      keyboard = buildManagePlansKeyboard();
+      keyboard = new InlineKeyboard().text("📋 Ver Solicitudes Pendientes", "admin_plans_requests").row().text("◀️ Gestionar Planes", "admin_plans_manage");
     }
   } else if (data.startsWith("admin_plans_reject_")) {
     const userIdStr = data.replace("admin_plans_reject_", "");
@@ -807,13 +808,13 @@ export async function handleSecurityCallback(
       const planLabel = escapeMd(requested?.plan ?? "plan solicitado");
       // Eliminar la solicitud del estado pendiente
       await approvePlanRequest(userId, []).catch(() => {}); // ensures the pending row is cleared
-      result = `❌ Solicitud de plan rechazada para usuario \`${userId}\`.`;
+      result = `❌ *Solicitud rechazada*\n\nSolicitud de \`${userId}\` para el plan *${planLabel}* fue rechazada.`;
       // Notificar al solicitante
       ctx.api.sendMessage(userId,
         `❌ *Tu solicitud de plan fue rechazada*\n\nEl administrador no aprobó el acceso al plan *${planLabel}*. Puedes contactarlo para más información.`,
         { parse_mode: "Markdown" }
       ).catch(() => {});
-      keyboard = buildManagePlansKeyboard();
+      keyboard = new InlineKeyboard().text("💻 Ver Solicitudes Pendientes", "admin_plans_requests").row().text("◀️ Gestionar Planes", "admin_plans_manage");
     }
   } else if (data === "admin_leads" || data === "admin_leads_refresh") {
     const todosLosLeads = await loadLeadsFromSheet();
@@ -1087,7 +1088,10 @@ export async function handleEstrategiasUserCallback(
         const adminKb = new InlineKeyboard()
           .text("✅ Aprobar", `admin_estrategias_approve_${payload}`)
           .text("❌ Rechazar", `admin_estrategias_reject_${payload}`);
-        ctx.api.sendMessage(adminId, adminMsg, { parse_mode: "Markdown", reply_markup: adminKb }).catch(() => {});
+        // Notificar a todos los owners
+        for (const oid of getOwnerIds().filter((id) => id !== userId)) {
+          ctx.api.sendMessage(oid, adminMsg, { parse_mode: "Markdown", reply_markup: adminKb }).catch(() => {});
+        }
       }
     }
 

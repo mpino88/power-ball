@@ -68,7 +68,7 @@ import {
   getMenuSubscribers,
   seedCustomMenus,
 } from "./custom-menus.js";
-import { initPlans, initPlansFromSheet, setPlanSheetPersist, getPlans, updatePlan, getPlanById, getPlanByTitle, TEMPORALITIES, getPriceForTemporality } from "./plans.js";
+import { initPlans, initPlansFromSheet, setPlanSheetPersist, getPlans, updatePlan, getPlanById, getPlanByTitle, TEMPORALITIES, getPriceForTemporality, formatPlanPrice } from "./plans.js";
 import {
   buildGroupStatsMessage as buildGroupStatsMessageFromStats,
   buildIndividualTop10Message as buildIndividualTop10MessageFromStats,
@@ -1394,7 +1394,7 @@ bot.on("callback_query:data", async (ctx) => {
       for (let i = 0; i < temps.length; i++) {
         const t = temps[i]!;
         const price = getPriceForTemporality(p, t.id);
-        const priceLabel = price ? ` — ${price}` : "";
+        const priceLabel = price ? ` — ${formatPlanPrice(price)}` : "";
         keyboard.text(`${t.label}${priceLabel}`, `user_cambiar_plan_${p.id}_${t.id}`);
         if (i % 2 === 1) keyboard.row();
       }
@@ -1418,12 +1418,24 @@ bot.on("callback_query:data", async (ctx) => {
     const plan = getPlanById(planId);
     if (plan && TEMPORALITIES.some((t) => t.id === temporality)) {
       const currentPlan = getPlan(ctx.from.id);
-      const res = await requestPlanChange(ctx.from.id, plan.title, temporality);
+      const userId = ctx.from.id;
+      const res = await requestPlanChange(userId, plan.title, temporality);
       await ctx.answerCallbackQuery({ text: res.ok ? "Solicitud enviada" : "Error" });
       const tLabel = TEMPORALITIES.find((t) => t.id === temporality)?.label ?? temporality;
       const currentPlanNote = currentPlan
         ? `Sigues con tu plan *${escapeMd(currentPlan)}* hasta que el administrador apruebe el cambio.`
         : "_El administrador revisará tu solicitud._";
+      if (res.ok) {
+        // Notificar a todos los owners con botones inline de aprobar/rechazar
+        const username = ctx.from.username ? `@${ctx.from.username}` : (ctx.from.first_name || String(userId));
+        const adminMsg = `🔔 *Solicitud de cambio de plan*\n\nUsuario: ${escapeMd(username)} (\`${userId}\`)\nPlan solicitado: *${escapeMd(plan.title)}* (${tLabel})`;
+        const adminKb = new InlineKeyboard()
+          .text("✅ Aprobar", `admin_plans_approve_${userId}`)
+          .text("❌ Rechazar", `admin_plans_reject_${userId}`);
+        for (const oid of getOwnerIds().filter((id) => id !== userId)) {
+          bot.api.sendMessage(oid, adminMsg, { parse_mode: "Markdown", reply_markup: adminKb }).catch(() => {});
+        }
+      }
       try {
         await ctx.editMessageText(
           `✅ Has solicitado cambiar al plan *${escapeMd(plan.title)}* (${tLabel}).\n\n${currentPlanNote}`,

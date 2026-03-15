@@ -6,7 +6,7 @@
 
 import { InlineKeyboard, Keyboard } from "grammy";
 import type { getOwnerId as GetOwnerId, isAllowed as IsAllowed } from "../user-config.js";
-import { addPlanRequest, assignPlanToUser, getPlanTemporality, hasUsedTrial, isPlanExpired, refreshIfStale, saveLead } from "../user-config.js";
+import { addPlanRequest, assignPlanToUser, getPlanTemporality, hasUsedTrial, isPlanExpired, refreshIfStale, saveLead, getOwnerIds } from "../user-config.js";
 import { getPlans, getPriceForTemporality, formatPlanPrice, REGULAR_TEMPORALITIES, TEMPORALITIES, TRIAL_TEMPORALITIES } from "../plans.js";
 import { getPaymentMethods, loadPaymentMethodsFromSheet } from "../payment-methods.js";
 
@@ -175,16 +175,18 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
               await ctx.reply("Selecciona una opción:", { reply_markup: options.buildMainKeyboard(uid) });
             } else {
               await addPlanRequest(uid, renewal.planName, { name, phone, temporality: renewal.temporality });
-              // Notificar al admin con botones de aprobar/rechazar
-              const ownerId = options.getOwnerId();
-              if (ownerId && ownerId !== uid) {
+              // Notificar a todos los owners con botones de aprobar/rechazar
+              const ownerIds = getOwnerIds().filter((id) => id !== uid);
+              if (ownerIds.length > 0) {
                 const ctxApi = (ctx as { api?: { sendMessage?: (id: number, txt: string, opts?: object) => Promise<unknown> } }).api;
                 const tLabel = TEMPORALITIES.find((t) => t.id === renewal.temporality)?.label ?? renewal.temporality;
                 const adminPushMsg = `🔔 *Solicitud de plan (renovación)*\n\nUsuario: \`${uid}\` — ${name}\nPlan: *${renewal.planName}* (${tLabel})\nTeléfono: \`${phone}\``;
                 const adminKb = new InlineKeyboard()
                   .text("✅ Aprobar", `admin_plans_approve_${uid}`)
                   .text("❌ Rechazar", `admin_plans_reject_${uid}`);
-                ctxApi?.sendMessage?.(ownerId, adminPushMsg, { parse_mode: "Markdown", reply_markup: adminKb }).catch(() => {});
+                for (const oid of ownerIds) {
+                  ctxApi?.sendMessage?.(oid, adminPushMsg, { parse_mode: "Markdown", reply_markup: adminKb }).catch(() => {});
+                }
               }
               await ctx.reply(
                 `✅ Solicitud de renovación registrada (*${renewal.planName}*). El administrador activará tu acceso.`,
@@ -322,16 +324,18 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
             await ctx.reply("Selecciona una opción:", { reply_markup: options.buildMainKeyboard(uid) });
           } else {
             await addPlanRequest(uid, pending.planName, { name, phone, temporality: pending.temporality });
-            // Notificar al admin con botones de aprobar/rechazar
-            const ownerId2 = options.getOwnerId();
-            if (ownerId2 && ownerId2 !== uid) {
+            // Notificar a todos los owners con botones de aprobar/rechazar
+            const ownerIds2 = getOwnerIds().filter((id) => id !== uid);
+            if (ownerIds2.length > 0) {
               const ctxApi = (ctx as { api?: { sendMessage?: (id: number, txt: string, opts?: object) => Promise<unknown> } }).api;
               const tLabel2 = TEMPORALITIES.find((t) => t.id === pending.temporality)?.label ?? pending.temporality;
               const adminPushMsg2 = `🔔 *Solicitud de plan*\n\nUsuario: \`${uid}\` — ${name}\nPlan: *${pending.planName}* (${tLabel2})\nTeléfono: \`${phone}\``;
               const adminKb2 = new InlineKeyboard()
                 .text("✅ Aprobar", `admin_plans_approve_${uid}`)
                 .text("❌ Rechazar", `admin_plans_reject_${uid}`);
-              ctxApi?.sendMessage?.(ownerId2, adminPushMsg2, { parse_mode: "Markdown", reply_markup: adminKb2 }).catch(() => {});
+              for (const oid of ownerIds2) {
+                ctxApi?.sendMessage?.(oid, adminPushMsg2, { parse_mode: "Markdown", reply_markup: adminKb2 }).catch(() => {});
+              }
             }
             const tLabel = TEMPORALITIES.find((t) => t.id === pending.temporality)?.label ?? pending.temporality;
 
