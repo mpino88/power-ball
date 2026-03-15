@@ -173,7 +173,7 @@ export function buildIndividualTop10Message(
   };
   const sep = "─".repeat(W_NUM + W_MAX + W_ACT + W_HOT);
   const header =
-    "Número".padEnd(W_NUM) + "Máx.hist".padStart(W_MAX) + "Máx.actual".padStart(W_ACT) + "Hot/diff".padStart(W_HOT);
+    "Número".padEnd(W_NUM) + "Máx.hist".padStart(W_MAX) + "Máx.actual".padStart(W_ACT) + "Cercanía".padStart(W_HOT);
   const lines: string[] = [
     `📈 *Top 10 más Hot* — ${PERIOD_LABEL[period]} (2 últimos dígitos P3)\n`,
     "```",
@@ -212,7 +212,7 @@ export function buildGroupStatsMessage(
     "Grupo".padEnd(W_NAME) +
     "Máx.hist".padStart(W_MAX) +
     "Máx.actual".padStart(W_ACT) +
-    "Hot/diff".padStart(W_HOT);
+    "Cercanía".padStart(W_HOT);
   const lines: string[] = [
     `📊 *Estadísticas por grupos* — ${PERIOD_LABEL[period]} · Hot si (Máx.hist−Máx.actual) ≤ ${diasDiferencia}\n`,
     "```",
