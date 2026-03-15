@@ -11,7 +11,7 @@ const FILE_PATH = path.join(DATA_DIR, "plans.json");
 
 /** Opciones de temporalidad disponibles. */
 export const TEMPORALITIES = [
-  { id: "1d", label: "1 Día" },
+  { id: "1d", label: "2 Días" },
   { id: "1m", label: "1 Mes" },
   { id: "3m", label: "3 Meses" },
   { id: "6m", label: "6 Meses" },
@@ -207,7 +207,7 @@ const DEFAULT_PLANS: Plan[] = [
     id: "trial",
     title: "Trial",
     description:
-      "Acceso de prueba gratuito por 1 día. Incluye consultas Fijo/Corrido y Estadísticas por grupo. Sin necesidad de aprobación — actívalo al instante.",
+      "Acceso de prueba gratuito por 2 días. Incluye consultas Fijo/Corrido y Estadísticas por grupo. Sin necesidad de aprobación — actívalo al instante.",
     price: "",
     menuIds: ["est_grupos"],
     autoApprove: true,

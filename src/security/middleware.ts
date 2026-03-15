@@ -56,11 +56,11 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
    * - Planes normales: botón de trial (1d, auto-aprobado) + temporalidades regulares de 2 en 2. */
   function addPlanTemporalityButtons(kb: InlineKeyboard, planId: string, planTitle: string, plan: ReturnType<typeof getPlans>[number], prefix: string): void {
     if (plan.autoApprove) {
-      kb.text(`✅ Activar gratis — 1 Día`, `${prefix}${planId}_1d`).row();
+      kb.text(`✅ Activar gratis — 2 Días`, `${prefix}${planId}_1d`).row();
       return;
     }
     // Botón de trial (1d) — siempre auto-aprobado
-    kb.text(`✅ Trial gratis — 1 Día`, `${prefix}${planId}_1d`).row();
+    kb.text(`✅ Trial gratis — 2 Días`, `${prefix}${planId}_1d`).row();
     // Temporalidades regulares de 2 en 2
     const temps = REGULAR_TEMPORALITIES;
     for (let i = 0; i < temps.length; i++) {
@@ -110,7 +110,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
           const temporality = rest.slice(lastUnderscore + 1);
           const plan = getPlans().find((p) => p.id === planId);
           if (plan && TEMPORALITIES.some((t) => t.id === temporality)) {
-            if (ctx.callbackQuery) await ctx.answerCallbackQuery?.().catch(() => {});
+            if (ctx.callbackQuery) await ctx.answerCallbackQuery?.().catch(() => { });
             if (plan.autoApprove || temporality === "1d") {
               if (await hasUsedTrial(uid)) {
                 if (ctx.callbackQuery) await ctx.answerCallbackQuery?.({ text: "Ya usaste tu trial gratuito." }).catch(() => { });
@@ -123,7 +123,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
               // Trial/autoApprove: pedir teléfono antes de activar
               pendingRenewal.set(uid, { planId, planName: plan.title, temporality });
               await ctx.reply(
-                `🔄 *Renovar plan: ${plan.title}* (Trial — 1 Día)\n\n` +
+                `🔄 *Renovar plan: ${plan.title}* (Trial — 2 Días)\n\n` +
                 "Para activar tu acceso necesitamos tu número de contacto.\n\n" +
                 "Toca el botón de abajo — Telegram te pedirá tu consentimiento antes de compartirlo.",
                 { parse_mode: "Markdown", reply_markup: contactRequestKb(`${plan.title} (Trial)`) }
@@ -168,7 +168,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
               // Trial/autoApprove: activar inmediatamente después de capturar teléfono
               await assignPlanToUser(uid, renewal.planName, plan?.menuIds ?? [], renewal.temporality, name, phone);
               await ctx.reply(
-                `✅ *Plan ${renewal.planName} activado*\n\nTu acceso de prueba está listo por *1 día*.`,
+                `✅ *Plan ${renewal.planName} activado*\n\nTu acceso de prueba está listo por *2 días*.`,
                 { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } }
               );
               // Enviar menú principal en mensaje aparte
@@ -215,12 +215,12 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
 
       const wasTrial = getPlanTemporality(uid) === "1d";
       const expiryMsg = wasTrial
-        ? "⏳ *Tu acceso de prueba (Trial 1 Día) ha expirado*\n\n" +
-          "El periodo gratuito ha terminado. Para seguir disfrutando de todas las funciones, elige uno de nuestros planes:\n\n" +
-          "_Selecciona el plan y la duración que prefieras:_"
+        ? "⏳ *Tu acceso de prueba (Trial 2 Días) ha expirado*\n\n" +
+        "El periodo gratuito ha terminado. Para seguir disfrutando de todas las funciones, elige uno de nuestros planes:\n\n" +
+        "_Selecciona el plan y la duración que prefieras:_"
         : "⏰ *Tu plan ha caducado*\n\n" +
-          "Ya no tienes acceso al bot. Para seguir usando todas las funciones, renueva tu plan.\n\n" +
-          "_Elige el plan y la temporalidad que deseas renovar:_";
+        "Ya no tienes acceso al bot. Para seguir usando todas las funciones, renueva tu plan.\n\n" +
+        "_Elige el plan y la temporalidad que deseas renovar:_";
 
       const kb = new InlineKeyboard();
       for (const p of plans) {
@@ -249,7 +249,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
         const temporality = rest.slice(lastUnderscore + 1);
         const plan = getPlans().find((p) => p.id === planId);
         if (plan && TEMPORALITIES.some((t) => t.id === temporality)) {
-          if (ctx.callbackQuery) await ctx.answerCallbackQuery?.().catch(() => {});
+          if (ctx.callbackQuery) await ctx.answerCallbackQuery?.().catch(() => { });
           if (plan.autoApprove || temporality === "1d") {
             if (await hasUsedTrial(uid)) {
               if (ctx.callbackQuery) await ctx.answerCallbackQuery?.({ text: "Ya usaste tu trial gratuito." }).catch(() => { });
@@ -304,7 +304,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
             // Trial/autoApprove: activar inmediatamente después de capturar teléfono
             await assignPlanToUser(uid, pending.planName, plan?.menuIds ?? [], pending.temporality, name, phone);
             await ctx.reply(
-              `✅ *¡Plan ${pending.planName} activado!*\n\nTienes *1 día* de acceso gratuito para explorar todas las funciones. ¡Disfrútalo!`,
+              `✅ *¡Plan ${pending.planName} activado!*\n\nTienes *2 días* de acceso gratuito para explorar todas las funciones. ¡Disfrútalo!`,
               { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } }
             );
             // Enviar menú principal en mensaje aparte
@@ -312,16 +312,16 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
           } else {
             await addPlanRequest(uid, pending.planName, { name, phone, temporality: pending.temporality });
             const tLabel = TEMPORALITIES.find((t) => t.id === pending.temporality)?.label ?? pending.temporality;
-            
+
             await loadPaymentMethodsFromSheet();
             const pms = getPaymentMethods();
             const pmLines = pms.map((p, i) =>
               `${i + 1}. *${p.description}*\n   💳 \`${p.account}\` · 🌐 ${p.currency}`
             );
-            
+
             const ownerId = options.getOwnerId();
             const contactMsg = ownerId ? `\n\n[📩 Contactar al administrador](tg://user?id=${ownerId})` : "";
-            
+
             const message = `✅ Solicitud registrada (*${pending.planName}* — ${tLabel}). El administrador revisará tu acceso.` + contactMsg;
             await ctx.reply(message, { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } });
 
@@ -412,7 +412,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
 
     // ── Paso 2: "Ver Planes" — editar caption con info completa + botones ───
     if (data === "ver_planes_open") {
-      if (ctx.callbackQuery) await ctx.answerCallbackQuery?.().catch(() => {});
+      if (ctx.callbackQuery) await ctx.answerCallbackQuery?.().catch(() => { });
       const ctxEdit = ctx as {
         editMessageCaption?: (caption: string, opts?: object) => Promise<unknown>;
       };

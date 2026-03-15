@@ -922,6 +922,7 @@ export interface EstrategiasUserCallbackDeps {
    * visibilidad de las estrategias esté sincronizada con el Sheet.
    */
   reloadStrategies?: () => Promise<void>;
+  hasPreviewedStrategy: (userId: number, menuId: string) => boolean;
 }
 
 /** Gestionar estrategias para cualquier usuario (listar, crear, eliminar propias). */
@@ -1019,8 +1020,10 @@ export async function handleEstrategiasUserCallback(
       result += "¿Deseas enviar la solicitud de acceso?";
       keyboard.text("✅ Enviar Solicitud", `estrategias_confirm_request_${menuId}`).row();
       
-      // Vista previa solo para estrategias con runner
-      keyboard.text("🎰 Ver Previa (Cálculo)", `strat_store_preview_${menuId}`).row();
+      // Vista previa solo para estrategias con runner y si no la ha probado aún
+      if (userId !== undefined && !deps.hasPreviewedStrategy(userId, menuId)) {
+        keyboard.text("🎰 Ver Previa (Cálculo)", `strat_store_preview_${menuId}`).row();
+      }
     }
 
     keyboard.text("◀️ Volver a Tienda", "estrategias_tienda");

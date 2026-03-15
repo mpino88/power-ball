@@ -107,8 +107,8 @@ src/
 El middleware se ejecuta en cada actualización y sigue esta lógica:
 
 1. Si el usuario es owner → pasa siempre.
-2. Si el usuario está autorizado pero su plan expiró → muestra opciones de renovación. Los planes auto-approve y trials de 1 día se activan al instante. Los planes de pago inician un flujo de contacto telefónico.
-3. Si el usuario no está autorizado → muestra los planes disponibles con botones de temporalidad. Los planes trial (1 día) se auto-aprueban una sola vez por usuario. Los planes pagos requieren contacto telefónico y aprobación manual del admin.
+2. Si el usuario está autorizado pero su plan expiró → muestra opciones de renovación. Los planes auto-approve y trials de 2 días se activan al instante. Los planes de pago inician un flujo de contacto telefónico.
+3. Si el usuario no está autorizado → muestra los planes disponibles con botones de temporalidad. Los planes trial (2 días) se auto-aprueban una sola vez por usuario. Los planes pagos requieren contacto telefónico y aprobación manual del admin.
 
 ### Panel de Administración (/admin)
 
@@ -128,7 +128,7 @@ Accesible solo para el owner. Funcionalidades:
 
 | ID | Etiqueta | Duración |
 |----|----------|----------|
-| 1d | Trial (1 día) | 1 día (auto-approve, una sola vez por usuario) |
+| 1d | Trial (2 días) | 2 días (auto-approve, una sola vez por usuario) |
 | 1m | 1 Mes | 30 días |
 | 3m | 3 Meses | 90 días |
 | 6m | 6 Meses | 180 días |

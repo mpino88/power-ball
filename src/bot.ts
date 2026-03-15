@@ -139,6 +139,8 @@ import {
   PROGRESSIVE_MAX_STRATEGIES,
   type ProgressiveSession,
 } from "./strategies/progressive.js";
+
+import { loadStrategyPreviews, saveStrategyPreviews, hasPreviewedStrategy, markStrategyAsPreviewed } from "./strategy-previews.js";
 import {
   runBallBackTest,
   buildBBTContextKeyboard,
@@ -1340,6 +1342,7 @@ bot.on("callback_query:data", async (ctx) => {
       isOwner,
       buildMainKeyboard: buildMainKb,
       reloadStrategies: reloadStrategiesIfStale,
+      hasPreviewedStrategy,
     });
     if (estrategiasOut) {
       await ctx.answerCallbackQuery();
@@ -1517,7 +1520,17 @@ bot.on("callback_query:data", async (ctx) => {
       const period = parts[parts.length - 1];
       const menuId = parts.slice(0, -2).join("_");
       if ((mapSource === "p3" || mapSource === "p4") && (period === "m" || period === "e")) {
+        // Enforce the preview restriction right before running
+        if (ctx.from && hasPreviewedStrategy(ctx.from.id, menuId)) {
+          await ctx.answerCallbackQuery({ text: "⚠️ Solo puedes ver la previa de una estrategia una sola vez.", show_alert: true });
+          return;
+        }
+
         await runStrategyAndShowResult(ctx, menuId, { mapSource, period } as any, true);
+        
+        if (ctx.from) {
+          markStrategyAsPreviewed(ctx.from.id, menuId);
+        }
         return;
       }
     }
@@ -1525,6 +1538,11 @@ bot.on("callback_query:data", async (ctx) => {
 
   if (data.startsWith("strat_store_preview_")) {
     const menuId = data.replace("strat_store_preview_", "");
+    // Check if they have already previewed it before showing context selection
+    if (ctx.from && hasPreviewedStrategy(ctx.from.id, menuId)) {
+      await ctx.answerCallbackQuery({ text: "⚠️ Solo puedes ver la previa de una estrategia una sola vez.", show_alert: true });
+      return;
+    }
     await showStrategyContextSelection(ctx, menuId, "store");
     return;
   }
@@ -3439,6 +3457,9 @@ async function main(): Promise<void> {
       });
     }
   }
+  
+  loadStrategyPreviews();
+
   if (getStorageBackend() !== "sheet") {
     initPlans();
   }
