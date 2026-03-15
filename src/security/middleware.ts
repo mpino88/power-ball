@@ -7,7 +7,7 @@
 import { InlineKeyboard, Keyboard } from "grammy";
 import type { getOwnerId as GetOwnerId, isAllowed as IsAllowed } from "../user-config.js";
 import { addPlanRequest, assignPlanToUser, getPlanTemporality, hasUsedTrial, isPlanExpired, refreshIfStale, saveLead } from "../user-config.js";
-import { getPlans, getPriceForTemporality, REGULAR_TEMPORALITIES, TEMPORALITIES, TRIAL_TEMPORALITIES } from "../plans.js";
+import { getPlans, getPriceForTemporality, formatPlanPrice, REGULAR_TEMPORALITIES, TEMPORALITIES, TRIAL_TEMPORALITIES } from "../plans.js";
 import { getPaymentMethods, loadPaymentMethodsFromSheet } from "../payment-methods.js";
 
 export type BuildMainKeyboard = (userId: number | undefined) => InlineKeyboard;
@@ -66,7 +66,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
     for (let i = 0; i < temps.length; i++) {
       const t = temps[i]!;
       const price = getPriceForTemporality(plan, t.id);
-      const priceLabel = price ? ` — ${price}` : "";
+      const priceLabel = price ? ` — ${formatPlanPrice(price)}` : "";
       kb.text(`${t.label}${priceLabel}`, `${prefix}${planId}_${t.id}`);
       if (i % 2 === 1) kb.row();
     }
@@ -380,7 +380,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
           const prices = temporalities
             .map((t) => {
               const price = getPriceForTemporality(p, t.id);
-              return price ? `${t.label}: *${price}*` : null;
+              return price ? `${t.label}: *${formatPlanPrice(price)}*` : null;
             })
             .filter(Boolean)
             .join(" · ");

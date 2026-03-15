@@ -70,6 +70,7 @@ import {
   updatePlan,
   TEMPORALITIES,
   getPriceForTemporality,
+  formatPlanPrice,
 } from "../plans.js";
 import {
   buildSecurityKeyboard,
@@ -530,7 +531,7 @@ export async function handleSecurityCallback(
       keyboard = new InlineKeyboard();
       for (const t of TEMPORALITIES) {
         const price = getPriceForTemporality(plan, t.id);
-        const priceLabel = price ? ` — ${price}` : "";
+        const priceLabel = price ? ` — ${formatPlanPrice(price)}` : "";
         keyboard.text(`${t.label}${priceLabel}`, `admin_assign_plan_temp_${planId}_${t.id}`).row();
       }
       keyboard.text("◀️ Cancelar", "admin_assign_plan_cancel");
@@ -571,7 +572,7 @@ export async function handleSecurityCallback(
     const lines = list.map((p) => {
       const menus = (p.menuIds?.length ? p.menuIds.join(", ") : "—") || "—";
       const prices = TEMPORALITIES
-        .map((t) => { const pr = getPriceForTemporality(p, t.id); return pr ? `${t.label}: *${escapeMd(pr)}*` : null; })
+        .map((t) => { const pr = getPriceForTemporality(p, t.id); return pr ? `${t.label}: *${escapeMd(formatPlanPrice(pr))}*` : null; })
         .filter(Boolean).join(" · ");
       const autoTag = p.autoApprove ? " _(auto-aprobado)_" : "";
       return `• *${escapeMd(p.title)}*${autoTag}${prices ? `\n  ${prices}` : ""}\n  ${escapeMd(p.description.slice(0, 50))}${p.description.length > 50 ? "…" : ""}\n  Menús: \`${menus}\``;
@@ -592,7 +593,8 @@ export async function handleSecurityCallback(
       result = "✏️ *Editar plan*\n\nElige el plan a editar:";
       keyboard = new InlineKeyboard();
       for (const p of list) {
-        keyboard.text(`✏️ ${p.title} (${p.price})`, `admin_plans_edit_pick_${p.id}`).row();
+        const pLabel = p.price ? ` (${formatPlanPrice(p.price)})` : "";
+        keyboard.text(`✏️ ${p.title}${pLabel}`, `admin_plans_edit_pick_${p.id}`).row();
       }
       keyboard.text("◀️ Volver a Gestionar planes", "admin_plans_manage");
     }
@@ -629,7 +631,8 @@ export async function handleSecurityCallback(
       keyboard = buildManagePlansKeyboard();
     } else {
       deletingPlanFlow.set(ctx.from.id, { planId });
-      result = `🗑 ¿Eliminar el plan *${plan.title}* (${plan.price})?`;
+      const pLabel = plan.price ? ` (${formatPlanPrice(plan.price)})` : "";
+      result = `🗑 ¿Eliminar el plan *${plan.title}*${pLabel}?`;
       keyboard = new InlineKeyboard()
         .text("✅ Sí, eliminar", `admin_plans_delete_confirm_${planId}`)
         .text("❌ No", "admin_plans_delete_cancel")

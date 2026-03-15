@@ -65,6 +65,13 @@ export interface Plan {
   autoApprove?: boolean;
 }
 
+/** Formatea un precio para incluir $ y USD (ej: "10" -> "$10 USD"). Respeta si es "Gratis" o ya tiene formato. */
+export function formatPlanPrice(price: string): string {
+  if (!price) return "";
+  const cleanPrice = price.replace(/^\$?(.*?)(?:\s*USD)?$/i, "$1").trim();
+  return /^\d/.test(cleanPrice) ? `$${cleanPrice} USD` : cleanPrice;
+}
+
 /** Devuelve el precio de un plan según la temporalidad; si no está definido usa price. */
 export function getPriceForTemporality(plan: Plan, temporality: string): string {
   switch (temporality) {
