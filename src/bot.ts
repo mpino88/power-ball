@@ -182,7 +182,7 @@ const REQUEST_ACCESS_LINK = process.env.REQUEST_ACCESS_LINK?.trim() ?? "";
 const STRATEGY_STORE_PREVIEW_CALLBACK_PREFIX = "stpv_";
 
 /** Ruta local de la imagen de onboarding para nuevos usuarios. */
-const ONBOARDING_IMAGE_PATH = path.join(process.cwd(), "src", "assets", "onboarding-new-user.png");
+const ONBOARDING_IMAGE_PATH = path.join(process.cwd(), "src", "assets", "onboarding-new-user.jpg");
 /** file_id cacheado de Telegram tras el primer envío (evita releer el disco). */
 let onboardingPhotoFileId: string | null = null;
 
