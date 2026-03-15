@@ -376,18 +376,9 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
     } else {
       const planList = plans
         .map((p) => {
-          const temporalities = p.autoApprove ? TRIAL_TEMPORALITIES : REGULAR_TEMPORALITIES;
-          const prices = temporalities
-            .map((t) => {
-              const price = getPriceForTemporality(p, t.id);
-              return price ? `${t.label}: *${formatPlanPrice(price)}*` : null;
-            })
-            .filter(Boolean)
-            .join(" · ");
           const autoTag = p.autoApprove ? " — _acceso inmediato_" : "";
           return (
             `*${p.title}*${autoTag}\n` +
-            (prices ? `${prices}\n` : "") +
             `_${p.description.replace(/\n/g, " ")}_`
           );
         })
