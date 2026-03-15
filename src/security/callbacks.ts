@@ -427,11 +427,17 @@ export async function handleSecurityCallback(
       }
       keyboard = new InlineKeyboard();
       for (const r of requests) {
+        const uName = (getUsername(r.userId) || r.userId.toString()).split(" ")[0] ?? "User";
+        const sLabel = getExtraMenuLabel(r.menuId) ?? r.menuId;
+        const shortName = uName.length > 10 ? uName.slice(0, 10) + "…" : uName;
+        const shortStrat = sLabel.length > 15 ? sLabel.slice(0, 15) + "…" : sLabel;
+        
         const menuFragment = r.menuId.length > 25 ? r.menuId.slice(0, 25) : r.menuId;
         const payload = `${r.userId}|${menuFragment}`;
         keyboard
-          .text(`✅ Aprobar`, `admin_estrategias_approve_${payload}`)
-          .text(`❌ Rechazar`, `admin_estrategias_reject_${payload}`)
+          .text(`👤 ${shortName} - ${shortStrat}`, "noop")
+          .text(`✅`, `admin_estrategias_approve_${payload}`)
+          .text(`❌`, `admin_estrategias_reject_${payload}`)
           .row();
       }
       keyboard.text("◀️ Volver a Gestionar Estrategias", "admin_estrategias_manage");
