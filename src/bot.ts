@@ -384,7 +384,19 @@ async function showStrategyContextSelection(
   }
 
   const promptText = source === "store" ? "Previa de Estrategia" : "Estrategia";
-  const msg = `🎯 *${promptText}:* ${title}\n\nPor favor, selecciona la base de conocimiento y el período que deseas usar para la previsualización:`;
+  let msg = `🎯 *${promptText}:* ${escapeMd(title)}`;
+
+  const stratDef = getStrategy(menuId);
+  const desc = stratDef?.description || getExtraMenuDescription(menuId);
+  if (desc) {
+    msg += `\n\n_${escapeMd(desc)}_`;
+  }
+
+  const selectionPrompt = source === "store"
+    ? "Por favor, selecciona la base de conocimiento y el período que deseas usar para la previsualización:"
+    : "Por favor, selecciona la base de conocimiento y el período que deseas analizar:";
+  
+  msg += `\n\n${selectionPrompt}`;
   
   await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: resultKb });
 }
