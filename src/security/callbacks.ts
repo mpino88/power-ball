@@ -427,7 +427,8 @@ export async function handleSecurityCallback(
       }
       keyboard = new InlineKeyboard();
       for (const r of requests) {
-        const payload = `${r.userId}|${r.menuId}`;
+        const menuFragment = r.menuId.length > 25 ? r.menuId.slice(0, 25) : r.menuId;
+        const payload = `${r.userId}|${menuFragment}`;
         keyboard
           .text(`✅ Aprobar`, `admin_estrategias_approve_${payload}`)
           .text(`❌ Rechazar`, `admin_estrategias_reject_${payload}`)
@@ -438,9 +439,11 @@ export async function handleSecurityCallback(
   } else if (data.startsWith("admin_estrategias_approve_")) {
     const rest = data.replace("admin_estrategias_approve_", "");
     const [uidStr, ...menuIdParts] = rest.split("|");
-    const menuId = menuIdParts.join("|");
+    const menuIdFragment = menuIdParts.join("|");
     const uid = parseInt(uidStr, 10);
-    if (Number.isNaN(uid) || !menuId) {
+    const validIds = getExtraMenuIds();
+    const menuId = resolveExtraMenuId(validIds, menuIdFragment ?? "");
+    if (Number.isNaN(uid) || !validIds.includes(menuId)) {
       result = "Solicitud no encontrada.";
       keyboard = buildManageEstrategiasKeyboard();
     } else {
@@ -452,9 +455,11 @@ export async function handleSecurityCallback(
   } else if (data.startsWith("admin_estrategias_reject_")) {
     const rest = data.replace("admin_estrategias_reject_", "");
     const [uidStr, ...menuIdParts] = rest.split("|");
-    const menuId = menuIdParts.join("|");
+    const menuIdFragment = menuIdParts.join("|");
     const uid = parseInt(uidStr, 10);
-    if (Number.isNaN(uid) || !menuId) {
+    const validIds = getExtraMenuIds();
+    const menuId = resolveExtraMenuId(validIds, menuIdFragment ?? "");
+    if (Number.isNaN(uid) || !validIds.includes(menuId)) {
       result = "Solicitud no encontrada.";
       keyboard = buildManageEstrategiasKeyboard();
     } else {
