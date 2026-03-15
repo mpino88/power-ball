@@ -173,7 +173,7 @@ function formatMessage(
     `📊 *Espejo y Complemento* — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr} · Último sorteo: ${lastDateStr}`,
     "",
-    "📖 _Qué mide:_ correlación entre un número y sus variantes simétricas\\.",
+    "📖 _Qué mide:_ qué tantas veces un número atrae a su número espejo \\(ej. 47 atrae al 74\\)\\.",
     "• _Espejo_: 47↔74 \\(dígitos invertidos\\) · _Comp99_: 23↔76 \\(99\\-n\\) · _Comp100_: 23↔77 \\(100\\-n\\)",
     "_Pct1/3/7_: % veces que el simétrico apareció en los siguientes 1/3/7 sorteos\\.",
     `_Último sorteo_: ${lastNums.map((n) => String(n).padStart(2, "0")).join(", ")} — proyección de sus simétricos:`,
@@ -253,7 +253,7 @@ function formatMessage(
 
 export const mirrorComplement: StrategyDefinition = {
   id: "mirror_complement",
-  description: "Estudia si existe correlación estadística entre un número y su espejo (47↔74) o complemento (23↔76). Dado el último sorteo, proyecta qué espejos y complementos tienen mayor probabilidad de aparecer.",
+  description: "Busca conexiones ocultas. Si salió el 47, analiza si es probable que salga su espejo (74) o su complemento (76) en el próximo sorteo.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
 

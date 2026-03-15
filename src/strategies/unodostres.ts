@@ -227,8 +227,8 @@ function formatMessage(
     `📊 *Resonancia Fibonacci (UnoDosTres)* — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr} · Total sorteos: ${totalDraws}`,
     "",
-    "📖 _Modelo:_ ventanas Fibonacci desde última aparición de cada número.",
-    `_Tₙ = t₀ + Fₙ_ | σ=${SIGMA}d | F={1,2,3,5,8,13,21,34,55,89,144}`,
+    "📖 _Modelo:_ usa los números mágicos de Fibonacci para calcular los mejores días en los que un número puede salir\\.",
+    `Te avisa si han pasado exactamente 1, 2, 3, 5, 8, 13, 21, 34, 55, 89 o 144 días desde que salió\\.`,
     "",
     "```",
   ];
@@ -262,7 +262,7 @@ function formatMessage(
   }
 
   lines.push(`En resonancia activa: ${inResonance.length}/100 números`);
-  lines.push("FibScore = W(t) gaussiana · Score = 0.1 + α·W + β·Hist");
+  lines.push("Score = Puntaje final del 0 al 1 sumando el ciclo y las veces que ha salido.");
   lines.push("🔴 Ciclo Mayor · 🟡 Expansión · 🟢 Corto Plazo");
   lines.push("```");
 
@@ -274,7 +274,7 @@ function formatMessage(
 export const unodostres: StrategyDefinition = {
   id: "unodostres",
   description:
-    "Resonancia Temporal Fibonacci: usa los intervalos Fₙ = {1,2,3,5,8,13,21,34,55,89,144} días como ventanas de alta probabilidad desde la última aparición de cada número. Números en Tₙ = t₀ + Fₙ días están en su ventana de resonancia óptima (ciclo mayor = pico máximo). P3/P4 · Día/Noche",
+    "Busca coincidencias con la secuencia mágica de Fibonacci (1, 2, 3, 5, 8, 13...). Te avisa cuando un número cumple exactamente esos días sin salir, que es cuando tiene un 'pico' de probabilidad de reventar.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
 

@@ -94,7 +94,7 @@ function formatMessage(result: CountMap, mapSource: "p3" | "p4", period: "m" | "
     `📊 *Más salidores x día de la semana* — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr}`,
     "",
-    "📖 _Qué mide:_ los 10 números \\(00\\-99\\) que más han salido en cada día de la semana\\.",
+    "📖 _Qué mide:_ te dice directamente cuáles son los 10 números favoritos de cada día de la semana\\.",
     "Formato _##\\(n\\)_ = número y veces que salió ese día · L=Lun · Ma=Mar · Mi=Mié · J=Jue · V=Vie · S=Sáb · D=Dom",
     "→ Enfócate en la columna del día que corresponde al PRÓXIMO sorteo estimado",
     "",
@@ -127,7 +127,7 @@ function formatMessage(result: CountMap, mapSource: "p3" | "p4", period: "m" | "
 
 export const maxPerWeekDay: StrategyDefinition = {
   id: "max_per_week_day",
-  description: "Muestra el top 10 de números para cada día de la semana. Si hoy es Lunes, sabrás exactamente cuáles han salido más históricamente los Lunes en este período y turno.",
+  description: "Te muestra los favoritos para cada día de la semana. Sabrás exactamente cuáles números dominan los lunes, los martes, etc.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
   async run(context: StrategyContext, map: DateDrawsMap): Promise<string> {

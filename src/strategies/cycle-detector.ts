@@ -157,7 +157,7 @@ function formatMessage(
     `📊 *Detector de Ciclos* — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr} · Total sorteos analizados: ${totalDraws}`,
     "",
-    "📖 _Qué mide:_ detecta si un número tiene un ciclo de aparición predominante\\.",
+    "📖 _Qué mide:_ busca números que tienen la costumbre de salir cada cierto tiempo exacto\\.",
     "_Ciclo_ = intervalo \\(en sorteos\\) más frecuente entre apariciones del número\\.",
     "_Fase_ = sorteos sin salir ÷ ciclo\\. Fase ≈1\\.0 = el ciclo dice que toca ahora\\.",
     `_${withCycle.length} números_ tienen ciclo estadístico detectable \\(≥${(MIN_CYCLE_CONCENTRATION * 100).toFixed(0)}% de brechas en banda dominante\\)`,
@@ -207,7 +207,7 @@ function formatMessage(
 
 export const cycleDetector: StrategyDefinition = {
   id: "cycle_detector",
-  description: "Detecta si un número tiene un ciclo de aparición rítmico (cada 7, 14, 21 sorteos…). Cuando la fase del ciclo se acerca a 1.0, el número está en su punto de máxima probabilidad — literalmente \"toca\" salir.",
+  description: "Descubre si un número tiene la costumbre de salir cada cierto tiempo exacto (ej. cada 7 o 14 días). Te avisa cuando el ciclo se cumple y le toca salir de nuevo.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
 

@@ -117,7 +117,7 @@ function formatMessage(
     `📊 *Momentum de Tendencia* — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr} · Histórico: ${totalAll} sorteos · Reciente: últimos ${totalRecent} · Último: ${latestDateStr}`,
     "",
-    "📖 _Qué mide:_ detecta cambios de comportamiento recientes vs la tendencia histórica total\\.",
+    "📖 _Qué mide:_ busca números que han empezado a salir mucho más de lo normal últimamente \\(buena racha\\)\\.",
     "_Rec\\._ = freq\\. últimos 30 · _Hist\\._ = freq\\. total · _Momento_ = Rec÷Hist \\(>1x = en alza\\)",
     "→ ↑↑↑ ≥3x alza fuerte · ↑↑ ≥1\\.5x alza · ↓ en baja · Complementa al Análisis de Frecuencia",
     "",
@@ -159,7 +159,7 @@ function formatMessage(
 
 export const trendMomentum: StrategyDefinition = {
   id: "trend_momentum",
-  description: "Compara la frecuencia reciente de cada número con su historial total. Detecta cuáles están en alza (salen más que de costumbre) y cuáles en baja, revelando cambios de tendencia que la frecuencia global no muestra.",
+  description: "Detecta qué números están 'despertando'. Compara cómo se están portando ahora mismo vs cómo se portan normalmente, buscando los que vienen en racha ganadora.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
   async run(context: StrategyContext, map: DateDrawsMap): Promise<string> {

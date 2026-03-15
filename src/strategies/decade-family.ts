@@ -186,7 +186,7 @@ function formatMessage(
     `📊 *Familias de Decenas* — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr} · Último registro: ${latestDateStr}`,
     "",
-    "📖 _Qué mide:_ agrupa los 100 números en 10 familias \\(D0\\=00\\-09, D1\\=10\\-19, …\\)\\.",
+    "📖 _Qué mide:_ analiza los números por grupos de decenas \\(los 10s, 20s, 30s\\) para ver cuál grupo está por salir\\.",
     "_Momento_ = frecuencia reciente ÷ histórica \\(↑↑↑ en alza fuerte\\)\\.",
     "_Due_ = brecha actual ÷ promedio\\. Primero identifica la familia, luego sus candidatos internos\\.",
     "",
@@ -240,7 +240,7 @@ function formatMessage(
 
 export const decadeFamily: StrategyDefinition = {
   id: "decade_family",
-  description: "Agrupa los 100 números en 10 familias de decena (00-09, 10-19…). Identifica qué familia está en alza y cuál está más debida, luego proyecta los mejores candidatos individuales dentro de esas familias.",
+  description: "Agrupa los números por decenas (los 20s, los 30s...). Identifica qué grupo entero está atrasado o caliente, y escoge los mejores de ese grupo.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
 

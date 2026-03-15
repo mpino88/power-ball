@@ -100,7 +100,7 @@ function formatMessage(
     `📊 *Análisis de Frecuencia* — ${mapLabel} · ${periodLabel}`,
     `Sorteos: ${totalDraws} · Período: ${rangeStr} · Apariciones totales: ${totalOccurrences}`,
     "",
-    "📖 _Qué mide:_ cuántas veces salió cada número en toda la historia disponible\\.",
+    "📖 _Qué mide:_ cuáles son los números que más repiten y los que menos salen en la historia\\.",
     "_Count_ = apariciones · _Prob%_ = probabilidad histórica · _Días sin_ = días desde última salida",
     "_TOP 20 calientes_ = más frecuentes · _TOP 10 fríos_ = candidatos por larga ausencia",
     "",
@@ -137,7 +137,7 @@ function formatMessage(
 
 export const freqAnalysis: StrategyDefinition = {
   id: "freq_analysis",
-  description: "Cuenta cuántas veces ha salido cada número en toda la historia. Muestra los 20 más frecuentes (calientes) y los 10 más fríos con su probabilidad y días sin aparecer.",
+  description: "Cuenta cuáles son los números que más han salido en la historia (los favoritos) y cuáles son los que menos salen (los más fríos).",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
   async run(context: StrategyContext, map: DateDrawsMap): Promise<string> {

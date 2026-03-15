@@ -110,8 +110,7 @@ function formatMessage(
     `📊 *Cadena de Markov Orden 2* — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr}`,
     "",
-    "📖 _Qué mide:_ dado el par \\(penúltimo→último sorteo\\), predice el siguiente usando",
-    "transiciones de 2 pasos\\. Captura dependencias que Markov\\-1 no puede detectar\\.",
+    "📖 _Qué mide:_ usa los DOS últimos sorteos seguidos para ver quién sale siempre después de ellos\\.",
     `_Penúltimo_ \\(${prevDateStr}\\): ${prevNums.map((n) => String(n).padStart(2, "0")).join(", ")} · _Último_ \\(${lastDateStr}\\): ${lastNums.map((n) => String(n).padStart(2, "0")).join(", ")}`,
     "",
     "```",
@@ -189,7 +188,7 @@ function formatMessage(
 
 export const markovOrder2: StrategyDefinition = {
   id: "markov_order2",
-  description: "Extiende la cadena de Markov a orden 2: usa el par (penúltimo + último sorteo) para predecir el siguiente. Captura patrones de dos pasos que la cadena simple no puede ver, con mayor precisión predictiva.",
+  description: "Analiza el historial de dos pasos. Observa los dos últimos sorteos juntos para ver qué número acostumbra a salir después de esa combinación exacta.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
 

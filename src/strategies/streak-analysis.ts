@@ -182,7 +182,7 @@ function formatMessage(
     `📊 *Análisis de Rachas* — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr} · Total sorteos: ${totalDraws}`,
     "",
-    "📖 _Qué mide:_ continuidad de rachas calientes \\(salidas seguidas\\) y frías \\(ausencias\\)\\.",
+    "📖 _Qué mide:_ qué números llevan apareciendo sorteos seguidos o llevan demasiados sorteos escondidos\\.",
     "_Racha caliente_ = sorteos consecutivos apareciendo\\. _Due_ = racha fría actual ÷ promedio histórico\\.",
     "Diferencia de trend\\_momentum: usa conteo de sorteos y analiza CONTINUIDAD de la racha\\.",
     "",
@@ -235,7 +235,7 @@ function formatMessage(
 
 export const streakAnalysis: StrategyDefinition = {
   id: "streak_analysis",
-  description: "Analiza rachas calientes (sorteos seguidos apareciendo) y frías (sorteos seguidos sin aparecer). Detecta inercia positiva y períodos de ausencia excepcionalmente largos en conteo de sorteos.",
+  description: "Vigila las rachas. Encuentra números que llevan muchos sorteos seguidos saliendo (rachas calientes) o demasiados sorteos escondidos (rachas frías).",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
 

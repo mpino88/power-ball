@@ -85,7 +85,7 @@ function formatMessage(
     `📊 *Seguidor de Secuencias* — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr} · Último sorteo (${lastDateStr}): ${drawStr}`,
     "",
-    "📖 _Qué mide:_ Cadena de Markov — dado que X salió, ¿qué número Y apareció en el sorteo SIGUIENTE?",
+    "📖 _Qué mide:_ si hoy salió el número X, quién suele salir justo en el sorteo de mañana\\.",
     "_nx \\(p%\\)_ = Y apareció n veces después de X, con p% de probabilidad histórica de transición",
     "→ _CONSENSO_ = números elegidos por múltiples predecesores del último draw \\(mayor respaldo\\)",
     "",
@@ -146,7 +146,7 @@ function formatMessage(
 
 export const transitionFollow: StrategyDefinition = {
   id: "transition_follow",
-  description: "Cadena de Markov orden 1: dado el último sorteo, muestra qué números han seguido históricamente con mayor frecuencia. La estrategia con el enfoque predictivo más directo para el próximo draw.",
+  description: "Analiza quién le sigue a quién. Si hoy salió el 45, busca en la historia qué números suelen salir justo al día siguiente.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
   async run(context: StrategyContext, map: DateDrawsMap): Promise<string> {

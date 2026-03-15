@@ -174,7 +174,7 @@ function formatMessage(
     `📊 *Análisis de Terminales* — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr}`,
     "",
-    "📖 _Qué mide:_ el dígito final \\(terminal, 0\\-9\\) de los números sorteados\\.",
+    "📖 _Qué mide:_ busca el último dígito \\(terminal\\) que está por salir y te sugiere combinaciones con él\\.",
     "_Momento_ = frec\\. reciente ÷ histórica\\. _Due_ = sorteos sin salir ÷ promedio\\.",
     "Detecta qué terminal está en alza y proyecta los candidatos que lo contienen\\.",
     "",
@@ -241,7 +241,7 @@ function formatMessage(
 
 export const terminalAnalysis: StrategyDefinition = {
   id: "terminal_analysis",
-  description: "Se enfoca en el dígito final (terminal 0-9) de los números. Detecta qué terminales están en alza o más debidos y lista todos los candidatos completos (00-99) que contienen ese terminal.",
+  description: "Estudia el último dígito del número (el terminal). Encuentra qué terminación exacta está por salir y te da todos los números con esa terminación.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
 

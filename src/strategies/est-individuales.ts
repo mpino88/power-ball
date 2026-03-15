@@ -19,7 +19,7 @@ const DEFAULT_DIAS_DIFERENCIA = 5;
 
 export const estIndividuales: StrategyDefinition = {
   id: "est_individuales",
-  description: "Top 10 más \"hot\" para P3 (Fijo): compara cuánto llevan sin salir respecto a su máximo histórico de ausencia. Los más cercanos a su techo son los candidatos más calientes del momento.",
+  description: "Muestra los 10 números que están a punto de agotar su tiempo límite sin salir. Son los candidatos más calientes porque ya 'les toca' aparecer.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
 

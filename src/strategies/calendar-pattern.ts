@@ -134,7 +134,7 @@ function formatMessage(
     `📊 *Patrón Calendario* — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr} · Último: ${latestDateStr} · Próx. estimado: ${nextDateLabel}`,
     "",
-    "📖 _Qué mide:_ qué números salen más según el contexto de la PRÓXIMA fecha estimada\\.",
+    "📖 _Qué mide:_ cuáles números salen más dependiendo de la fecha exacta de mañana \\(día y mes\\)\\.",
     "_4 dimensiones_: ①\\(día semana\\+mes\\) combinación exacta · ② día semana · ③ mes · ④ día del mes",
     "→ Prioriza números que aparecen en _varias_ secciones a la vez · \\(nx\\) = veces históricas",
     "",
@@ -179,7 +179,7 @@ function formatMessage(
 
 export const calendarPattern: StrategyDefinition = {
   id: "calendar_pattern",
-  description: "Analiza qué números salen según el día de la semana, el mes y el día del mes. Dado el próximo sorteo, proyecta los candidatos más probables para ese contexto calendario exacto.",
+  description: "Busca patrones en las fechas. Descubre qué números prefieren salir los martes, cuáles a fin de mes, y te da los mejores para la próxima fecha.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
   async run(context: StrategyContext, map: DateDrawsMap): Promise<string> {

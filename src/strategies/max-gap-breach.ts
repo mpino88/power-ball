@@ -150,7 +150,7 @@ function formatMessage(
     `📊 *Ruptura de Récord de Ausencia* — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr} · Último registro: ${latestDateStr}`,
     "",
-    "📖 _Qué mide:_ números cuya brecha actual supera su MÁXIMO histórico de ausencia\\.",
+    "📖 _Qué mide:_ números que ya pasaron su récord máximo de tiempo sin salir\\.",
     "_Exceso_ = días actuales sin salir − récord histórico máximo\\. Si >0 → territorio sin precedentes\\.",
     "_Pct_ = brecha actual ÷ récord máximo × 100\\. ≥100% = récord roto\\. Complementa a Gap Debidos\\.",
     "",
@@ -198,7 +198,7 @@ function formatMessage(
 
 export const maxGapBreach: StrategyDefinition = {
   id: "max_gap_breach",
-  description: "Identifica números que han roto su récord histórico de ausencia — nunca antes habían estado tanto tiempo sin salir. Candidatos de máxima urgencia estadística: están en territorio sin precedentes.",
+  description: "Muestra los números que ya rompieron su récord histórico de días sin salir. Nunca habían tardado tanto, por lo que su salida es inminente.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
 

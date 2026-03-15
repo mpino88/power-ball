@@ -186,7 +186,7 @@ function analyzeP3(map: DateDrawsMap, period: "m" | "e"): string {
     `📊 *Análisis Posicional* — P3 (Fijos) · ${periodLabel}`,
     `Sorteos: ${totalDraws} · Período: ${rangeStr} · Último: ${latestDateStr} · Próx. estimado: ${nextDateLabel}`,
     "",
-    "📖 _Qué mide:_ cada dígito del sorteo \\[C\\]\\[D\\]\\[U\\] analizado de forma independiente por posición\\.",
+    "📖 _Qué mide:_ analiza qué número exacto debería salir en cada posición \\(Centena, Decena y Unidad\\)\\.",
     "_Prob%_ = probabilidad en esa posición · _Factor_ = Gap\\-deuda \\(>1x = dígito atrasado en esa posición\\)",
     "_Probable próx\\:_ dígito más frecuente para esa posición en el contexto \\(día semana\\+mes\\) estimado",
     "",
@@ -303,7 +303,7 @@ function analyzeP4(map: DateDrawsMap, period: "m" | "e"): string {
     `📊 *Análisis Posicional* — P4 (Corridos) · ${periodLabel}`,
     `Sorteos: ${totalDraws} · Período: ${rangeStr} · Último: ${latestDateStr} · Próx: ${nextDateLabel}`,
     "",
-    "📖 _Qué mide:_ el sorteo \\[ABCD\\] se divide en 2 pares NO solapados: Par1=\\[AB\\] y Par2=\\[CD\\]\\.",
+    "📖 _Qué mide:_ divide el sorteo de 4 cifras en dos parejas claras iniciales y finales para analizarlas mejor\\.",
     "Para cada par: top números 00\\-99 + análisis de su _Decena_ \\(dígito izq\\.\\) y su _Unidad_ \\(dígito der\\.\\)",
     "_Factor_ = Gap\\-deuda · _Cal:_ = candidatos del par según patrón \\(día semana\\+mes\\) de la próxima fecha",
     "",
@@ -376,7 +376,7 @@ function analyzeP4(map: DateDrawsMap, period: "m" | "e"): string {
 
 export const positionalAnalysis: StrategyDefinition = {
   id: "positional_analysis",
-  description: "Descompone el sorteo posición por posición. En P3 analiza Centena, Decena y Unidad por separado; en P4 analiza los dos pares (AB y CD). Muestra qué dígito \"debe\" en cada posición según su frecuencia y deuda.",
+  description: "Analiza el sorteo dígito por dígito. Te dice exactamente qué número tiene más probabilidades de salir en la primera, segunda o tercera posición.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
   async run(context: StrategyContext, map: DateDrawsMap): Promise<string> {

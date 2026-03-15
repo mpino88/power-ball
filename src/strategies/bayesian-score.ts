@@ -289,7 +289,7 @@ function formatMessage(
     `📊 *Score Bayesiano* — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr} · Último: ${lastDateStr} · Ref: ${lastNums.map((n) => String(n).padStart(2, "0")).join(", ")}`,
     "",
-    "📖 _Qué mide:_ combina 6 señales estadísticas en un score continuo 0\\-100\\.",
+    "📖 _Qué mide:_ mezcla y evalúa 6 estrategias al mismo tiempo para dar una nota del 0 al 100 a cada número\\.",
     "_Señales_: Freq\\(15%\\) · Gap\\(20%\\) · Moment\\.\\(20%\\) · Ciclo\\(15%\\) · Markov\\(20%\\) · Racha\\(10%\\)",
     "Ventaja vs Consenso: score CONTINUO \\(no votación binaria\\) → mayor discriminación entre candidatos\\.",
     "",
@@ -326,7 +326,7 @@ function formatMessage(
 
 export const bayesianScore: StrategyDefinition = {
   id: "bayesian_score",
-  description: "Combina 6 señales estadísticas (frecuencia, deuda, momentum, ciclo, Markov y racha) con pesos bayesianos para generar un score 0-100 por número. El ranking más completo y matemáticamente robusto del sistema.",
+  description: "Nuestra estrategia más inteligente. Combina frecuencia, atraso, rachas y ciclos para darle un puntaje del 0 al 100 a cada número y mostrarte a los ganadores definitivos.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
 
