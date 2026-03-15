@@ -457,6 +457,11 @@ export async function handleSecurityCallback(
       await approveStrategyRequest(uid, menuId);
       const label = getExtraMenuLabel(menuId) ?? menuId;
       result = `✅ Solicitud aprobada: usuario \`${uid}\` — *${escapeMd(label)}* (\`${menuId}\`).`;
+      // Notificar al comprador
+      ctx.api.sendMessage(uid,
+        `🎉 *¡Tu solicitud fue aprobada!*\n\nYa tienes acceso a la estrategia *${escapeMd(label)}*. Ve a tu menú de estrategias para usarla.`,
+        { parse_mode: "Markdown" }
+      ).catch(() => {});
       keyboard = new InlineKeyboard().text("◀️ Volver a Solicitudes", "admin_estrategias_requests");
     }
   } else if (data.startsWith("admin_estrategias_reject_")) {
@@ -473,6 +478,11 @@ export async function handleSecurityCallback(
       await removeStrategyRequest(uid, menuId);
       const label = getExtraMenuLabel(menuId) ?? menuId;
       result = `❌ Solicitud rechazada: usuario \`${uid}\` — *${escapeMd(label)}*.`;
+      // Notificar al comprador
+      ctx.api.sendMessage(uid,
+        `❌ *Tu solicitud fue rechazada*\n\nEl administrador no aprobó el acceso a *${escapeMd(label)}*. Puedes contactarlo para más información.`,
+        { parse_mode: "Markdown" }
+      ).catch(() => {});
       keyboard = new InlineKeyboard().text("◀️ Volver a Solicitudes", "admin_estrategias_requests");
     }
   } else if (data === "admin_estrategias_visibility") {
@@ -772,9 +782,37 @@ export async function handleSecurityCallback(
         result = isPlanChange
           ? `✅ Cambio de plan aprobado para usuario \`${userId}\`. Nuevo plan: *${escapeMd(requested?.plan ?? "")}*${tLabel}.${menuInfo}`
           : `✅ Usuario \`${userId}\` aprobado. Plan: *${escapeMd(requested?.plan ?? "")}*${tLabel}.${menuInfo} Puedes asignar más menús en *Menús por usuario*.`;
+        // Notificar al solicitante
+        const planLabel = escapeMd(requested?.plan ?? "");
+        const tLabelClean = requested?.temporality
+          ? ` (${TEMPORALITIES.find((t) => t.id === requested.temporality)?.label ?? requested.temporality})`
+          : "";
+        ctx.api.sendMessage(userId,
+          `🎉 *¡Tu acceso fue aprobado!*\n\nYa tienes acceso activo al plan *${planLabel}*${tLabelClean}. ¡Bienvenido! Usa /start para entrar al bot.`,
+          { parse_mode: "Markdown" }
+        ).catch(() => {});
       } else {
         result = (approveResult.error ?? "Error al aprobar.") + "\n\nVuelve a Solicitudes pendientes.";
       }
+      keyboard = buildManagePlansKeyboard();
+    }
+  } else if (data.startsWith("admin_plans_reject_")) {
+    const userIdStr = data.replace("admin_plans_reject_", "");
+    const userId = parseInt(userIdStr, 10);
+    if (Number.isNaN(userId)) {
+      result = "ID de usuario inválido.";
+      keyboard = buildManagePlansKeyboard();
+    } else {
+      const requested = getRequestedPlanUsers().find((u) => u.userId === userId);
+      const planLabel = escapeMd(requested?.plan ?? "plan solicitado");
+      // Eliminar la solicitud del estado pendiente
+      await approvePlanRequest(userId, []).catch(() => {}); // ensures the pending row is cleared
+      result = `❌ Solicitud de plan rechazada para usuario \`${userId}\`.`;
+      // Notificar al solicitante
+      ctx.api.sendMessage(userId,
+        `❌ *Tu solicitud de plan fue rechazada*\n\nEl administrador no aprobó el acceso al plan *${planLabel}*. Puedes contactarlo para más información.`,
+        { parse_mode: "Markdown" }
+      ).catch(() => {});
       keyboard = buildManagePlansKeyboard();
     }
   } else if (data === "admin_leads" || data === "admin_leads_refresh") {
@@ -1043,8 +1081,13 @@ export async function handleEstrategiasUserCallback(
       const adminId = getOwnerId();
       if (adminId && adminId !== userId) {
         const username = ctx.from?.username ? `@${ctx.from.username}` : (ctx.from?.first_name || String(userId));
-        const adminMsg = `🔔 *Nueva solicitud de estrategia*\n\nUsuario: ${escapeMd(username)} (\`${userId}\`)\nEstrategia: *${escapeMd(label)}* (\`${menuId}\`)\n\nPuedes gestionarla desde el panel administrativo.`;
-        ctx.api.sendMessage(adminId, adminMsg, { parse_mode: "Markdown" }).catch(() => {});
+        const adminMsg = `🔔 *Nueva solicitud de estrategia*\n\nUsuario: ${escapeMd(username)} (\`${userId}\`)\nEstrategia: *${escapeMd(label)}* (\`${menuId}\`)`;
+        const menuFragment = menuId.length > 25 ? menuId.slice(0, 25) : menuId;
+        const payload = `${userId}|${menuFragment}`;
+        const adminKb = new InlineKeyboard()
+          .text("✅ Aprobar", `admin_estrategias_approve_${payload}`)
+          .text("❌ Rechazar", `admin_estrategias_reject_${payload}`);
+        ctx.api.sendMessage(adminId, adminMsg, { parse_mode: "Markdown", reply_markup: adminKb }).catch(() => {});
       }
     }
 

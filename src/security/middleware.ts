@@ -175,6 +175,17 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
               await ctx.reply("Selecciona una opción:", { reply_markup: options.buildMainKeyboard(uid) });
             } else {
               await addPlanRequest(uid, renewal.planName, { name, phone, temporality: renewal.temporality });
+              // Notificar al admin con botones de aprobar/rechazar
+              const ownerId = options.getOwnerId();
+              if (ownerId && ownerId !== uid) {
+                const ctxApi = (ctx as { api?: { sendMessage?: (id: number, txt: string, opts?: object) => Promise<unknown> } }).api;
+                const tLabel = TEMPORALITIES.find((t) => t.id === renewal.temporality)?.label ?? renewal.temporality;
+                const adminPushMsg = `🔔 *Solicitud de plan (renovación)*\n\nUsuario: \`${uid}\` — ${name}\nPlan: *${renewal.planName}* (${tLabel})\nTeléfono: \`${phone}\``;
+                const adminKb = new InlineKeyboard()
+                  .text("✅ Aprobar", `admin_plans_approve_${uid}`)
+                  .text("❌ Rechazar", `admin_plans_reject_${uid}`);
+                ctxApi?.sendMessage?.(ownerId, adminPushMsg, { parse_mode: "Markdown", reply_markup: adminKb }).catch(() => {});
+              }
               await ctx.reply(
                 `✅ Solicitud de renovación registrada (*${renewal.planName}*). El administrador activará tu acceso.`,
                 { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } }
@@ -311,6 +322,17 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
             await ctx.reply("Selecciona una opción:", { reply_markup: options.buildMainKeyboard(uid) });
           } else {
             await addPlanRequest(uid, pending.planName, { name, phone, temporality: pending.temporality });
+            // Notificar al admin con botones de aprobar/rechazar
+            const ownerId2 = options.getOwnerId();
+            if (ownerId2 && ownerId2 !== uid) {
+              const ctxApi = (ctx as { api?: { sendMessage?: (id: number, txt: string, opts?: object) => Promise<unknown> } }).api;
+              const tLabel2 = TEMPORALITIES.find((t) => t.id === pending.temporality)?.label ?? pending.temporality;
+              const adminPushMsg2 = `🔔 *Solicitud de plan*\n\nUsuario: \`${uid}\` — ${name}\nPlan: *${pending.planName}* (${tLabel2})\nTeléfono: \`${phone}\``;
+              const adminKb2 = new InlineKeyboard()
+                .text("✅ Aprobar", `admin_plans_approve_${uid}`)
+                .text("❌ Rechazar", `admin_plans_reject_${uid}`);
+              ctxApi?.sendMessage?.(ownerId2, adminPushMsg2, { parse_mode: "Markdown", reply_markup: adminKb2 }).catch(() => {});
+            }
             const tLabel = TEMPORALITIES.find((t) => t.id === pending.temporality)?.label ?? pending.temporality;
 
             await loadPaymentMethodsFromSheet();
