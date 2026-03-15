@@ -432,9 +432,11 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
     };
     if (ctxWithPhoto.replyWithPhoto && onboardingPhoto !== undefined) {
       const welcomeCaption =
-        "🎰 *Power Ball Bot*\n\n" +
-        "Tu guía para _Pick 3_ y _Pick 4_ de Florida Lottery\\.\n\n" +
-        "_Toca el botón para ver los planes disponibles:_";
+        "🎰 *¡Bienvenido a Ball Bot!*\n\n" +
+        "🚀 _Tu asistente inteligente para dominar los Fijos \\(Pick 3\\) y Corridos \\(Pick 4\\) de la Florida Lottery\\._\n\n" +
+        "Accede a resultados instantáneos, análisis estadísticos profundos y estrategias avanzadas para multiplicar tus probabilidades de ganar\\.\n\n" +
+        "🛒 _¡Además, crea y comercializa tus propias estrategias en nuestra tienda exclusiva\\!_\n\n" +
+        "👇 _Toca el botón abajo para descubrir los planes disponibles:_";
       const welcomeKeyboard = new InlineKeyboard().text("📋 Ver Planes", "ver_planes_open");
       try {
         const sentMsg = await ctxWithPhoto.replyWithPhoto(onboardingPhoto, {
