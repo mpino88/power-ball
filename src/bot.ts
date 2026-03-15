@@ -68,7 +68,7 @@ import {
   getMenuSubscribers,
   seedCustomMenus,
 } from "./custom-menus.js";
-import { initPlans, initPlansFromSheet, setPlanSheetPersist, getPlans, getPlanById, getPlanByTitle, TEMPORALITIES, getPriceForTemporality } from "./plans.js";
+import { initPlans, initPlansFromSheet, setPlanSheetPersist, getPlans, updatePlan, getPlanById, getPlanByTitle, TEMPORALITIES, getPriceForTemporality } from "./plans.js";
 import {
   buildGroupStatsMessage as buildGroupStatsMessageFromStats,
   buildIndividualTop10Message as buildIndividualTop10MessageFromStats,
@@ -3407,6 +3407,24 @@ async function main(): Promise<void> {
     if (planRows.length > 0) {
       setPlanSheetPersist((items) => savePlansToSheet(items));
       initPlansFromSheet(planRows);
+      
+      // Auto-update descripciones de planes por defecto
+      let modified = false;
+      const defaults = new Map([
+        ["basico", "Resultados Fijo (P3), Corrido (P4) y Estadísticas Básicas (por grupo)."],
+        ["pro", "Todo lo del plan Básico + Estadísticas Individuales (Top 10 Hot)."],
+        ["trial", "Acceso gratis (2 Días). Resultados P3/P4 y Estadísticas Básicas."]
+      ]);
+      const currentPlans = getPlans();
+      for (const p of currentPlans) {
+        if (defaults.has(p.id) && p.description !== defaults.get(p.id)) {
+          updatePlan(p.id, { description: defaults.get(p.id) });
+          modified = true;
+        }
+      }
+      if (modified) {
+        console.log("[plans] Sincronizadas descripciones actualizadas a Google Sheets.");
+      }
     } else {
       initPlans();
       const plansToSave = getPlans().map((p) => ({
