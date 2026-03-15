@@ -363,12 +363,12 @@ async function showStrategyContextSelection(
 ): Promise<void> {
   await ctx.answerCallbackQuery();
   const title = getExtraMenuLabel(menuId) || menuId;
-  
+
   const resultKb = new InlineKeyboard();
-  const pre = source === "store" 
+  const pre = source === "store"
     ? `${STRATEGY_STORE_PREVIEW_CALLBACK_PREFIX}${menuId}_`
     : `${STRATEGY_CONTEXT_CALLBACK_PREFIX}${menuId}_`;
-    
+
   resultKb
     .text("P3 (Fijos) ☀️ Mediodía", `${pre}p3_m`)
     .text("P3 (Fijos) 🌙 Noche", `${pre}p3_e`)
@@ -376,7 +376,7 @@ async function showStrategyContextSelection(
     .text("P4 (Corridos) ☀️ Mediodía", `${pre}p4_m`)
     .text("P4 (Corridos) 🌙 Noche", `${pre}p4_e`)
     .row();
-    
+
   if (source === "store") {
     resultKb.text("🔙 Volver a Detalles", `estrategias_request_${menuId}`).row();
     resultKb.text("🛒 Volver a Tienda", "estrategias_tienda");
@@ -397,9 +397,9 @@ async function showStrategyContextSelection(
   const selectionPrompt = source === "store"
     ? "Por favor, selecciona la base de conocimiento y el período que deseas usar para la previsualización:"
     : "Por favor, selecciona la base de conocimiento y el período que deseas analizar:";
-  
+
   msg += `\n\n${selectionPrompt}`;
-  
+
   await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: resultKb });
 }
 
@@ -500,7 +500,7 @@ async function runStrategyAndShowResult(
     }
   } catch (err) {
     console.error("Error runStrategy:", err);
-    await ctx.answerCallbackQuery({ text: "Error al calcular" }).catch(() => {});
+    await ctx.answerCallbackQuery({ text: "Error al calcular" }).catch(() => { });
     const isTimeout = err instanceof Error && err.message === "STRATEGY_TIMEOUT";
     const userMsg = isTimeout
       ? "⏱ _La estrategia tardó demasiado._ Vuelve a intentarlo o prueba más tarde."
@@ -1527,7 +1527,7 @@ bot.on("callback_query:data", async (ctx) => {
         }
 
         await runStrategyAndShowResult(ctx, menuId, { mapSource, period } as any, true);
-        
+
         if (ctx.from) {
           markStrategyAsPreviewed(ctx.from.id, menuId);
         }
@@ -2188,418 +2188,418 @@ bot.on("callback_query:data", async (ctx) => {
       return;
     }
     await ctx.answerCallbackQuery({ text: "Generando archivo JSON..." });
-      await ctx.replyWithDocument(new InputFile(buffer, `progressive_analysis_export.json`), {
-        caption: "📊 *Exportación datos crudos (JSON)* para Integración CRM/Dashboard",
-        parse_mode: "Markdown",
-      });
+    await ctx.replyWithDocument(new InputFile(buffer, `progressive_analysis_export.json`), {
+      caption: "📊 *Exportación datos crudos (JSON)* para Integración CRM/Dashboard",
+      parse_mode: "Markdown",
+    });
+    return;
+  }
+
+  // ── Parlé: combinaciones de 2 sin repetición ──────────────────────────────
+  if (data === PARLE_CNS_CALLBACK && ctx.from) {
+    const userId = ctx.from.id;
+    const cached = parleConsensusCache.get(userId);
+    if (!cached) {
+      await ctx.answerCallbackQuery({ text: "⚠️ Sin resultado de consenso reciente." });
       return;
     }
+    await ctx.answerCallbackQuery({ text: "Generando parlés…" });
+    const parleMsg = buildParleMessage(cached.nums, "Consenso Multi-Estrategia", cached.context);
+    await ctx.reply(parleMsg, {
+      parse_mode: "Markdown",
+      reply_markup: new InlineKeyboard().text("🏠 Inicio", "volver"),
+    });
+    return;
+  }
 
-    // ── Parlé: combinaciones de 2 sin repetición ──────────────────────────────
-    if (data === PARLE_CNS_CALLBACK && ctx.from) {
-      const userId = ctx.from.id;
-      const cached = parleConsensusCache.get(userId);
-      if (!cached) {
-        await ctx.answerCallbackQuery({ text: "⚠️ Sin resultado de consenso reciente." });
-        return;
-      }
-      await ctx.answerCallbackQuery({ text: "Generando parlés…" });
-      const parleMsg = buildParleMessage(cached.nums, "Consenso Multi-Estrategia", cached.context);
-      await ctx.reply(parleMsg, {
-        parse_mode: "Markdown",
-        reply_markup: new InlineKeyboard().text("🏠 Inicio", "volver"),
-      });
+  // ── Adivinanza desde Consenso (solo dueño) ───────────────────────────────
+  if (data === ADIVINANZA_CNS_CALLBACK && ctx.from && isOwner(ctx.from.id)) {
+    const userId = ctx.from.id;
+    const cached = adivinanzaConsensusCache.get(userId);
+    if (!cached || cached.length === 0) {
+      await ctx.answerCallbackQuery({ text: "⚠️ Sin resultado de consenso reciente." });
       return;
     }
+    await ctx.answerCallbackQuery({ text: "Generando adivinanza…" });
+    const loadingMsg = await ctx.reply("⏳ _Generando adivinanza..._", { parse_mode: "Markdown" });
+    const chatId = loadingMsg.chat.id;
+    try {
+      adivinanzaLastNums.set(userId, cached);
+      const texto = await generarAdivinanza(cached);
+      const msg = buildAdivinanzaResultMsg(texto, cached);
+      await ctx.api.editMessageText(chatId, loadingMsg.message_id, msg, {
+        parse_mode: "Markdown",
+        reply_markup: buildAdivinanzaResultKeyboard(),
+      });
+    } catch (err) {
+      console.error("[adivinanza-cns] Error:", err);
+      const detail = err instanceof Error ? err.message : String(err);
+      await ctx.api.editMessageText(
+        chatId,
+        loadingMsg.message_id,
+        `❌ *Error al generar la adivinanza*\n\n\`${detail}\``,
+        { parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("🏠 Inicio", "volver") }
+      );
+    }
+    return;
+  }
 
-    // ── Adivinanza desde Consenso (solo dueño) ───────────────────────────────
-    if (data === ADIVINANZA_CNS_CALLBACK && ctx.from && isOwner(ctx.from.id)) {
-      const userId = ctx.from.id;
-      const cached = adivinanzaConsensusCache.get(userId);
-      if (!cached || cached.length === 0) {
-        await ctx.answerCallbackQuery({ text: "⚠️ Sin resultado de consenso reciente." });
-        return;
-      }
-      await ctx.answerCallbackQuery({ text: "Generando adivinanza…" });
-      const loadingMsg = await ctx.reply("⏳ _Generando adivinanza..._", { parse_mode: "Markdown" });
-      const chatId = loadingMsg.chat.id;
-      try {
-        adivinanzaLastNums.set(userId, cached);
-        const texto = await generarAdivinanza(cached);
-        const msg = buildAdivinanzaResultMsg(texto, cached);
-        await ctx.api.editMessageText(chatId, loadingMsg.message_id, msg, {
-          parse_mode: "Markdown",
-          reply_markup: buildAdivinanzaResultKeyboard(),
-        });
-      } catch (err) {
-        console.error("[adivinanza-cns] Error:", err);
-        const detail = err instanceof Error ? err.message : String(err);
+  // ── Adivinanza desde estrategia individual (solo dueño) ───────────────────
+  if (data.startsWith(ADIVINANZA_STRAT_PREFIX) && ctx.from && isOwner(ctx.from.id)) {
+    const userId = ctx.from.id;
+    const parsed = parseAdivinanzaStratCallback(data);
+    if (!parsed) {
+      await ctx.answerCallbackQuery({ text: "Callback inválido." });
+      return;
+    }
+    const strat = getStrategy(parsed.menuId);
+    if (!strat?.getCandidates) {
+      await ctx.answerCallbackQuery({ text: "Esta estrategia no soporta candidatos." });
+      return;
+    }
+    await ctx.answerCallbackQuery({ text: "Generando adivinanza…" });
+    const loadingMsg = await ctx.reply("⏳ _Generando adivinanza..._", { parse_mode: "Markdown" });
+    const chatId = loadingMsg.chat.id;
+    try {
+      const isP3 = parsed.context.mapSource === "p3";
+      const filteredMap = isP3
+        ? await getStrategyP3Map(userId)
+        : await getStrategyP4Map(userId);
+      const candidates = await strat.getCandidates(parsed.context, filteredMap);
+      if (candidates.length === 0) {
         await ctx.api.editMessageText(
           chatId,
           loadingMsg.message_id,
-          `❌ *Error al generar la adivinanza*\n\n\`${detail}\``,
+          "⚠️ La estrategia no devolvió candidatos para generar la adivinanza.",
           { parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("🏠 Inicio", "volver") }
         );
-      }
-      return;
-    }
-
-    // ── Adivinanza desde estrategia individual (solo dueño) ───────────────────
-    if (data.startsWith(ADIVINANZA_STRAT_PREFIX) && ctx.from && isOwner(ctx.from.id)) {
-      const userId = ctx.from.id;
-      const parsed = parseAdivinanzaStratCallback(data);
-      if (!parsed) {
-        await ctx.answerCallbackQuery({ text: "Callback inválido." });
         return;
       }
+      adivinanzaLastNums.set(userId, candidates);
+      const texto = await generarAdivinanza(candidates);
+      const msg = buildAdivinanzaResultMsg(texto, candidates);
+      await ctx.api.editMessageText(chatId, loadingMsg.message_id, msg, {
+        parse_mode: "Markdown",
+        reply_markup: buildAdivinanzaResultKeyboard(),
+      });
+    } catch (err) {
+      console.error("[adivinanza-strat] Error:", err);
+      const detail = err instanceof Error ? err.message : String(err);
+      await ctx.api.editMessageText(
+        chatId,
+        loadingMsg.message_id,
+        `❌ *Error al generar la adivinanza*\n\n\`${detail}\``,
+        { parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("🏠 Inicio", "volver") }
+      );
+    }
+    return;
+  }
+  // ── fin Adivinanza desde estrategia ──────────────────────────────────────
+
+  if (data.startsWith("parle_") && ctx.from) {
+    const userId = ctx.from.id;
+    const parsed = parseParleCallback(data);
+    if (parsed) {
       const strat = getStrategy(parsed.menuId);
       if (!strat?.getCandidates) {
-        await ctx.answerCallbackQuery({ text: "Esta estrategia no soporta candidatos." });
+        await ctx.answerCallbackQuery({ text: "Esta estrategia no soporta parlé." });
         return;
       }
-      await ctx.answerCallbackQuery({ text: "Generando adivinanza…" });
-      const loadingMsg = await ctx.reply("⏳ _Generando adivinanza..._", { parse_mode: "Markdown" });
-      const chatId = loadingMsg.chat.id;
+      await ctx.answerCallbackQuery({ text: "Generando parlés…" });
       try {
         const isP3 = parsed.context.mapSource === "p3";
         const filteredMap = isP3
           ? await getStrategyP3Map(userId)
           : await getStrategyP4Map(userId);
         const candidates = await strat.getCandidates(parsed.context, filteredMap);
-        if (candidates.length === 0) {
-          await ctx.api.editMessageText(
-            chatId,
-            loadingMsg.message_id,
-            "⚠️ La estrategia no devolvió candidatos para generar la adivinanza.",
-            { parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("🏠 Inicio", "volver") }
+        if (candidates.length < 2) {
+          await ctx.reply(
+            "⚠️ No hay suficientes candidatos para generar combinaciones parlé.",
+            { reply_markup: new InlineKeyboard().text("◀️ Volver", "volver") }
           );
           return;
         }
-        adivinanzaLastNums.set(userId, candidates);
-        const texto = await generarAdivinanza(candidates);
-        const msg = buildAdivinanzaResultMsg(texto, candidates);
-        await ctx.api.editMessageText(chatId, loadingMsg.message_id, msg, {
+        const stratLabel = STRATEGY_LABEL_BY_ID.get(parsed.menuId) ?? parsed.menuId;
+        const parleMsg = buildParleMessage(candidates, stratLabel, parsed.context);
+        await ctx.reply(parleMsg, {
           parse_mode: "Markdown",
-          reply_markup: buildAdivinanzaResultKeyboard(),
+          reply_markup: new InlineKeyboard().text("◀️ Volver", "volver"),
         });
       } catch (err) {
-        console.error("[adivinanza-strat] Error:", err);
-        const detail = err instanceof Error ? err.message : String(err);
-        await ctx.api.editMessageText(
-          chatId,
-          loadingMsg.message_id,
-          `❌ *Error al generar la adivinanza*\n\n\`${detail}\``,
-          { parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("🏠 Inicio", "volver") }
-        );
+        console.error("[parle] Error:", err);
+        await ctx.reply("❌ Error al generar las combinaciones parlé.", {
+          reply_markup: new InlineKeyboard().text("◀️ Volver", "volver"),
+        });
       }
       return;
     }
-    // ── fin Adivinanza desde estrategia ──────────────────────────────────────
+  }
 
-    if (data.startsWith("parle_") && ctx.from) {
-      const userId = ctx.from.id;
-      const parsed = parseParleCallback(data);
-      if (parsed) {
-        const strat = getStrategy(parsed.menuId);
-        if (!strat?.getCandidates) {
-          await ctx.answerCallbackQuery({ text: "Esta estrategia no soporta parlé." });
-          return;
-        }
-        await ctx.answerCallbackQuery({ text: "Generando parlés…" });
-        try {
-          const isP3 = parsed.context.mapSource === "p3";
-          const filteredMap = isP3
-            ? await getStrategyP3Map(userId)
-            : await getStrategyP4Map(userId);
-          const candidates = await strat.getCandidates(parsed.context, filteredMap);
-          if (candidates.length < 2) {
-            await ctx.reply(
-              "⚠️ No hay suficientes candidatos para generar combinaciones parlé.",
-              { reply_markup: new InlineKeyboard().text("◀️ Volver", "volver") }
-            );
-            return;
-          }
-          const stratLabel = STRATEGY_LABEL_BY_ID.get(parsed.menuId) ?? parsed.menuId;
-          const parleMsg = buildParleMessage(candidates, stratLabel, parsed.context);
-          await ctx.reply(parleMsg, {
-            parse_mode: "Markdown",
-            reply_markup: new InlineKeyboard().text("◀️ Volver", "volver"),
-          });
-        } catch (err) {
-          console.error("[parle] Error:", err);
-          await ctx.reply("❌ Error al generar las combinaciones parlé.", {
-            reply_markup: new InlineKeyboard().text("◀️ Volver", "volver"),
-          });
-        }
-        return;
+  // ── Consenso: callbacks de selección ──────────────────────────────────────
+  if (data.startsWith("cns_t_") && ctx.from) {
+    const userId = ctx.from.id;
+    const session = consensusSessionMap.get(userId);
+    const stratId = data.slice("cns_t_".length);
+    if (session && session.step === "selecting" && getAccessibleStrategyIds(userId).includes(stratId)) {
+      if (session.selectedIds.has(stratId)) {
+        session.selectedIds.delete(stratId);
+      } else {
+        session.selectedIds.add(stratId);
       }
-    }
-
-    // ── Consenso: callbacks de selección ──────────────────────────────────────
-    if (data.startsWith("cns_t_") && ctx.from) {
-      const userId = ctx.from.id;
-      const session = consensusSessionMap.get(userId);
-      const stratId = data.slice("cns_t_".length);
-      if (session && session.step === "selecting" && getAccessibleStrategyIds(userId).includes(stratId)) {
-        if (session.selectedIds.has(stratId)) {
-          session.selectedIds.delete(stratId);
-        } else {
-          session.selectedIds.add(stratId);
-        }
-        await ctx.answerCallbackQuery();
-        const selectableIds = getAccessibleStrategyIds(userId);
-        const ownerView = isOwner(userId);
-        const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds, ownerView);
-        const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds, ownerView);
-        try {
-          await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
-        } catch (e) {
-          if (!(e as Error).message?.includes("message is not modified")) console.error(e);
-        }
-        return;
-      }
-    }
-
-    // ── Consenso: cargar grupo predefinido ────────────────────────────────────
-    if (data.startsWith("cns_g_") && ctx.from) {
-      const userId = ctx.from.id;
-      const session = consensusSessionMap.get(userId);
-      if (session && session.step === "selecting") {
-        const groupId = data.slice("cns_g_".length);
-        const group = CONSENSUS_GROUPS.find((g) => g.id === groupId);
-        if (group) {
-          const selectableIds = getAccessibleStrategyIds(userId);
-          // Reemplaza la selección actual con las estrategias del grupo (solo las seleccionables)
-          const groupSelectable = group.ids.filter((id) => selectableIds.includes(id));
-          session.selectedIds = new Set(groupSelectable);
-          await ctx.answerCallbackQuery({ text: `Grupo ${groupId.toUpperCase()} cargado (${groupSelectable.length} estrategias)` });
-          const ownerView = isOwner(userId);
-          const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds, ownerView);
-          const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds, ownerView);
-          try {
-            await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
-          } catch (e) {
-            if (!(e as Error).message?.includes("message is not modified")) console.error(e);
-          }
-        } else {
-          await ctx.answerCallbackQuery({ text: "Grupo no encontrado" });
-        }
-        return;
-      }
-    }
-
-    // ── Consenso: seleccionar todo ────────────────────────────────────────────
-    if (data === "cns_all" && ctx.from) {
-      const userId = ctx.from.id;
-      const session = consensusSessionMap.get(userId);
-      if (session && session.step === "selecting") {
-        const selectableIds = getAccessibleStrategyIds(userId);
-        session.selectedIds = new Set(selectableIds);
-        await ctx.answerCallbackQuery({ text: `${selectableIds.length} estrategias seleccionadas` });
-        const ownerView = isOwner(userId);
-        const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds, ownerView);
-        const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds, ownerView);
-        try {
-          await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
-        } catch (e) {
-          if (!(e as Error).message?.includes("message is not modified")) console.error(e);
-        }
-        return;
-      }
-    }
-
-    // ── Consenso: limpiar selección ───────────────────────────────────────────
-    if (data === "cns_none" && ctx.from) {
-      const userId = ctx.from.id;
-      const session = consensusSessionMap.get(userId);
-      if (session && session.step === "selecting") {
-        session.selectedIds = new Set();
-        await ctx.answerCallbackQuery({ text: "Selección limpiada" });
-        const selectableIds = getAccessibleStrategyIds(userId);
-        const ownerView = isOwner(userId);
-        const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds, ownerView);
-        const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds, ownerView);
-        try {
-          await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
-        } catch (e) {
-          if (!(e as Error).message?.includes("message is not modified")) console.error(e);
-        }
-        return;
-      }
-    }
-
-    if (data === "cns_ok" && ctx.from) {
-      const userId = ctx.from.id;
-      const session = consensusSessionMap.get(userId);
-      if (session?.step === "selecting") {
-        if (session.selectedIds.size === 0) {
-          await ctx.answerCallbackQuery({ text: "Selecciona al menos 1 estrategia" });
-          return;
-        }
-        session.step = "waiting_count";
-        await ctx.answerCallbackQuery();
-        const count = session.selectedIds.size;
-        try {
-          await ctx.editMessageText(
-            `✅ *${count} estrategia${count > 1 ? "s" : ""} seleccionada${count > 1 ? "s" : ""}*\n\n` +
-            `¿Cuántos resultados quieres ver?\nEnvía un número del *1 al 50*.\n\n_Usa /cancel para cancelar._`,
-            {
-              parse_mode: "Markdown",
-              reply_markup: new InlineKeyboard().text("❌ Cancelar", "cns_x"),
-            }
-          );
-        } catch (e) {
-          if (!(e as Error).message?.includes("message is not modified")) console.error(e);
-        }
-        return;
-      }
-    }
-
-    if (data === "cns_x" && ctx.from) {
-      consensusSessionMap.delete(ctx.from.id);
-      await ctx.answerCallbackQuery({ text: "Cancelado" });
+      await ctx.answerCallbackQuery();
+      const selectableIds = getAccessibleStrategyIds(userId);
+      const ownerView = isOwner(userId);
+      const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds, ownerView);
+      const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds, ownerView);
       try {
-        await ctx.editMessageText("❌ Consenso cancelado.", {
+        await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
+  }
+
+  // ── Consenso: cargar grupo predefinido ────────────────────────────────────
+  if (data.startsWith("cns_g_") && ctx.from) {
+    const userId = ctx.from.id;
+    const session = consensusSessionMap.get(userId);
+    if (session && session.step === "selecting") {
+      const groupId = data.slice("cns_g_".length);
+      const group = CONSENSUS_GROUPS.find((g) => g.id === groupId);
+      if (group) {
+        const selectableIds = getAccessibleStrategyIds(userId);
+        // Reemplaza la selección actual con las estrategias del grupo (solo las seleccionables)
+        const groupSelectable = group.ids.filter((id) => selectableIds.includes(id));
+        session.selectedIds = new Set(groupSelectable);
+        await ctx.answerCallbackQuery({ text: `Grupo ${groupId.toUpperCase()} cargado (${groupSelectable.length} estrategias)` });
+        const ownerView = isOwner(userId);
+        const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds, ownerView);
+        const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds, ownerView);
+        try {
+          await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
+        } catch (e) {
+          if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+        }
+      } else {
+        await ctx.answerCallbackQuery({ text: "Grupo no encontrado" });
+      }
+      return;
+    }
+  }
+
+  // ── Consenso: seleccionar todo ────────────────────────────────────────────
+  if (data === "cns_all" && ctx.from) {
+    const userId = ctx.from.id;
+    const session = consensusSessionMap.get(userId);
+    if (session && session.step === "selecting") {
+      const selectableIds = getAccessibleStrategyIds(userId);
+      session.selectedIds = new Set(selectableIds);
+      await ctx.answerCallbackQuery({ text: `${selectableIds.length} estrategias seleccionadas` });
+      const ownerView = isOwner(userId);
+      const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds, ownerView);
+      const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds, ownerView);
+      try {
+        await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
+  }
+
+  // ── Consenso: limpiar selección ───────────────────────────────────────────
+  if (data === "cns_none" && ctx.from) {
+    const userId = ctx.from.id;
+    const session = consensusSessionMap.get(userId);
+    if (session && session.step === "selecting") {
+      session.selectedIds = new Set();
+      await ctx.answerCallbackQuery({ text: "Selección limpiada" });
+      const selectableIds = getAccessibleStrategyIds(userId);
+      const ownerView = isOwner(userId);
+      const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds, ownerView);
+      const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds, ownerView);
+      try {
+        await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
+  }
+
+  if (data === "cns_ok" && ctx.from) {
+    const userId = ctx.from.id;
+    const session = consensusSessionMap.get(userId);
+    if (session?.step === "selecting") {
+      if (session.selectedIds.size === 0) {
+        await ctx.answerCallbackQuery({ text: "Selecciona al menos 1 estrategia" });
+        return;
+      }
+      session.step = "waiting_count";
+      await ctx.answerCallbackQuery();
+      const count = session.selectedIds.size;
+      try {
+        await ctx.editMessageText(
+          `✅ *${count} estrategia${count > 1 ? "s" : ""} seleccionada${count > 1 ? "s" : ""}*\n\n` +
+          `¿Cuántos resultados quieres ver?\nEnvía un número del *1 al 50*.\n\n_Usa /cancel para cancelar._`,
+          {
+            parse_mode: "Markdown",
+            reply_markup: new InlineKeyboard().text("❌ Cancelar", "cns_x"),
+          }
+        );
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
+  }
+
+  if (data === "cns_x" && ctx.from) {
+    consensusSessionMap.delete(ctx.from.id);
+    await ctx.answerCallbackQuery({ text: "Cancelado" });
+    try {
+      await ctx.editMessageText("❌ Consenso cancelado.", {
+        parse_mode: "Markdown",
+        reply_markup: buildMainKb(ctx.from.id),
+      });
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
+  }
+
+  if (data.startsWith(EXTRA_MENU_CALLBACK_PREFIX)) {
+    const menuId = data.slice(EXTRA_MENU_CALLBACK_PREFIX.length);
+    if (getExtraMenuStatus(menuId) === "pendiente") {
+      await ctx.answerCallbackQuery();
+      const desc = getExtraMenuDescription(menuId);
+      const text = desc
+        ? `${MENU_PENDIENTE_MESSAGE}\n\n_${desc}_`
+        : MENU_PENDIENTE_MESSAGE;
+      try {
+        await ctx.editMessageText(text, {
           parse_mode: "Markdown",
-          reply_markup: buildMainKb(ctx.from.id),
+          reply_markup: buildMainKb(ctx.from?.id),
         });
       } catch (e) {
         if (!(e as Error).message?.includes("message is not modified")) console.error(e);
       }
       return;
     }
-
-    if (data.startsWith(EXTRA_MENU_CALLBACK_PREFIX)) {
-      const menuId = data.slice(EXTRA_MENU_CALLBACK_PREFIX.length);
-      if (getExtraMenuStatus(menuId) === "pendiente") {
-        await ctx.answerCallbackQuery();
-        const desc = getExtraMenuDescription(menuId);
-        const text = desc
-          ? `${MENU_PENDIENTE_MESSAGE}\n\n_${desc}_`
-          : MENU_PENDIENTE_MESSAGE;
-        try {
-          await ctx.editMessageText(text, {
-            parse_mode: "Markdown",
-            reply_markup: buildMainKb(ctx.from?.id),
-          });
-        } catch (e) {
-          if (!(e as Error).message?.includes("message is not modified")) console.error(e);
-        }
-        return;
-      }
-      const handler = getHandler(menuId);
-      if (handler) {
-        await handler(ctx);
-        return;
-      }
-      // Fallback: estrategia con runner pero sin handler registrado (ej. arranque sin Sheet)
-      if (hasStrategyRunner(menuId)) {
-        await showStrategyContextSelection(ctx, menuId);
-        return;
-      }
-    }
-
-    if (data === "fijo_fecha" || data === "corrido_fecha" || data === "ambos_fecha") {
-      await ctx.answerCallbackQuery();
-      const userId = ctx.from?.id;
-      const game: GameMenu = data === "fijo_fecha" ? "fijo" : data === "corrido_fecha" ? "corrido" : "ambos";
-      if (userId) {
-        waitingCustomDateGame.set(userId, game);
-        const label = game === "fijo" ? "Fijo (P3)" : game === "corrido" ? "Corrido (P4)" : "Fijo y Corrido";
-        result = `📅 *Escoger fecha — ${label}*\n\nEscribe la fecha en *MM/DD/AA* (ej: 02/25/26).\n\nUsa /cancel para cancelar.`;
-      } else {
-        result = "No se pudo iniciar.";
-      }
-      keyboard = buildMainKb(ctx.from?.id);
-      try {
-        await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
-      } catch (e) {
-        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
-      }
+    const handler = getHandler(menuId);
+    if (handler) {
+      await handler(ctx);
       return;
     }
-
-    // ── Charada Cubana ────────────────────────────────────────────────────────
-    if (data === "charada_open") {
-      await ctx.answerCallbackQuery();
-      try {
-        await ctx.editMessageText(
-          "🃏 *Charada Cubana*\n\nSistema de numerología popular cubano: 100 números (00–99) con sus significados tradicionales.\n\nElige una opción:",
-          { parse_mode: "Markdown", reply_markup: buildCharadaMenuKeyboard() }
-        );
-      } catch (e) {
-        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
-      }
+    // Fallback: estrategia con runner pero sin handler registrado (ej. arranque sin Sheet)
+    if (hasStrategyRunner(menuId)) {
+      await showStrategyContextSelection(ctx, menuId);
       return;
     }
+  }
 
-    if (data.startsWith("charada_cat_")) {
-      const page = parseInt(data.slice("charada_cat_".length), 10);
-      if (!Number.isNaN(page) && page >= 0 && page < 5) {
-        await ctx.answerCallbackQuery();
-        try {
-          await ctx.editMessageText(buildCatalogPage(page), {
-            parse_mode: "Markdown",
-            reply_markup: buildCharadaCatalogKeyboard(page),
-          });
-        } catch (e) {
-          if (!(e as Error).message?.includes("message is not modified")) console.error(e);
-        }
-        return;
-      }
+  if (data === "fijo_fecha" || data === "corrido_fecha" || data === "ambos_fecha") {
+    await ctx.answerCallbackQuery();
+    const userId = ctx.from?.id;
+    const game: GameMenu = data === "fijo_fecha" ? "fijo" : data === "corrido_fecha" ? "corrido" : "ambos";
+    if (userId) {
+      waitingCustomDateGame.set(userId, game);
+      const label = game === "fijo" ? "Fijo (P3)" : game === "corrido" ? "Corrido (P4)" : "Fijo y Corrido";
+      result = `📅 *Escoger fecha — ${label}*\n\nEscribe la fecha en *MM/DD/AA* (ej: 02/25/26).\n\nUsa /cancel para cancelar.`;
+    } else {
+      result = "No se pudo iniciar.";
     }
-
-    if (data === "charada_buscar" && ctx.from) {
-      waitingCharadaSearch.set(ctx.from.id, true);
-      await ctx.answerCallbackQuery();
-      try {
-        await ctx.editMessageText(
-          "🔍 *Buscar en la Charada Cubana*\n\n" +
-          "✍️ *¿Qué quieres buscar?*\n\n" +
-          "• Escribe un *número* del `00` al `99` para ver su significado.\n" +
-          "• Escribe una *palabra* (ej: `gato`, `agua`, `muerte`) para encontrar todas las entradas que la contengan.\n\n" +
-          "👇 *Escribe tu búsqueda aquí abajo y pulsa Enviar*\n\n" +
-          "_Usa /cancel para cancelar._",
-          {
-            parse_mode: "Markdown",
-            reply_markup: new InlineKeyboard().text("❌ Cancelar búsqueda", "charada_cancel_search"),
-          }
-        );
-      } catch (e) {
-        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
-      }
-      return;
-    }
-
-    if (data === "charada_cancel_search" && ctx.from) {
-      waitingCharadaSearch.delete(ctx.from.id);
-      await ctx.answerCallbackQuery({ text: "Búsqueda cancelada" });
-      try {
-        await ctx.editMessageText(
-          "🃏 *Charada Cubana*\n\nSistema de numerología popular cubano.\n\nElige una opción:",
-          { parse_mode: "Markdown", reply_markup: buildCharadaMenuKeyboard() }
-        );
-      } catch (e) {
-        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
-      }
-      return;
-    }
-
-    if (data === "charada_noop" || data === "noop_plan" || data === "noop_cambiar" || data === "noop" || data === "noop_list_page") {
-      await ctx.answerCallbackQuery();
-      return;
-    }
-    // ── fin Charada ────────────────────────────────────────────────────────────
-
-    result = "Opción no reconocida. Usa /start para ver el menú.";
+    keyboard = buildMainKb(ctx.from?.id);
     try {
-      if (!asyncData) await ctx.answerCallbackQuery().catch(() => { });
       await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
-    } catch (err) {
-      if (!asyncData) await ctx.answerCallbackQuery({ text: "Listo ✓" }).catch(() => { });
-      const msg = (err as Error).message ?? "";
-      if (!msg.includes("message is not modified")) console.error("Error en callback_query:", err);
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
     }
+    return;
+  }
+
+  // ── Charada Cubana ────────────────────────────────────────────────────────
+  if (data === "charada_open") {
+    await ctx.answerCallbackQuery();
+    try {
+      await ctx.editMessageText(
+        "🃏 *Charada Cubana*\n\nSistema de numerología popular cubano: 100 números (00–99) con sus significados tradicionales.\n\nElige una opción:",
+        { parse_mode: "Markdown", reply_markup: buildCharadaMenuKeyboard() }
+      );
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
+  }
+
+  if (data.startsWith("charada_cat_")) {
+    const page = parseInt(data.slice("charada_cat_".length), 10);
+    if (!Number.isNaN(page) && page >= 0 && page < 5) {
+      await ctx.answerCallbackQuery();
+      try {
+        await ctx.editMessageText(buildCatalogPage(page), {
+          parse_mode: "Markdown",
+          reply_markup: buildCharadaCatalogKeyboard(page),
+        });
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
+  }
+
+  if (data === "charada_buscar" && ctx.from) {
+    waitingCharadaSearch.set(ctx.from.id, true);
+    await ctx.answerCallbackQuery();
+    try {
+      await ctx.editMessageText(
+        "🔍 *Buscar en la Charada Cubana*\n\n" +
+        "✍️ *¿Qué quieres buscar?*\n\n" +
+        "• Escribe un *número* del `00` al `99` para ver su significado.\n" +
+        "• Escribe una *palabra* (ej: `gato`, `agua`, `muerte`) para encontrar todas las entradas que la contengan.\n\n" +
+        "👇 *Escribe tu búsqueda aquí abajo y pulsa Enviar*\n\n" +
+        "_Usa /cancel para cancelar._",
+        {
+          parse_mode: "Markdown",
+          reply_markup: new InlineKeyboard().text("❌ Cancelar búsqueda", "charada_cancel_search"),
+        }
+      );
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
+  }
+
+  if (data === "charada_cancel_search" && ctx.from) {
+    waitingCharadaSearch.delete(ctx.from.id);
+    await ctx.answerCallbackQuery({ text: "Búsqueda cancelada" });
+    try {
+      await ctx.editMessageText(
+        "🃏 *Charada Cubana*\n\nSistema de numerología popular cubano.\n\nElige una opción:",
+        { parse_mode: "Markdown", reply_markup: buildCharadaMenuKeyboard() }
+      );
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
+  }
+
+  if (data === "charada_noop" || data === "noop_plan" || data === "noop_cambiar" || data === "noop" || data === "noop_list_page") {
+    await ctx.answerCallbackQuery();
+    return;
+  }
+  // ── fin Charada ────────────────────────────────────────────────────────────
+
+  result = "Opción no reconocida. Usa /start para ver el menú.";
+  try {
+    if (!asyncData) await ctx.answerCallbackQuery().catch(() => { });
+    await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
+  } catch (err) {
+    if (!asyncData) await ctx.answerCallbackQuery({ text: "Listo ✓" }).catch(() => { });
+    const msg = (err as Error).message ?? "";
+    if (!msg.includes("message is not modified")) console.error("Error en callback_query:", err);
+  }
 });
 
 bot.command("cancel", async (ctx) => {
@@ -3409,18 +3409,18 @@ async function main(): Promise<void> {
       // Auto-update descripciones de planes por defecto
       let modified = false;
       const defaults = new Map([
-        ["basico", "Resultados Fijo (P3), Corrido (P4) y Estadísticas Básicas (por grupo)."],
-        ["pro", "Todo lo del plan Básico + Estadísticas Individuales (Top 10 Hot)."],
-        ["trial", "Acceso gratis (2 Días). Resultados P3/P4 y Estadísticas Básicas."]
+        ["basico", "Conslta de sorteos y multiples análisis estadísticos"],
+        ["pro", "Todo el plan Básico + Análisis avanzados que te ayudarán a invertir mejor tus opciones"],
+        ["trial", "Acceso gratis (2 Días). Descubre todo lo que te ofrece Ball Bot"]
       ]);
-      
+
       for (const row of planRows) {
         if (defaults.has(row.id) && row.description !== defaults.get(row.id)) {
           row.description = defaults.get(row.id)!;
           modified = true;
         }
       }
-      
+
       initPlansFromSheet(planRows);
 
       // Si los planes estaban duplicados (porque planRows tiene menos elementos que la hoja original
@@ -3479,7 +3479,7 @@ async function main(): Promise<void> {
       });
     }
   }
-  
+
   loadStrategyPreviews();
 
   if (getStorageBackend() !== "sheet") {
