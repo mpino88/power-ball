@@ -1339,10 +1339,10 @@ export async function loadTestingCutoffDate(): Promise<string | null> {
   }
 }
 
-// ─── Feedback ─────────────────────────────────────────────────────────────────
+// ─── Sugerencia ─────────────────────────────────────────────────────────────────
 
-/** Fila de la 6ª pestaña (Feedback): userId, nombre, telefono, texto, fecha. */
-export interface FeedbackRow {
+/** Fila de la 6ª pestaña (Sugerencia): userId, nombre, telefono, texto, fecha. */
+export interface SugerenciaRow {
   userId: number;
   nombre: string;
   telefono: string;
@@ -1351,15 +1351,15 @@ export interface FeedbackRow {
   fecha: string;
 }
 
-const FEEDBACK_SHEET_TITLE = "Feedback";
-const FEEDBACK_HEADERS = ["userId", "nombre", "telefono", "texto", "fecha"] as const;
-export const FEEDBACK_SHEET_INDEX = 5;
+const SUGERENCIA_SHEET_TITLE = "Sugerencia";
+const SUGERENCIA_HEADERS = ["userId", "nombre", "telefono", "texto", "fecha"] as const;
+export const SUGERENCIA_SHEET_INDEX = 5;
 
 /**
- * Carga todos los feedbacks desde la 6ª pestaña del Sheet.
+ * Carga todas las sugerencias desde la 6ª pestaña del Sheet.
  * Si la pestaña no existe, la crea y devuelve [].
  */
-export async function loadFeedbackFromSheet(): Promise<FeedbackRow[]> {
+export async function loadSugerenciaFromSheet(): Promise<SugerenciaRow[]> {
   const sheetId = getSheetId();
   if (!sheetId) return [];
   const auth = getSheetAuth();
@@ -1367,24 +1367,24 @@ export async function loadFeedbackFromSheet(): Promise<FeedbackRow[]> {
   try {
     const doc = new GoogleSpreadsheet(sheetId, auth);
     await doc.loadInfo();
-    let sheet = doc.sheetsByIndex[FEEDBACK_SHEET_INDEX];
+    let sheet = doc.sheetsByIndex[SUGERENCIA_SHEET_INDEX];
     if (!sheet) {
       await doc.addSheet({
-        title: FEEDBACK_SHEET_TITLE,
-        headerValues: [...FEEDBACK_HEADERS],
+        title: SUGERENCIA_SHEET_TITLE,
+        headerValues: [...SUGERENCIA_HEADERS],
       });
-      console.log("[feedback] Pestaña 'Feedback' creada (6ª pestaña).");
+      console.log("[sugerencia] Pestaña 'Sugerencia' creada (6ª pestaña).");
       return [];
     }
     try {
       await sheet.loadHeaderRow(1);
     } catch {
-      await sheet.setHeaderRow([...FEEDBACK_HEADERS], 1);
+      await sheet.setHeaderRow([...SUGERENCIA_HEADERS], 1);
       return [];
     }
     const rows = await sheet.getRows({ offset: 0, limit: 10000 });
     const headers = sheet.headerValues;
-    const result: FeedbackRow[] = [];
+    const result: SugerenciaRow[] = [];
     for (const row of rows) {
       const obj = row.toObject() as Record<string, unknown>;
       const values = headers.map((h) => (h ? String(obj[h] ?? "").trim() : ""));
@@ -1399,19 +1399,19 @@ export async function loadFeedbackFromSheet(): Promise<FeedbackRow[]> {
         fecha: values[4] ?? "",
       });
     }
-    console.log("[feedback] Cargados", result.length, "feedbacks desde la 6ª pestaña.");
+    console.log("[sugerencia] Cargados", result.length, "sugerencias desde la 6ª pestaña.");
     return result;
   } catch (e) {
-    console.error("[feedback] Error al cargar feedbacks desde Sheet:", (e as Error)?.message ?? e);
+    console.error("[sugerencia] Error al cargar sugerencias desde Sheet:", (e as Error)?.message ?? e);
     return [];
   }
 }
 
 /**
- * Añade una sola fila de feedback a la 6ª pestaña (sin clearRows, preserva historial).
+ * Añade una sola fila de sugerencia a la 6ª pestaña (sin clearRows, preserva historial).
  * Crea la pestaña si no existe.
  */
-export async function appendFeedbackToSheet(row: FeedbackRow): Promise<void> {
+export async function appendSugerenciaToSheet(row: SugerenciaRow): Promise<void> {
   const sheetId = getSheetId();
   if (!sheetId) return;
   const auth = getSheetAuth();
@@ -1419,18 +1419,18 @@ export async function appendFeedbackToSheet(row: FeedbackRow): Promise<void> {
   try {
     const doc = new GoogleSpreadsheet(sheetId, auth);
     await doc.loadInfo();
-    let sheet = doc.sheetsByIndex[FEEDBACK_SHEET_INDEX];
+    let sheet = doc.sheetsByIndex[SUGERENCIA_SHEET_INDEX];
     if (!sheet) {
       sheet = await doc.addSheet({
-        title: FEEDBACK_SHEET_TITLE,
-        headerValues: [...FEEDBACK_HEADERS],
+        title: SUGERENCIA_SHEET_TITLE,
+        headerValues: [...SUGERENCIA_HEADERS],
       });
-      console.log("[feedback] Pestaña 'Feedback' creada al guardar primera fila.");
+      console.log("[sugerencia] Pestaña 'Sugerencia' creada al guardar primera fila.");
     } else {
       try {
         await sheet.loadHeaderRow(1);
       } catch {
-        await sheet.setHeaderRow([...FEEDBACK_HEADERS], 1);
+        await sheet.setHeaderRow([...SUGERENCIA_HEADERS], 1);
       }
     }
     await sheet.addRow({
@@ -1440,16 +1440,16 @@ export async function appendFeedbackToSheet(row: FeedbackRow): Promise<void> {
       texto: row.texto,
       fecha: row.fecha,
     });
-    console.log("[feedback] Feedback guardado para userId=", row.userId);
+    console.log("[sugerencia] Sugerencia guardado para userId=", row.userId);
   } catch (e) {
-    console.error("[feedback] Error al guardar feedback en Sheet:", (e as Error)?.message ?? e);
+    console.error("[sugerencia] Error al guardar sugerencia en Sheet:", (e as Error)?.message ?? e);
     throw e;
   }
 }
 
-/** Devuelve todos los feedbacks de un usuario específico, ordenados por fecha (más reciente primero). */
-export async function getFeedbackForUser(userId: number): Promise<FeedbackRow[]> {
-  const all = await loadFeedbackFromSheet();
+/** Devuelve todas las sugerencias de un usuario específico, ordenados por fecha (más reciente primero). */
+export async function getSugerenciaForUser(userId: number): Promise<SugerenciaRow[]> {
+  const all = await loadSugerenciaFromSheet();
   return all.filter((r) => r.userId === userId).reverse();
 }
 

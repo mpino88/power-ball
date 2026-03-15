@@ -38,9 +38,9 @@ import {
   normalizeUserMenusAfterLoad,
   loadTestingCutoffDate,
   saveTestingCutoffDate,
-  loadFeedbackFromSheet,
-  appendFeedbackToSheet,
-  getFeedbackForUser,
+  loadSugerenciaFromSheet,
+  appendSugerenciaToSheet,
+  getSugerenciaForUser,
   getUsername,
   getPhone,
   loadAnnouncementsFromSheet,
@@ -93,10 +93,10 @@ import {
   buildIndividualPeriodKeyboard,
   buildTestingKeyboard,
   buildTestingMessage,
-  buildFeedbackKeyboard,
-  buildAdminFeedbackListKeyboard,
-  buildAdminUserFeedbackKeyboard,
-  buildMyFeedbacksKeyboard,
+  buildSugerenciaKeyboard,
+  buildAdminSugerenciaListKeyboard,
+  buildAdminUserSugerenciaKeyboard,
+  buildMySugerenciasKeyboard,
   handleMenuCallback,
   ESTRATEGIAS_OPEN_CALLBACK,
   MAIN_MENU_MESSAGE,
@@ -313,8 +313,8 @@ const waitingTestingDate = new Map<number, true>();
 /** Dueño esperando ingresar lista de números para generar una adivinanza. */
 const waitingAdivinanzaNums = new Map<number, true>();
 
-/** Usuarios esperando introducir el texto de un feedback. */
-const waitingFeedbackText = new Map<number, true>();
+/** Usuarios esperando introducir el texto de una sugerencia. */
+const waitingSugerenciaText = new Map<number, true>();
 
 /**
  * Estado del flujo de anuncios del admin.
@@ -859,7 +859,7 @@ bot.on("callback_query:data", async (ctx) => {
     data === "stats_individual_E" ||
     (data.startsWith(EXTRA_MENU_CALLBACK_PREFIX) && !!getHandler(data.slice(EXTRA_MENU_CALLBACK_PREFIX.length)));
 
-  if ((data === "security_open" || data === "security_main" || (data.startsWith("admin_") && !data.startsWith("admin_feedback") && !data.startsWith("admin_ann"))) && ctx.from && isOwner(ctx.from.id)) {
+  if ((data === "security_open" || data === "security_main" || (data.startsWith("admin_") && !data.startsWith("admin_sugerencia") && !data.startsWith("admin_ann"))) && ctx.from && isOwner(ctx.from.id)) {
     const out = await handleSecurityCallback(ctx, data, {
       buildMainKeyboard: buildMainKb,
       getExtraMenuIds,
@@ -949,14 +949,14 @@ bot.on("callback_query:data", async (ctx) => {
   }
   // ── fin Testing ───────────────────────────────────────────────────────────
 
-  // ── Feedback (usuarios y admin) ──────────────────────────────────────────
-  if (data === "feedback_open") {
+  // ── Sugerencia (usuarios y admin) ──────────────────────────────────────────
+  if (data === "sugerencia_open") {
     await ctx.answerCallbackQuery();
     try {
       await ctx.editMessageText(
-        "💬 *Feedback*\n\nAquí puedes enviarnos tu opinión, sugerencia o comentario.\n\n" +
+        "💬 *Sugerencia*\n\nAquí puedes enviarnos tu opinión, sugerencia o comentario.\n\n" +
         "_Tu mensaje llegará directamente al administrador._",
-        { parse_mode: "Markdown", reply_markup: buildFeedbackKeyboard() }
+        { parse_mode: "Markdown", reply_markup: buildSugerenciaKeyboard() }
       );
     } catch (e) {
       if (!(e as Error).message?.includes("message is not modified")) console.error(e);
@@ -964,17 +964,17 @@ bot.on("callback_query:data", async (ctx) => {
     return;
   }
 
-  if (data === "feedback_enviar") {
+  if (data === "sugerencia_enviar") {
     await ctx.answerCallbackQuery();
     const userId = ctx.from?.id;
     if (!userId) return;
-    waitingFeedbackText.set(userId, true);
+    waitingSugerenciaText.set(userId, true);
     try {
       await ctx.editMessageText(
-        "✉️ *Enviar feedback*\n\nEscribe tu mensaje _(máx. 500 caracteres)_:\n\n_Pulsa Cancelar o /cancel para salir._",
+        "✉️ *Enviar sugerencia*\n\nEscribe tu mensaje _(máx. 500 caracteres)_:\n\n_Pulsa Cancelar o /cancel para salir._",
         {
           parse_mode: "Markdown",
-          reply_markup: new InlineKeyboard().text("❌ Cancelar", "feedback_cancel"),
+          reply_markup: new InlineKeyboard().text("❌ Cancelar", "sugerencia_cancel"),
         }
       );
     } catch (e) {
@@ -983,14 +983,14 @@ bot.on("callback_query:data", async (ctx) => {
     return;
   }
 
-  if (data === "feedback_cancel") {
+  if (data === "sugerencia_cancel") {
     await ctx.answerCallbackQuery({ text: "Cancelado" });
     const userId = ctx.from?.id;
-    if (userId) waitingFeedbackText.delete(userId);
+    if (userId) waitingSugerenciaText.delete(userId);
     try {
       await ctx.editMessageText(
-        "💬 *Feedback*\n\nAquí puedes enviarnos tu opinión, sugerencia o comentario.",
-        { parse_mode: "Markdown", reply_markup: buildFeedbackKeyboard() }
+        "💬 *Sugerencia*\n\nAquí puedes enviarnos tu opinión, sugerencia o comentario.",
+        { parse_mode: "Markdown", reply_markup: buildSugerenciaKeyboard() }
       );
     } catch (e) {
       if (!(e as Error).message?.includes("message is not modified")) console.error(e);
@@ -998,19 +998,19 @@ bot.on("callback_query:data", async (ctx) => {
     return;
   }
 
-  // Paginación de "Mis feedbacks" (usuario normal)
-  if (data.startsWith("feedback_mis_p:")) {
+  // Paginación de "Mis sugerencias" (usuario normal)
+  if (data.startsWith("sugerencia_mis_p:")) {
     await ctx.answerCallbackQuery();
     const userId = ctx.from?.id;
     if (!userId) return;
-    const page = parseInt(data.replace("feedback_mis_p:", ""), 10) || 0;
+    const page = parseInt(data.replace("sugerencia_mis_p:", ""), 10) || 0;
     try {
-      const feedbacks = await getFeedbackForUser(userId);
-      const { buildMyFeedbacksMessage } = await import("./feedback.js");
-      const { text, totalPages } = buildMyFeedbacksMessage(feedbacks, page);
+      const sugerencias = await getSugerenciaForUser(userId);
+      const { buildMySugerenciasMessage } = await import("./sugerencia.js");
+      const { text, totalPages } = buildMySugerenciasMessage(sugerencias, page);
       await ctx.editMessageText(text, {
         parse_mode: "Markdown",
-        reply_markup: buildMyFeedbacksKeyboard(page, totalPages),
+        reply_markup: buildMySugerenciasKeyboard(page, totalPages),
       });
     } catch (e) {
       if (!(e as Error).message?.includes("message is not modified")) console.error(e);
@@ -1018,26 +1018,26 @@ bot.on("callback_query:data", async (ctx) => {
     return;
   }
 
-  // ── Feedback admin: lista paginada de usuarios ────────────────────────────
-  if (data === "admin_feedback_open" || data.startsWith("admin_feedback_p:")) {
+  // ── Sugerencia admin: lista paginada de usuarios ────────────────────────────
+  if (data === "admin_sugerencia_open" || data.startsWith("admin_sugerencia_p:")) {
     if (!ctx.from || !isOwner(ctx.from.id)) {
       await ctx.answerCallbackQuery({ text: "Sin acceso" });
       return;
     }
     await ctx.answerCallbackQuery();
-    const page = data.startsWith("admin_feedback_p:")
-      ? (parseInt(data.replace("admin_feedback_p:", ""), 10) || 0)
+    const page = data.startsWith("admin_sugerencia_p:")
+      ? (parseInt(data.replace("admin_sugerencia_p:", ""), 10) || 0)
       : 0;
     try {
-      const allFeedbacks = await loadFeedbackFromSheet();
-      const { groupFeedbackByUser, buildAdminFeedbackListMessage, FEEDBACK_PAGE_SIZE } = await import("./feedback.js");
-      const grouped = groupFeedbackByUser(allFeedbacks);
-      const { text, totalPages } = buildAdminFeedbackListMessage(grouped, page);
+      const allSugerencias = await loadSugerenciaFromSheet();
+      const { groupSugerenciaByUser, buildAdminSugerenciaListMessage, SUGERENCIA_PAGE_SIZE } = await import("./sugerencia.js");
+      const grouped = groupSugerenciaByUser(allSugerencias);
+      const { text, totalPages } = buildAdminSugerenciaListMessage(grouped, page);
       const safePage = Math.max(0, Math.min(page, totalPages - 1));
-      const slice = grouped.slice(safePage * FEEDBACK_PAGE_SIZE, (safePage + 1) * FEEDBACK_PAGE_SIZE);
+      const slice = grouped.slice(safePage * SUGERENCIA_PAGE_SIZE, (safePage + 1) * SUGERENCIA_PAGE_SIZE);
       await ctx.editMessageText(text, {
         parse_mode: "Markdown",
-        reply_markup: buildAdminFeedbackListKeyboard(safePage, totalPages, slice),
+        reply_markup: buildAdminSugerenciaListKeyboard(safePage, totalPages, slice),
       });
     } catch (e) {
       if (!(e as Error).message?.includes("message is not modified")) console.error(e);
@@ -1045,32 +1045,32 @@ bot.on("callback_query:data", async (ctx) => {
     return;
   }
 
-  // ── Feedback admin: mensajes de un usuario específico ────────────────────
-  if (data.startsWith("admin_feedback_user:")) {
+  // ── Sugerencia admin: mensajes de un usuario específico ────────────────────
+  if (data.startsWith("admin_sugerencia_user:")) {
     if (!ctx.from || !isOwner(ctx.from.id)) {
       await ctx.answerCallbackQuery({ text: "Sin acceso" });
       return;
     }
     await ctx.answerCallbackQuery();
-    // Formato: admin_feedback_user:<userId>_p:<page>
-    const match = data.match(/^admin_feedback_user:(\d+)_p:(\d+)$/);
+    // Formato: admin_sugerencia_user:<userId>_p:<page>
+    const match = data.match(/^admin_sugerencia_user:(\d+)_p:(\d+)$/);
     if (!match) return;
     const targetUserId = parseInt(match[1]!, 10);
     const page = parseInt(match[2]!, 10) || 0;
     try {
-      const feedbacks = await getFeedbackForUser(targetUserId);
-      const { buildAdminUserFeedbackMessage } = await import("./feedback.js");
-      const { text, totalPages } = buildAdminUserFeedbackMessage(feedbacks, targetUserId, page);
+      const sugerencias = await getSugerenciaForUser(targetUserId);
+      const { buildAdminUserSugerenciaMessage } = await import("./sugerencia.js");
+      const { text, totalPages } = buildAdminUserSugerenciaMessage(sugerencias, targetUserId, page);
       await ctx.editMessageText(text, {
         parse_mode: "Markdown",
-        reply_markup: buildAdminUserFeedbackKeyboard(targetUserId, page, totalPages),
+        reply_markup: buildAdminUserSugerenciaKeyboard(targetUserId, page, totalPages),
       });
     } catch (e) {
       if (!(e as Error).message?.includes("message is not modified")) console.error(e);
     }
     return;
   }
-  // ── fin Feedback ──────────────────────────────────────────────────────────
+  // ── fin Sugerencia ──────────────────────────────────────────────────────────
 
   // ── Anuncios Globales (admin) ────────────────────────────────────────
   if (data === "admin_ann_open" || data === "admin_ann_refresh") {
@@ -2575,7 +2575,7 @@ bot.command("cancel", async (ctx) => {
     waitingCharadaSearch.delete(userId);
     waitingTestingDate.delete(userId);
     waitingAdivinanzaNums.delete(userId);
-    waitingFeedbackText.delete(userId);
+    waitingSugerenciaText.delete(userId);
     waitingAnnouncementInput.delete(userId);
     progressiveSessionMap.delete(userId);
     waitingProgressiveDate.delete(userId);
@@ -2844,34 +2844,34 @@ bot.on("message:text", async (ctx) => {
   }
   // ── fin Testing ───────────────────────────────────────────────────────────
 
-  // ── Feedback: guardar texto del usuario ───────────────────────────────────
-  if (userId && waitingFeedbackText.has(userId)) {
-    waitingFeedbackText.delete(userId);
+  // ── Sugerencia: guardar texto del usuario ───────────────────────────────────
+  if (userId && waitingSugerenciaText.has(userId)) {
+    waitingSugerenciaText.delete(userId);
     const maxLen = 500;
     const trimmed = text.slice(0, maxLen);
     try {
-      const { nowFeedbackDate } = await import("./feedback.js");
-      await appendFeedbackToSheet({
+      const { nowSugerenciaDate } = await import("./sugerencia.js");
+      await appendSugerenciaToSheet({
         userId,
         nombre: getUsername(userId) ?? "",
         telefono: getPhone(userId) ?? "",
         texto: trimmed,
-        fecha: nowFeedbackDate(),
+        fecha: nowSugerenciaDate(),
       });
       await ctx.reply(
-        "✅ *¡Gracias por tu feedback!*\n\nTu mensaje ha sido enviado al administrador.",
+        "✅ *¡Gracias por tu sugerencia!*\n\nTu mensaje ha sido enviado al administrador.",
         { parse_mode: "Markdown", reply_markup: buildMainKb(userId) }
       );
     } catch (err) {
-      console.error("[feedback] Error al guardar:", err);
+      console.error("[sugerencia] Error al guardar:", err);
       await ctx.reply(
-        "❌ Hubo un error al enviar tu feedback. Por favor intenta de nuevo más tarde.",
+        "❌ Hubo un error al enviar tu sugerencia. Por favor intenta de nuevo más tarde.",
         { reply_markup: buildMainKb(userId) }
       );
     }
     return;
   }
-  // ── fin Feedback ─────────────────────────────────────────────────────────
+  // ── fin Sugerencia ─────────────────────────────────────────────────────────
 
   // ── Anuncios: captura del texto creado/editado por el admin ──────────────
   if (userId && isOwner(userId) && waitingAnnouncementInput.has(userId)) {
@@ -2881,8 +2881,8 @@ bot.on("message:text", async (ctx) => {
     try {
       const { buildAdminAnnouncementsKeyboard, buildAdminAnnouncementsText } = await import("./announcements.js");
       if (mode === "create") {
-        const { nowFeedbackDate } = await import("./feedback.js");
-        const updated = await addAnnouncement(trimmed, nowFeedbackDate());
+        const { nowSugerenciaDate } = await import("./sugerencia.js");
+        const updated = await addAnnouncement(trimmed, nowSugerenciaDate());
         invalidateAnnouncementsCache();
         await ctx.reply(
           "✅ *Anuncio creado.*\n\n" + buildAdminAnnouncementsText(updated),

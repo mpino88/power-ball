@@ -106,7 +106,7 @@ export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboard
   kb.row().text("🃏 Charada Cubana", "charada_open");
   kb.row().text("🛒 Tienda", "estrategias_tienda");
   if (ownerId === null || !deps.isOwner(uid)) {
-    kb.row().text("❓ Ayuda", "help").text("💬 Feedback", "feedback_open");
+    kb.row().text("❓ Ayuda", "help").text("💬 Sugerencia", "sugerencia_open");
     if (ownerId !== null && !deps.isOwner(uid)) {
       kb.row().text("📋 Cambiar plan", "cambiar_plan_open");
     }
@@ -114,7 +114,7 @@ export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboard
   if (ownerId !== null && deps.isOwner(uid)) {
     kb.row().text("⚙️ Administrar", "security_open").text("🧪 Testing", "testing_open");
     kb.row().text("🔮 Crear Adivinanza", "adivinanza_open");
-    kb.row().text("📣 Feedback", "admin_feedback_open").text("📢 Anuncios", "admin_ann_open");
+    kb.row().text("📣 Sugerencia", "admin_sugerencia_open").text("📢 Anuncios", "admin_ann_open");
   }
   return kb;
 }
@@ -244,20 +244,20 @@ export function buildTestingMessage(currentDate: string | null): string {
   );
 }
 
-// ─── Feedback keyboards ───────────────────────────────────────────────────────
+// ─── Sugerencia keyboards ───────────────────────────────────────────────────────
 
-/** Menú principal de Feedback para usuarios normales. */
-export function buildFeedbackKeyboard(): InlineKeyboard {
+/** Menú principal de Sugerencia para usuarios normales. */
+export function buildSugerenciaKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
-    .text("✉️ Enviar feedback", "feedback_enviar")
+    .text("✉️ Enviar sugerencia", "sugerencia_enviar")
     .row()
-    .text("📋 Mis feedbacks", "feedback_mis_p:0")
+    .text("📋 Mis sugerencias", "sugerencia_mis_p:0")
     .row()
     .text("◀️ Volver", "volver");
 }
 
-/** Teclado paginado de la lista de usuarios con feedback (admin). */
-export function buildAdminFeedbackListKeyboard(
+/** Teclado paginado de la lista de usuarios con sugerencia (admin). */
+export function buildAdminSugerenciaListKeyboard(
   page: number,
   totalPages: number,
   userSummaries: Array<{ userId: number; nombre: string }>
@@ -266,12 +266,12 @@ export function buildAdminFeedbackListKeyboard(
   // Botones de usuario (uno por fila)
   for (const u of userSummaries) {
     const label = u.nombre || `User ${u.userId}`;
-    kb.text(`👤 ${label}`, `admin_feedback_user:${u.userId}_p:0`).row();
+    kb.text(`👤 ${label}`, `admin_sugerencia_user:${u.userId}_p:0`).row();
   }
   // Paginación
   if (totalPages > 1) {
-    if (page > 0) kb.text("◀ Anterior", `admin_feedback_p:${page - 1}`);
-    if (page < totalPages - 1) kb.text("Siguiente ▶", `admin_feedback_p:${page + 1}`);
+    if (page > 0) kb.text("◀ Anterior", `admin_sugerencia_p:${page - 1}`);
+    if (page < totalPages - 1) kb.text("Siguiente ▶", `admin_sugerencia_p:${page + 1}`);
     kb.row();
   }
   kb.text("◀️ Volver", "volver");
@@ -279,33 +279,33 @@ export function buildAdminFeedbackListKeyboard(
 }
 
 /** Teclado de los mensajes de un usuario específico (admin), con paginación. */
-export function buildAdminUserFeedbackKeyboard(
+export function buildAdminUserSugerenciaKeyboard(
   targetUserId: number,
   page: number,
   totalPages: number
 ): InlineKeyboard {
   const kb = new InlineKeyboard();
   if (totalPages > 1) {
-    if (page > 0) kb.text("◀ Anterior", `admin_feedback_user:${targetUserId}_p:${page - 1}`);
-    if (page < totalPages - 1) kb.text("Siguiente ▶", `admin_feedback_user:${targetUserId}_p:${page + 1}`);
+    if (page > 0) kb.text("◀ Anterior", `admin_sugerencia_user:${targetUserId}_p:${page - 1}`);
+    if (page < totalPages - 1) kb.text("Siguiente ▶", `admin_sugerencia_user:${targetUserId}_p:${page + 1}`);
     kb.row();
   }
-  kb.text("◀️ Ver lista", "admin_feedback_open").row();
+  kb.text("◀️ Ver lista", "admin_sugerencia_open").row();
   kb.text("◀️ Menú principal", "volver");
   return kb;
 }
 
-/** Teclado de paginación para "Mis feedbacks" (usuario). */
-export function buildMyFeedbacksKeyboard(
+/** Teclado de paginación para "Mis sugerencias" (usuario). */
+export function buildMySugerenciasKeyboard(
   page: number,
   totalPages: number
 ): InlineKeyboard {
   const kb = new InlineKeyboard();
   if (totalPages > 1) {
-    if (page > 0) kb.text("◀ Anterior", `feedback_mis_p:${page - 1}`);
-    if (page < totalPages - 1) kb.text("Siguiente ▶", `feedback_mis_p:${page + 1}`);
+    if (page > 0) kb.text("◀ Anterior", `sugerencia_mis_p:${page - 1}`);
+    if (page < totalPages - 1) kb.text("Siguiente ▶", `sugerencia_mis_p:${page + 1}`);
     kb.row();
   }
-  kb.text("◀️ Volver", "feedback_open");
+  kb.text("◀️ Volver", "sugerencia_open");
   return kb;
 }
