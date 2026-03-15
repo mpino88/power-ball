@@ -148,9 +148,9 @@ function formatMessage(
     `📊 *Números Debidos (Gap Analysis)* — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr} · Último: ${latestDateStr} · Próx. estimado: ${nextDateStr}`,
     "",
-    "📖 _Qué mide:_ cuánto tiempo lleva sin salir cada número respecto a su ritmo histórico\\.",
-    "_DíasSin_ ÷ _Prom_ = _Factor_ · Factor >1x = lleva más del promedio sin aparecer",
-    "🔴 ≥2x muy debido · 🟠 ≥1\\.5x · 🟡 ≥1x · Un factor alto = fuerte candidato al próximo sorteo",
+    "📖 _Qué mide:_ busca los números más atrasados. Compara cuántos días llevan sin salir hoy con lo que suelen tardar normalmente\\.",
+    "Si el _Factor_ es mayor a 1x, significa que el número ya está tardando más de lo normal en salir\\.",
+    "🔴 ≥2x (Súper atrasado) · 🟠 ≥1\\.5x (Muy atrasado) · 🟡 ≥1x (Atrasado)",
     "",
     "```",
     "TOP 20 NÚMEROS MÁS DEBIDOS",
@@ -168,7 +168,7 @@ function formatMessage(
   }
 
   lines.push("");
-  lines.push("🔴 ≥2.0x muy debido · 🟠 ≥1.5x · 🟡 ≥1.0x · 🟢 normal");
+  lines.push("🔴 ≥2.0x Súper atrasado · 🟠 ≥1.5x Muy atrasado · 🟡 ≥1.0x Atrasado");
   lines.push("```");
 
   return truncateMsg(lines.join("\n").trimEnd());
@@ -176,7 +176,7 @@ function formatMessage(
 
 export const gapDue: StrategyDefinition = {
   id: "gap_due",
-  description: "Detecta números que llevan más días del usual sin salir. Compara la ausencia actual con el promedio histórico y asigna un factor de deuda — cuanto mayor el factor, más \"debe\" aparecer ese número.",
+  description: "Encuentra los números más atrasados. Compara cuántos días llevan sin salir con el tiempo que suelen tardar normalmente. A mayor retraso (factor), más urgente es que salgan.",
   getContextMessage: getDefaultContextMessage,
   buildContextKeyboard: buildDefaultContextKeyboard,
   async run(context: StrategyContext, map: DateDrawsMap): Promise<string> {

@@ -52,7 +52,7 @@ const STRATEGY_META: Record<string, StrategyMeta> = {
     emoji: "⏳",
     shortName: "Gap",
     fullName: "Números Debidos (Gap)",
-    candidateDesc: () => "top 20 atrasados vs su promedio histórico",
+    candidateDesc: () => "top 20 más atrasados según su ritmo normal",
   },
   calendar_pattern: {
     emoji: "📅",
