@@ -427,21 +427,23 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
 
     // ── Paso 1: imagen de onboarding con un solo botón "Ver Planes" ─────────
     const onboardingPhoto = options.getOnboardingPhoto?.();
+    const welcomeKeyboard = new InlineKeyboard().text("📋 Ver Planes", "ver_planes_open");
+    const welcomeCaption =
+      "🎰 *¡Bienvenido a Ball Bot!*\n\n" +
+      "🚀 _Tu asistente inteligente para dominar los Fijos (Pick 3) y Corridos (Pick 4) de la Florida Lottery._\n\n" +
+      "Accede a resultados instantáneos, análisis estadísticos profundos y estrategias avanzadas para multiplicar tus probabilidades de ganar.\n\n" +
+      "🛒 _¡Además, crea y comercializa tus propias estrategias en nuestra tienda exclusiva!_\n\n" +
+      "👇 _Toca el botón abajo para descubrir los planes disponibles:_";
+
     const ctxWithPhoto = ctx as {
       replyWithPhoto?: (photo: unknown, opts?: object) => Promise<{ photo?: Array<{ file_id: string }> }>;
     };
+
     if (ctxWithPhoto.replyWithPhoto && onboardingPhoto !== undefined) {
-      const welcomeCaption =
-        "🎰 *¡Bienvenido a Ball Bot!*\n\n" +
-        "🚀 _Tu asistente inteligente para dominar los Fijos \\(Pick 3\\) y Corridos \\(Pick 4\\) de la Florida Lottery\\._\n\n" +
-        "Accede a resultados instantáneos, análisis estadísticos profundos y estrategias avanzadas para multiplicar tus probabilidades de ganar\\.\n\n" +
-        "🛒 _¡Además, crea y comercializa tus propias estrategias en nuestra tienda exclusiva\\!_\n\n" +
-        "👇 _Toca el botón abajo para descubrir los planes disponibles:_";
-      const welcomeKeyboard = new InlineKeyboard().text("📋 Ver Planes", "ver_planes_open");
       try {
         const sentMsg = await ctxWithPhoto.replyWithPhoto(onboardingPhoto, {
           caption: welcomeCaption,
-          parse_mode: "MarkdownV2",
+          parse_mode: "Markdown",
           reply_markup: welcomeKeyboard,
         });
         if (typeof onboardingPhoto !== "string" && options.onOnboardingPhotoSent) {
@@ -453,9 +455,11 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
         return;
       } catch (photoErr) {
         console.error("[middleware] Error al enviar foto de onboarding:", photoErr);
-        // Fallback: mostrar texto completo con todos los botones.
+        // Fallback al texto de bienvenida abajo
       }
     }
-    await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: keyboard });
+
+    // Fallback: mostrar texto de bienvenida con botón "Ver Planes"
+    await ctx.reply(welcomeCaption, { parse_mode: "Markdown", reply_markup: welcomeKeyboard });
   };
 }

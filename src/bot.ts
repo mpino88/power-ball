@@ -4,7 +4,7 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { Bot, InputFile, InlineKeyboard } from "grammy";
 import type { Update } from "grammy/types";
@@ -781,11 +781,11 @@ bot.use(
     isOwner,
     getOnboardingPhoto: () => {
       if (onboardingPhotoFileId) return onboardingPhotoFileId;
-      try {
-        return new InputFile(readFileSync(ONBOARDING_IMAGE_PATH), "onboarding-new-user.png");
-      } catch {
-        return undefined;
+      if (existsSync(ONBOARDING_IMAGE_PATH)) {
+        return new InputFile(ONBOARDING_IMAGE_PATH);
       }
+      console.error("[bot] Onboarding image not found at:", ONBOARDING_IMAGE_PATH);
+      return undefined;
     },
     onOnboardingPhotoSent: (fileId: string) => {
       onboardingPhotoFileId = fileId;
