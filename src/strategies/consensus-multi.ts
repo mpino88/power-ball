@@ -488,8 +488,8 @@ export const consensusMulti: StrategyDefinition = {
   id: "consensus_multi",
   description:
     "Selecciona varias estrategias, extrae sus mejores candidatos bajo el mismo contexto y devuelve los N números con mayor respaldo cruzado — cuantas más estrategias coincidan en un número, mayor su confianza.",
-  getContextMessage(menuLabel: string): string {
-    return getDefaultContextMessage(menuLabel);
+  getContextMessage(menuLabel: string, description?: string): string {
+    return getDefaultContextMessage(menuLabel, description);
   },
   buildContextKeyboard(menuId: string): InlineKeyboard {
     return buildDefaultContextKeyboard(menuId);

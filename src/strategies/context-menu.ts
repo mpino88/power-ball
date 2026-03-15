@@ -18,12 +18,14 @@ export function buildDefaultContextKeyboard(menuId: string): InlineKeyboard {
     .text("◀️ Volver", "volver");
 }
 
-export function getDefaultContextMessage(menuLabel: string): string {
-  return (
+export function getDefaultContextMessage(menuLabel: string, description?: string): string {
+  const baseMsg = 
     `📌 *${menuLabel}*\n\n` +
     "Elige la *base de conocimientos* y el *período*:\n\n" +
     "• *P3 (Fijos)* — mapa de fechas Pick 3\n" +
     "• *P4 (Corridos)* — mapa de fechas Pick 4\n" +
-    "• ☀️ *Mediodía* (Día) · 🌙 *Noche*"
-  );
+    "• ☀️ *Mediodía* (Día) · 🌙 *Noche*";
+
+  if (!description) return baseMsg;
+  return `📌 *${menuLabel}*\n\n_${description}_\n\nElige la *base de conocimientos* y el *período*:\n\n• *P3 (Fijos)* — mapa de fechas Pick 3\n• *P4 (Corridos)* — mapa de fechas Pick 4\n• ☀️ *Mediodía* (Día) · 🌙 *Noche*`;
 }

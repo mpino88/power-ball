@@ -416,6 +416,18 @@ async function runStrategyAndShowResult(
       if (creatorId) msg += `\n\n[📩 Contactar al dueño](tg://user?id=${creatorId})`;
     }
     const stratDef = getStrategy(menuId);
+
+    const { getExtraMenuDescription } = await import("./menu-registry.js");
+    const { escapeMd } = await import("./security/callbacks.js");
+    let desc = stratDef?.description || getExtraMenuDescription(menuId);
+    if (desc) {
+      desc = escapeMd(desc);
+      const firstBreak = msg.indexOf("\n\n");
+      if (firstBreak !== -1) {
+        msg = msg.slice(0, firstBreak) + `\n\n_${desc}_` + msg.slice(firstBreak);
+      }
+    }
+
     const resultKb = new InlineKeyboard();
     if (isPreview) {
       resultKb.text("✅ Solicitar Acceso", `estrategias_confirm_request_${menuId}`).row();

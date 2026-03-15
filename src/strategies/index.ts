@@ -56,16 +56,15 @@ export function buildStrategyContextKeyboard(menuId: string): InlineKeyboard {
 
 import { escapeMd } from "../security/callbacks.js";
 
+import { getExtraMenuDescription } from "../menu-registry.js";
+
 export function getStrategyContextMessage(menuId: string, menuLabel: string): string {
   const s = registry.get(menuId);
   if (!s) return `Estrategia _${menuId}_ no encontrada.`;
-  const base = s.getContextMessage(menuLabel);
-  if (!s.description) return base;
-  const firstBreak = base.indexOf("\n\n");
-  if (firstBreak === -1) return base;
-  // Escapamos la descripción para evitar errores de parseo en Telegram (Legacy Markdown)
-  const escapedDesc = escapeMd(s.description);
-  return base.slice(0, firstBreak) + `\n\n_${escapedDesc}_` + base.slice(firstBreak);
+  // Usar la descripción de StrategyDefinition, o si no la hay, ver en menu-registry (estrategias extra)
+  let desc = s.description || getExtraMenuDescription(menuId);
+  if (desc) desc = escapeMd(desc);
+  return s.getContextMessage(menuLabel, desc);
 }
 
 export async function runStrategy(
