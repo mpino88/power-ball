@@ -53,7 +53,7 @@ export const ESTRATEGIAS_OPEN_CALLBACK = "estrategias_open";
 
 /** Mensaje del menú principal — se usa en /start, volver y security_main. */
 export const MAIN_MENU_MESSAGE =
-  "🎰 *¡Bienvenido a Florida Lottery Bot!*\n\n" +
+  "🎰 *¡Bienvenido a Ball Bot!*\n\n" +
   "Tu asistente definitivo para Pick 3 y Pick 4. Aquí tienes todo lo que puedes hacer:\n\n" +
   "🔎 *Consultar resultados* — Fijo (P3) y Corrido (P4) de hoy, ayer, esta semana o por fecha exacta.\n\n" +
   "📊 *Estadísticas avanzadas* — Descubre qué números salen más, agrupaciones y tendencias reales.\n\n" +
