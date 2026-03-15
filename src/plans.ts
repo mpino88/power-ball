@@ -198,7 +198,7 @@ const DEFAULT_PLANS: Plan[] = [
     id: "basico",
     title: "Básico",
     description:
-      "Consultas por período: Fijo (P3), Corrido (P4) — Hoy, Ayer, Semana o fecha elegida. Incluye Análisis estadísticos de sorteos.",
+      "Resultados diarios + Estadísticas esenciales (frecuencias, alzas y atrasos) para jugar inteligentemente.",
     price: "",
     menuIds: ["est_grupos"],
   },
@@ -206,7 +206,7 @@ const DEFAULT_PLANS: Plan[] = [
     id: "pro",
     title: "Pro",
     description:
-      "Todo lo de Básico (consultas Fijo/Corrido + Estadísticas por grupo) más Estadísticas individuales: Top 10 más hot por Mediodía/Noche.",
+      "Plan Básico + Top 10 Hot, rachas, ciclos y análisis avanzado para maximizar tus aciertos.",
     price: "",
     menuIds: ["est_grupos", "est_individuales"],
   },
@@ -214,7 +214,7 @@ const DEFAULT_PLANS: Plan[] = [
     id: "trial",
     title: "Trial",
     description:
-      "Acceso de prueba gratuito por 2 días. Incluye consultas Fijo/Corrido y Estadísticas por grupo. Sin necesidad de aprobación — actívalo al instante.",
+      "Explora gratis todo el potencial de Ball Bot por 2 días y transforma tu forma de jugar.",
     price: "",
     menuIds: ["est_grupos"],
     autoApprove: true,

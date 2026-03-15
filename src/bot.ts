@@ -3409,9 +3409,9 @@ async function main(): Promise<void> {
       // Auto-update descripciones de planes por defecto
       let modified = false;
       const defaults = new Map([
-        ["basico", "Conslta de sorteos y multiples análisis estadísticos"],
-        ["pro", "Todo el plan Básico + Análisis avanzados que te ayudarán a invertir mejor tus opciones"],
-        ["trial", "Acceso gratis (2 Días). Descubre todo lo que te ofrece Ball Bot"]
+        ["basico", "Resultados diarios + Estadísticas esenciales (frecuencias, alzas y atrasos) para jugar inteligentemente."],
+        ["pro", "Plan Básico + Top 10 Hot, rachas, ciclos y análisis avanzado para maximizar tus aciertos."],
+        ["trial", "Explora gratis todo el potencial de Ball Bot por 2 días y transforma tu forma de jugar."]
       ]);
 
       for (const row of planRows) {
