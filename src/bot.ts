@@ -3410,7 +3410,7 @@ async function main(): Promise<void> {
       let modified = false;
       const defaults = new Map([
         ["basico", "Resultados diarios + Estadísticas esenciales (frecuencias, alzas y atrasos) para jugar inteligentemente."],
-        ["pro", "Plan Básico + Top 10 Hot, rachas, ciclos y análisis avanzado para maximizar tus aciertos."],
+        ["pro", "Plan Básico + Top 10 Hot, rachas, ciclos y análisis avanzado para maximizar tus aciertos. Ya puedes comercializar tus estrategias en la tienda"],
         ["trial", "Explora gratis todo el potencial de Ball Bot por 2 días y transforma tu forma de jugar."]
       ]);
 
