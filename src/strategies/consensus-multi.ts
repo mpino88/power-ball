@@ -108,12 +108,7 @@ const STRATEGY_META: Record<string, StrategyMeta> = {
     fullName: "Markov Orden 2",
     candidateDesc: () => "sucesores del par (penúltimo→último) según transiciones de 2 pasos",
   },
-  max_gap_breach: {
-    emoji: "🚨",
-    shortName: "Récord",
-    fullName: "Récord de Ausencia Roto",
-    candidateDesc: () => "números que superan su brecha máxima histórica — urgencia máxima",
-  },
+
   decade_family: {
     emoji: "👨‍👩‍👧‍👦",
     shortName: "Decena",
@@ -176,7 +171,6 @@ function getStrategyMeta(id: string, ctx: StrategyContext, nextDate: Date | null
 // el Consenso. Ver análisis completo en el chat de diseño del sistema.
 //
 // Regla: ningún grupo incluye pares de alta redundancia:
-//   · gap_due ↔ max_gap_breach (misma señal, umbral distinto)
 //   · transition_follow ↔ markov_order2 (Markov-1 contenido en Markov-2)
 //   · calendar_pattern ↔ max_per_week_day (este es subconjunto del anterior)
 //   · bayesian_score ↔ sus 6 señales internas (freq/gap/momentum/ciclo/markov/racha)
@@ -210,7 +204,7 @@ export const CONSENSUS_GROUPS: ConsensusGroup[] = [
     emoji: "🇨",
     label: "Ruptura y Extremos",
     description: "Estrategias de alerta roja absoluta: detecta números que acaban de romper su récord de atraso, ciclos fijos y conexiones de espejo.",
-    ids: ["max_gap_breach", "cycle_detector", "mirror_complement", "calendar_pattern"],
+    ids: ["cycle_detector", "mirror_complement", "calendar_pattern"],
   },
   {
     id: "d",

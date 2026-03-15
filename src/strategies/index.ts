@@ -15,7 +15,7 @@ import { positionalAnalysis } from "./positional-analysis.js";
 import { estIndividuales } from "./est-individuales.js";
 import { consensusMulti } from "./consensus-multi.js";
 import { markovOrder2 } from "./markov-order2.js";
-import { maxGapBreach } from "./max-gap-breach.js";
+
 import { decadeFamily } from "./decade-family.js";
 import { mirrorComplement } from "./mirror-complement.js";
 import { terminalAnalysis } from "./terminal-analysis.js";
@@ -111,7 +111,7 @@ registerStrategy(positionalAnalysis);
 registerStrategy(estIndividuales);
 // —— Nuevas estrategias (v2) ——
 registerStrategy(markovOrder2);
-registerStrategy(maxGapBreach);
+
 registerStrategy(decadeFamily);
 registerStrategy(mirrorComplement);
 registerStrategy(terminalAnalysis);

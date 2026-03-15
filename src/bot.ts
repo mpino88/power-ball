@@ -640,13 +640,6 @@ const BUILT_IN_STRATEGIES: Array<{ id: string; label: string; description: strin
     createdBy: 728711697,
   },
   {
-    id: "max_gap_breach",
-    label: "Récord de Ausencia Roto",
-    description:
-      "Detecta números cuya brecha actual supera su MÁXIMO histórico de ausencia: nunca antes habían tardado tanto en salir. El umbral más fuerte estadísticamente para urgencia de aparición. P3/P4 · Día/Noche",
-    createdBy: 728711697,
-  },
-  {
     id: "decade_family",
     label: "Familias de Decenas",
     description:
