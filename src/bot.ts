@@ -176,9 +176,10 @@ import {
 } from "./adivinanza.js";
 import { getPaymentMethods, loadPaymentMethodsFromSheet } from "./payment-methods.js";
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
+const isDev = process.env.NODE_ENV === "development";
+const BOT_TOKEN = (isDev ? process.env.TELEGRAM_BOT_TOKEN_DEV : process.env.TELEGRAM_BOT_TOKEN) || process.env.TELEGRAM_BOT_TOKEN || "";
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
-const WEBHOOK_URL = process.env.WEBHOOK_URL ?? "";
+const WEBHOOK_URL = isDev ? "" : (process.env.WEBHOOK_URL ?? "");
 const FLORIDA_TZ = "America/New_York";
 const REQUEST_ACCESS_LINK = process.env.REQUEST_ACCESS_LINK?.trim() ?? "";
 const STRATEGY_STORE_PREVIEW_CALLBACK_PREFIX = "stpv_";
