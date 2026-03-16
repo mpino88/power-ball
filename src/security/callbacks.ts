@@ -224,7 +224,7 @@ export async function handleSecurityCallback(
     });
     const pageInfo = totalPages > 1 ? ` — pág. ${safePage + 1}/${totalPages}` : "";
     result =
-      `👥 *Listar usuarios* (${list.length}) — Básico(${basicoCount}) Pro(${proCount}) Admin(${adminCount})${pageInfo}\n\n` +
+      `👥 *Listar usuarios* (${list.length}) — 🥉Básico(${basicoCount}) 🥈Pro(${proCount}) 👑Admin(${adminCount})${pageInfo}\n\n` +
       "Toda la info del usuario. Usa *Agregar acceso* o *Quitar acceso* para gestionar.\n\n" +
       (lines.length ? lines.join("\n\n") : "_Ningún usuario con acceso_.");
     keyboard = new InlineKeyboard();
