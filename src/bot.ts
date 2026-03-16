@@ -2929,6 +2929,15 @@ bot.on("message:text", async (ctx) => {
         "✅ *¡Gracias por tu sugerencia!*\n\nTu mensaje ha sido enviado al administrador.",
         { parse_mode: "Markdown", reply_markup: buildMainKb(userId) }
       );
+      // Push a todos los owners notificando la nueva sugerencia
+      const senderName = getUsername(userId)
+        ? `@${getUsername(userId)}`
+        : (ctx.from?.username ? `@${ctx.from.username}` : (ctx.from?.first_name ?? String(userId)));
+      const ownerPushMsg = `💡 *Nueva sugerencia recibida*\n\nEl usuario ${senderName} (\`${userId}\`) acaba de enviar una sugerencia:\n\n_"${trimmed.slice(0, 200)}${trimmed.length > 200 ? "…" : ""}"_`;
+      const ownerPushKb = new InlineKeyboard().text("📋 Ver sugerencias", "admin_sugerencia_open");
+      for (const oid of getOwnerIds()) {
+        bot.api.sendMessage(oid, ownerPushMsg, { parse_mode: "Markdown", reply_markup: ownerPushKb }).catch(() => {});
+      }
     } catch (err) {
       console.error("[sugerencia] Error al guardar:", err);
       await ctx.reply(
