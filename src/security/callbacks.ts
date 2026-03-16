@@ -205,7 +205,10 @@ export async function handleSecurityCallback(
     let proCount = 0;
     list.forEach((uid) => {
       if (ownerIdsSet.has(uid)) return; // Los admins se cuentan aparte
-      const p = (getPlan(uid) || "").toLowerCase();
+      const rawPlan = getPlan(uid) || "";
+      // Normalizar para quitar acentos y pasar a minúsculas
+      const p = rawPlan.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      
       if (p.includes("pro")) proCount++;
       else if (p.includes("basico") || p.includes("trial")) basicoCount++;
     });
