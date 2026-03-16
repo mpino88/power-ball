@@ -173,6 +173,7 @@ import {
   parseAdivinanzaStratCallback,
   parseNumberList,
 } from "./adivinanza.js";
+import { getPaymentMethods, loadPaymentMethodsFromSheet } from "./payment-methods.js";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
@@ -1443,6 +1444,24 @@ bot.on("callback_query:data", async (ctx) => {
         );
       } catch (e) {
         if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      // Mostrar formas de pago disponibles en un mensaje separado
+      try {
+        await loadPaymentMethodsFromSheet();
+        const pms = getPaymentMethods();
+        if (pms.length > 0) {
+          const pmLines = pms.map((p, i) =>
+            `${i + 1}. *${p.description}*\n   💳 \`${p.account}\` · 🌐 ${p.currency}`
+          );
+          const pmText = `💳 *Formas de pago disponibles:*\n\n` + pmLines.join("\n\n");
+          const pmKb = new InlineKeyboard();
+          for (const pm of pms) {
+            pmKb.copyText(`📋 ${pm.description}`, pm.account).row();
+          }
+          await ctx.reply(pmText, { parse_mode: "Markdown", reply_markup: pmKb });
+        }
+      } catch (pmErr) {
+        console.error("[cambiar_plan] Error mostrando formas de pago:", pmErr);
       }
     } else {
       await ctx.answerCallbackQuery({ text: "Plan o temporalidad no encontrado" });
