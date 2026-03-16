@@ -301,7 +301,8 @@ export function buildConsensusSelectionKeyboard(
   selectedIds: Set<string>,
   context: StrategyContext,
   selectableIds: string[],
-  showGroups = false
+  showGroups = false,
+  isPreview = false
 ): InlineKeyboard {
   const kb = new InlineKeyboard();
   const activeGroup = detectActiveGroup(selectedIds, selectableIds);
@@ -341,7 +342,11 @@ export function buildConsensusSelectionKeyboard(
       : `✅ Listo (${count} seleccionada${count > 1 ? "s" : ""})`;
 
   kb.text(listoLabel, "cns_ok").row();
-  kb.text("❌ Cancelar", "cns_x");
+  if (isPreview) {
+    kb.text("🔙 Volver a Detalles", "estrategias_request_consensus_multi");
+  } else {
+    kb.text("❌ Cancelar", "cns_x");
+  }
   return kb;
 }
 

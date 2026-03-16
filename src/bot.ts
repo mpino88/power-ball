@@ -238,6 +238,7 @@ interface ConsensusSession {
   context: StrategyContext;
   selectedIds: Set<string>;
   step: "selecting" | "waiting_count";
+  isPreview?: boolean;
 }
 const consensusSessionMap = new Map<number, ConsensusSession>();
 
@@ -1561,6 +1562,30 @@ bot.on("callback_query:data", async (ctx) => {
           return;
         }
 
+        if (menuId === "consensus_multi") {
+          await ctx.answerCallbackQuery();
+          const userId = ctx.from?.id;
+          if (userId) {
+            consensusSessionMap.set(userId, {
+              context: { mapSource, period } as any,
+              selectedIds: new Set(),
+              step: "selecting",
+              isPreview: true,
+            });
+            const selectableIds = getAccessibleStrategyIds(userId);
+            const emptySet = new Set<string>();
+            const ownerView = isOwner(userId);
+            const msg = buildConsensusSelectionMessage(emptySet, { mapSource, period } as any, selectableIds, ownerView);
+            const kb = buildConsensusSelectionKeyboard(emptySet, { mapSource, period } as any, selectableIds, ownerView, true);
+            try {
+              await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
+            } catch (e) {
+              if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+            }
+          }
+          return;
+        }
+
         await runStrategyAndShowResult(ctx, menuId, { mapSource, period } as any, true);
 
         if (ctx.from) {
@@ -2385,7 +2410,7 @@ bot.on("callback_query:data", async (ctx) => {
       const selectableIds = getAccessibleStrategyIds(userId);
       const ownerView = isOwner(userId);
       const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds, ownerView);
-      const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds, ownerView);
+      const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds, ownerView, session.isPreview);
       try {
         await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
       } catch (e) {
@@ -2410,7 +2435,7 @@ bot.on("callback_query:data", async (ctx) => {
         await ctx.answerCallbackQuery({ text: `Grupo ${groupId.toUpperCase()} cargado (${groupSelectable.length} estrategias)` });
         const ownerView = isOwner(userId);
         const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds, ownerView);
-        const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds, ownerView);
+        const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds, ownerView, session.isPreview);
         try {
           await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
         } catch (e) {
@@ -2433,7 +2458,7 @@ bot.on("callback_query:data", async (ctx) => {
       await ctx.answerCallbackQuery({ text: `${selectableIds.length} estrategias seleccionadas` });
       const ownerView = isOwner(userId);
       const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds, ownerView);
-      const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds, ownerView);
+      const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds, ownerView, session.isPreview);
       try {
         await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
       } catch (e) {
@@ -2453,7 +2478,7 @@ bot.on("callback_query:data", async (ctx) => {
       const selectableIds = getAccessibleStrategyIds(userId);
       const ownerView = isOwner(userId);
       const msg = buildConsensusSelectionMessage(session.selectedIds, session.context, selectableIds, ownerView);
-      const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds, ownerView);
+      const kb = buildConsensusSelectionKeyboard(session.selectedIds, session.context, selectableIds, ownerView, session.isPreview);
       try {
         await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
       } catch (e) {
@@ -2480,7 +2505,7 @@ bot.on("callback_query:data", async (ctx) => {
           `¿Cuántos resultados quieres ver?\nEnvía un número del *1 al 50*.\n\n_Usa /cancel para cancelar._`,
           {
             parse_mode: "Markdown",
-            reply_markup: new InlineKeyboard().text("❌ Cancelar", "cns_x"),
+            reply_markup: new InlineKeyboard().text(session.isPreview ? "🔙 Volver a Detalles" : "❌ Cancelar", session.isPreview ? "estrategias_request_consensus_multi" : "cns_x"),
           }
         );
       } catch (e) {
@@ -3071,16 +3096,22 @@ bot.on("message:text", async (ctx) => {
         adivinanzaConsensusCache.set(userId, rankedNums);
       }
       const consensusKb = new InlineKeyboard();
-      if (rankedNums.length >= 2) {
-        consensusKb.text("🎰 Hacer parlé", PARLE_CNS_CALLBACK);
-        if (isOwner(userId)) {
-          consensusKb.text("🔮 Crear Adivinanza", ADIVINANZA_CNS_CALLBACK);
+      if (consensusSession.isPreview) {
+        consensusKb.text("✅ Solicitar Acceso", `estrategias_confirm_request_consensus_multi`).row();
+        markStrategyAsPreviewed(userId, "consensus_multi");
+        consensusKb.text("🔙 Volver a Detalles", "estrategias_request_consensus_multi");
+      } else {
+        if (rankedNums.length >= 2) {
+          consensusKb.text("🎰 Hacer parlé", PARLE_CNS_CALLBACK);
+          if (isOwner(userId)) {
+            consensusKb.text("🔮 Crear Adivinanza", ADIVINANZA_CNS_CALLBACK);
+          }
+          consensusKb.row();
+        } else if (rankedNums.length >= 1 && isOwner(userId)) {
+          consensusKb.text("🔮 Crear Adivinanza", ADIVINANZA_CNS_CALLBACK).row();
         }
-        consensusKb.row();
-      } else if (rankedNums.length >= 1 && isOwner(userId)) {
-        consensusKb.text("🔮 Crear Adivinanza", ADIVINANZA_CNS_CALLBACK).row();
+        consensusKb.text("🏠 Inicio", "volver");
       }
-      consensusKb.text("🏠 Inicio", "volver");
       await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: consensusKb });
       // Verificación testing: solo para dueños con fecha de corte activa
       if (isOwner(userId)) {
