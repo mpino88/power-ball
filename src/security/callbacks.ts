@@ -196,18 +196,20 @@ export async function handleSecurityCallback(
       ? (parseInt(data.replace("admin_list_p:", ""), 10) || 0)
       : 0;
     const allowed = getAllowedUsers();
-    const owners = getOwnerIds();
-    const list = Array.from(new Set([...allowed, ...owners]));
-    const ownerIdsSet = new Set(owners);
+    const ownersList = getOwnerIds();
+    const ownerIdsSet = new Set(ownersList);
+    // Lista única de todos para mostrar: Dueños + Permitidos
+    const list = Array.from(new Set([...ownersList, ...allowed]));
     
     let basicoCount = 0;
     let proCount = 0;
     list.forEach((uid) => {
+      if (ownerIdsSet.has(uid)) return; // Los admins se cuentan aparte
       const p = (getPlan(uid) || "").toLowerCase();
       if (p.includes("pro")) proCount++;
       else if (p.includes("basico") || p.includes("trial")) basicoCount++;
     });
-    const adminCount = owners.length;
+    const adminCount = ownerIdsSet.size;
 
     const totalPages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
     const safePage = Math.max(0, Math.min(page, totalPages - 1));
