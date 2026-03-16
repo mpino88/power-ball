@@ -990,10 +990,11 @@ export async function handleEstrategiasUserCallback(
       .text("➕ Crear estrategia", "estrategias_create")
       .text("🗑 Eliminar estrategia", "estrategias_delete")
       .row();
-    // El dueño puede gestionar la visibilidad de todas las estrategias; los demás solo las propias.
+    // Solo los Pro y el dueño pueden gestionar visibilidad
     const isOwnerUser = deps.isOwner(userId);
-    const menusParaVisibilidad = isOwnerUser ? getCustomMenus() : getCustomMenusCreatedBy(userId);
-    if (menusParaVisibilidad.length > 0) {
+    const userPlanForVis = getPlan(userId) ?? "";
+    const isProUser = isOwnerUser || userPlanForVis.toLowerCase().includes("pro");
+    if (isProUser) {
       keyboard.text("🌐 Visibilidad (pública/privada)", "estrategias_visibility").row();
     }
     keyboard.text("◀️ Volver", "volver");
@@ -1114,6 +1115,17 @@ export async function handleEstrategiasUserCallback(
 
   if (data === "estrategias_visibility") {
     const isOwnerUser = deps.isOwner(userId);
+    const userPlanForVis = getPlan(userId) ?? "";
+    const isProUser = isOwnerUser || userPlanForVis.toLowerCase().includes("pro");
+
+    if (!isProUser) {
+      result = "🌐 *Visibilidad (pública/privada)*\n\n⚠️ Solo los usuarios con *Plan Pro* pueden publicar sus estrategias en la tienda y hacerlas visibles a otros usuarios.\n\nActualiza tu plan para desbloquear esta funcionalidad.";
+      keyboard = new InlineKeyboard()
+        .text("◀️ Volver a Gestionar", "estrategias_manage").row()
+        .text("⬆️ Cambiar Plan", "cambiar_plan_open");
+      return { result, keyboard };
+    }
+
     const list = isOwnerUser ? getCustomMenus() : getCustomMenusCreatedBy(userId);
     if (list.length === 0) {
       result = "🌐 *Visibilidad*\n\n_No tienes estrategias propias que puedas publicar._";
