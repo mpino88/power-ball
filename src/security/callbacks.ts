@@ -1131,36 +1131,10 @@ export async function handleEstrategiasUserCallback(
       }
     }
 
-    const adminIdForContact = getOwnerId();
-    const contactMsg = adminIdForContact ? `\n\n[📩 Contactar al administrador](tg://user?id=${adminIdForContact})` : "";
-
     result = added
-      ? `✅ Solicitud enviada: *${escapeMd(label)}* (\`${menuId}\`). El administrador la revisará.${contactMsg}`
-      : `Ya tenías una solicitud pendiente para esta estrategia.${contactMsg}`;
+      ? `✅ Solicitud enviada: *${escapeMd(label)}* (\`${menuId}\`). El administrador la revisará.`
+      : "Ya tenías una solicitud pendiente para esta estrategia.";
     keyboard = new InlineKeyboard().text("◀️ Volver a Tienda", "estrategias_tienda");
-
-    if (added) {
-      // Mostrar formas de pago disponibles en un mensaje separado
-      try {
-        await loadPaymentMethodsFromSheet();
-        const pms = getPaymentMethods();
-        if (pms.length > 0) {
-          const pmLines = pms.map((p, i) =>
-            `${i + 1}. *${p.description}*\n   💳 \`${p.account}\` · 🌐 ${p.currency}`
-          );
-          const pmText = `💳 *Formas de pago disponibles:*\n\n` + pmLines.join("\n\n");
-          const pmKb = new InlineKeyboard();
-          for (const pm of pms) {
-            pmKb.copyText(`📋 ${pm.description}`, pm.account).row();
-          }
-          // Usamos sendMessage porque este handler solo devuelve result/keyboard para editMessageText superior
-          ctx.api.sendMessage(userId, pmText, { parse_mode: "Markdown", reply_markup: pmKb }).catch(() => {});
-        }
-      } catch (pmErr) {
-        console.error("[estrategias_confirm_request] Error mostrando formas de pago:", pmErr);
-      }
-    }
-
     return { result, keyboard };
   }
 
