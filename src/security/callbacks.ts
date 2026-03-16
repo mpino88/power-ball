@@ -195,7 +195,20 @@ export async function handleSecurityCallback(
     const page = data.startsWith("admin_list_p:")
       ? (parseInt(data.replace("admin_list_p:", ""), 10) || 0)
       : 0;
-    const list = getAllowedUsers();
+    const allowed = getAllowedUsers();
+    const owners = getOwnerIds();
+    const list = Array.from(new Set([...allowed, ...owners]));
+    const ownerIdsSet = new Set(owners);
+    
+    let basicoCount = 0;
+    let proCount = 0;
+    list.forEach((uid) => {
+      const p = (getPlan(uid) || "").toLowerCase();
+      if (p.includes("pro")) proCount++;
+      else if (p.includes("basico") || p.includes("trial")) basicoCount++;
+    });
+    const adminCount = owners.length;
+
     const totalPages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
     const safePage = Math.max(0, Math.min(page, totalPages - 1));
     const slice = list.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
@@ -206,13 +219,14 @@ export async function handleSecurityCallback(
       const status = escapeMd((getPlanStatus(uid) || "").trim() || "—");
       const pending = getPendingPlan(uid);
       const pendingNote = pending ? ` (→ ${escapeMd(pending)})` : "";
-      return `• *ID:* \`${uid}\` | *Nombre:* ${name} | *Teléfono:* ${phone} | [📩 Contactar](tg://user?id=${uid})\n  *Plan:* ${plan}${pendingNote} | *Estado:* ${status}`;
+      const roleTag = ownerIdsSet.has(uid) ? " 👑 _Admin_" : "";
+      return `• *ID:* \`${uid}\` | *Nombre:* ${name} | *Teléfono:* ${phone} | [📩 Contactar](tg://user?id=${uid})${roleTag}\n  *Plan:* ${plan}${pendingNote} | *Estado:* ${status}`;
     });
     const pageInfo = totalPages > 1 ? ` — pág. ${safePage + 1}/${totalPages}` : "";
     result =
-      `👥 *Listar usuarios* (${list.length})${pageInfo}\n\n` +
+      `👥 *Listar usuarios* (${list.length}) — Básico(${basicoCount}) Pro(${proCount}) Admin(${adminCount})${pageInfo}\n\n` +
       "Toda la info del usuario. Usa *Agregar acceso* o *Quitar acceso* para gestionar.\n\n" +
-      (lines.length ? lines.join("\n\n") : "_Ningún usuario con acceso_ (solo tú como dueño).");
+      (lines.length ? lines.join("\n\n") : "_Ningún usuario con acceso_.");
     keyboard = new InlineKeyboard();
     // Paginación
     if (totalPages > 1) {
