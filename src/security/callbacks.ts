@@ -1054,7 +1054,7 @@ export async function handleEstrategiasUserCallback(
     keyboard = new InlineKeyboard();
     for (const m of publicList) {
       const btnPriceStr = m.price ? ` ($${m.price} USD)` : "";
-      keyboard.text(`🛒 Comprar: ${m.label}${btnPriceStr}`, `estrategias_request_${m.id}`).row();
+      keyboard.text(`🛒 ${m.label}${btnPriceStr}`, `estrategias_request_${m.id}`).row();
     }
     keyboard.text("◀️ Volver", "volver");
     return { result, keyboard };
