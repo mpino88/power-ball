@@ -1433,7 +1433,9 @@ bot.on("callback_query:data", async (ctx) => {
         const adminMsg = `🔔 *Solicitud de cambio de plan*\n\nUsuario: ${escapeMd(username)} (\`${userId}\`)\nPlan solicitado: *${escapeMd(plan.title)}* (${tLabel})`;
         const adminKb = new InlineKeyboard()
           .text("✅ Aprobar", `admin_plans_approve_${userId}`)
-          .text("❌ Rechazar", `admin_plans_reject_${userId}`);
+          .text("❌ Rechazar", `admin_plans_reject_${userId}`)
+          .row()
+          .url("📩 Contactar Usuario", `tg://user?id=${userId}`);
         for (const oid of getOwnerIds().filter((id) => id !== userId)) {
           bot.api.sendMessage(oid, adminMsg, { parse_mode: "Markdown", reply_markup: adminKb }).catch(() => {});
         }

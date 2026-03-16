@@ -1121,7 +1121,9 @@ export async function handleEstrategiasUserCallback(
         const payload = `${userId}|${menuFragment}`;
         const adminKb = new InlineKeyboard()
           .text("✅ Aprobar", `admin_estrategias_approve_${payload}`)
-          .text("❌ Rechazar", `admin_estrategias_reject_${payload}`);
+          .text("❌ Rechazar", `admin_estrategias_reject_${payload}`)
+          .row()
+          .url("📩 Contactar Usuario", `tg://user?id=${userId}`);
         // Notificar a todos los owners
         for (const oid of getOwnerIds().filter((id) => id !== userId)) {
           ctx.api.sendMessage(oid, adminMsg, { parse_mode: "Markdown", reply_markup: adminKb }).catch(() => {});
