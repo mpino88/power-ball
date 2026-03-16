@@ -994,10 +994,14 @@ export async function handleEstrategiasUserCallback(
     const isOwnerUser = deps.isOwner(userId);
     const userPlanForVis = getPlan(userId) ?? "";
     const isProUser = isOwnerUser || userPlanForVis.toLowerCase().includes("pro");
-    if (isProUser) {
+    if (!isProUser) {
+      result += "\n\n💡 _Para publicar tus estrategias en la tienda debes moverte al plan Pro._";
       keyboard.text("🌐 Visibilidad (pública/privada)", "estrategias_visibility").row();
+      keyboard.text("◀️ Volver", "volver").row().text("⬆️ Cambiar Plan", "cambiar_plan_open");
+    } else {
+      keyboard.text("🌐 Visibilidad (pública/privada)", "estrategias_visibility").row();
+      keyboard.text("◀️ Volver", "volver");
     }
-    keyboard.text("◀️ Volver", "volver");
     return { result, keyboard };
   }
 
