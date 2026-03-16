@@ -1055,13 +1055,20 @@ export async function handleEstrategiasUserCallback(
     const createdBy = (userId !== undefined) ? deps.getMenuCreatedBy?.(menuId) : undefined;
     const hasAccess = (userId !== undefined) && (deps.getExtraMenus(userId).includes(menuId) || createdBy === userId || deps.isOwner(userId));
 
+    // Verificar si tiene plan Pro (dueños siempre pasan)
+    const userPlan = userId !== undefined ? getPlan(userId) ?? "" : "";
+    const isProPlan = deps.isOwner(userId ?? 0) || userPlan.toLowerCase().includes("pro");
+
     keyboard = new InlineKeyboard();
-    if (hasAccess) {
+    if (!isProPlan) {
+      // Plan Básico: mostrar aviso de upgrade y solo botón de volver
+      result += "⚠️ _Debes adquirir un plan Pro para poder comercializar estrategias._";
+    } else if (hasAccess) {
       result += "✅ *Ya tienes acceso a esta estrategia.*";
     } else {
       result += "¿Deseas enviar la solicitud de acceso?";
       keyboard.text("✅ Enviar Solicitud", `estrategias_confirm_request_${menuId}`).row();
-      
+
       // Vista previa solo para estrategias con runner y si no la ha probado aún
       if (userId !== undefined && !deps.hasPreviewedStrategy(userId, menuId)) {
         keyboard.text("🎰 Ver Previa (Cálculo)", `strat_store_preview_${menuId}`).row();
@@ -1069,6 +1076,9 @@ export async function handleEstrategiasUserCallback(
     }
 
     keyboard.text("◀️ Volver a Tienda", "estrategias_tienda");
+    if (!isProPlan) {
+      keyboard.row().text("⬆️ Cambiar Plan", "cambiar_plan_open");
+    }
     return { result, keyboard };
   }
 
