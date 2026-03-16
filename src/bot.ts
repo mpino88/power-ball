@@ -49,6 +49,7 @@ import {
   deleteAnnouncement,
   clearAllAnnouncements,
   invalidateAnnouncementsCache,
+  getAllowedUsers,
 } from "./user-config.js";
 import {
   registerExtraMenu,
@@ -2954,6 +2955,15 @@ bot.on("message:text", async (ctx) => {
           "✅ *Anuncio creado.*\n\n" + buildAdminAnnouncementsText(updated),
           { parse_mode: "Markdown", reply_markup: buildAdminAnnouncementsKeyboard(updated.length > 0) }
         );
+        // Enviar push a todos los usuarios (allowed + owners)
+        const pushMsg = `📢 *Nuevo Anuncio*\n\n📌 ${trimmed}`;
+        const allRecipients = new Set([
+          ...getAllowedUsers(),
+          ...getOwnerIds(),
+        ]);
+        for (const recipientId of allRecipients) {
+          bot.api.sendMessage(recipientId, pushMsg, { parse_mode: "Markdown" }).catch(() => {});
+        }
       } else if (mode.startsWith("edit:")) {
         const annId = mode.replace("edit:", "");
         const updated = await editAnnouncement(annId, trimmed);
