@@ -102,7 +102,7 @@ export async function handleSecurityMessage(
       });
       const cancelData = creating.createdBy != null ? "estrategias_manage" : "admin_estrategias_manage";
       await ctx.reply(
-        "➕ *Crear estrategia* (paso 3/3)\n\nEnvía el *precio* (ej: 5 USD, Gratis). Se mostrará a usuarios que la soliciten fuera de su plan. Opcional: envía *-* para omitir.",
+        "➕ *Crear estrategia* (paso 3/3)\n\nEnvía el *precio* (ej: $5 USD, Gratis). Se mostrará a usuarios que la soliciten fuera de su plan. Opcional: envía *-* para omitir.",
         { parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("◀️ Cancelar", cancelData) }
       );
       return true;

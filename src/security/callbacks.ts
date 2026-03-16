@@ -1048,12 +1048,13 @@ export async function handleEstrategiasUserCallback(
     }
     result = "🛒 *Tienda*\n\nEstrategias públicas que puedes solicitar. Solo el administrador puede aprobar tu solicitud.\n\n";
     for (const m of publicList) {
-      const priceStr = m.price ? ` — ${escapeMd(m.price)}` : "";
+      const priceStr = m.price ? ` — $${escapeMd(m.price)} USD` : "";
       result += `• ${escapeMd(m.label)} (\`${m.id}\`)${priceStr}\n`;
     }
     keyboard = new InlineKeyboard();
     for (const m of publicList) {
-      keyboard.text(`🛒 Comprar: ${m.label}`, `estrategias_request_${m.id}`).row();
+      const btnPriceStr = m.price ? ` ($${m.price} USD)` : "";
+      keyboard.text(`🛒 Comprar: ${m.label}${btnPriceStr}`, `estrategias_request_${m.id}`).row();
     }
     keyboard.text("◀️ Volver", "volver");
     return { result, keyboard };
@@ -1073,7 +1074,7 @@ export async function handleEstrategiasUserCallback(
 
     result = `🛒 *Detalles de la Estrategia*\n\n` +
              `*Nombre:* ${escapeMd(label)}\n` +
-             `*Precio:* ${escapeMd(price)}\n\n` +
+             `*Precio:* $${escapeMd(price)} USD\n\n` +
              `*Descripción:* \n${escapeMd(desc)}\n\n`;
 
     const createdBy = (userId !== undefined) ? deps.getMenuCreatedBy?.(menuId) : undefined;

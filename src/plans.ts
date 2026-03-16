@@ -65,7 +65,7 @@ export interface Plan {
   autoApprove?: boolean;
 }
 
-/** Formatea un precio para incluir $ y USD (ej: "10" -> "$10 USD"). Respeta si es "Gratis" o ya tiene formato. */
+/** Formatea un precio para incluir $ y USD (ej: "$10 USD" -> "$10 USD"). Respeta si es "Gratis" o ya tiene formato. */
 export function formatPlanPrice(price: string): string {
   if (!price) return "";
   const cleanPrice = price.replace(/^\$?(.*?)(?:\s*USD)?$/i, "$1").trim();
