@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 
 const HOY_FILE = path.join(process.cwd(), "data", "hoy-results.json");
@@ -12,8 +12,8 @@ export interface HoyResult {
 }
 
 export function getHoyResult(): HoyResult {
-  if (!existsSync(HOY_FILE)) return {};
   try {
+    if (!existsSync(HOY_FILE)) return {};
     const data = JSON.parse(readFileSync(HOY_FILE, "utf-8")) as HoyResult;
     
     // Auto-reset si la fecha guardada no es hoy en EST
@@ -32,16 +32,19 @@ export function getHoyResult(): HoyResult {
 }
 
 export function saveHoyResult(data: Partial<HoyResult>) {
-  const current = getHoyResult();
-  const updated: HoyResult = {
-    ...current,
-    ...data,
-    updatedAt: new Date().toISOString()
-  };
-  const dataDir = path.dirname(HOY_FILE);
-  if (!existsSync(dataDir)) {
-    // Note: Actually write_to_file and list_dir handle directories, but node:fs needs it.
-    // However, I will rely on the fact that data/ already exists based on my previous ls -la.
+  try {
+    const current = getHoyResult();
+    const updated: HoyResult = {
+      ...current,
+      ...data,
+      updatedAt: new Date().toISOString()
+    };
+    const dataDir = path.dirname(HOY_FILE);
+    if (!existsSync(dataDir)) {
+      mkdirSync(dataDir, { recursive: true });
+    }
+    writeFileSync(HOY_FILE, JSON.stringify(updated, null, 2));
+  } catch (e) {
+    console.error(`❌ [APEX] Error guardando hoy-results.json:`, e);
   }
-  writeFileSync(HOY_FILE, JSON.stringify(updated, null, 2));
 }
