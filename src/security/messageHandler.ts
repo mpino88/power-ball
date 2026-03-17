@@ -521,7 +521,7 @@ export async function handleSecurityMessage(
       const hitsP4 = winningHits[periodKeyP4];
 
       const formatHits = (hits: { id: string, label: string }[]) => {
-        if (hits.length === 0) return "";
+        if (hits.length === 0) return `\n🏆 *Ganó:* _Ninguno_`;
         const uniqueLabels = [...new Set(hits.map(h => escapeMd(deps.getExtraMenuLabel(h.label) || h.label)))];
         return `\n🏆 *Ganó:* ${uniqueLabels.join(", ")}`;
       };
@@ -535,7 +535,6 @@ export async function handleSecurityMessage(
 
       if (p3Val || p4Val) {
         for (const uid of allowed) {
-          if (uid === userId) continue;
           try {
             await ctx.api.sendMessage(uid, notification, { parse_mode: "Markdown" });
             sentCount++;
