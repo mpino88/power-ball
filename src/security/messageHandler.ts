@@ -536,7 +536,10 @@ export async function handleSecurityMessage(
       if (p3Val || p4Val) {
         for (const uid of allowed) {
           try {
-            await ctx.api.sendMessage(uid, notification, { parse_mode: "Markdown" });
+            await ctx.api.sendMessage(uid, notification, {
+              parse_mode: "Markdown",
+              reply_markup: deps.buildMainKeyboard(uid)
+            });
             sentCount++;
           } catch(e) { /* ignore */ }
         }
