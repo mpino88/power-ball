@@ -529,7 +529,7 @@ export async function handleSecurityMessage(
       const allowed = getAllowedUsers();
       let sentCount = 0;
       let notification = `🔔 *Nuevo Resultado: ${periodLabel}*\n\n`;
-      if (p3Val) notification += `🎯 Pick 3: *${p3Val}*${formatHits(hitsP3)}\n`;
+      if (p3Val) notification += `🎯 Pick 3: *${p3Val}*${formatHits(hitsP3)}\n\n`;
       if (p4Val) notification += `🎲 Pick 4: *${p4Val}*${formatHits(hitsP4)}\n`;
       notification += "\nConsulta todos los detalles en *Fijo/Corrido Hoy*.";
 
