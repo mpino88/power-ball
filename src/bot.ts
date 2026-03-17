@@ -234,6 +234,7 @@ function buildHelpText(planName: string): string {
 let hotThresholdDays = 5;
 const waitingCustomDateGame = new Map<number, GameMenu>();
 
+
 interface ConsensusSession {
   context: StrategyContext;
   selectedIds: Set<string>;
@@ -1439,7 +1440,7 @@ bot.on("callback_query:data", async (ctx) => {
           .row()
           .url("📩 Contactar Usuario", `tg://user?id=${userId}`);
         for (const oid of getOwnerIds().filter((id) => id !== userId)) {
-          bot.api.sendMessage(oid, adminMsg, { parse_mode: "Markdown", reply_markup: adminKb }).catch(() => {});
+          bot.api.sendMessage(oid, adminMsg, { parse_mode: "Markdown", reply_markup: adminKb }).catch(() => { });
         }
       }
       try {
@@ -2964,7 +2965,7 @@ bot.on("message:text", async (ctx) => {
       const ownerPushMsg = `💡 *Nueva sugerencia recibida*\n\nEl usuario ${senderName} (\`${userId}\`) acaba de enviar una sugerencia:\n\n_"${trimmed.slice(0, 200)}${trimmed.length > 200 ? "…" : ""}"_`;
       const ownerPushKb = new InlineKeyboard().text("📋 Ver sugerencias", "admin_sugerencia_open");
       for (const oid of getOwnerIds()) {
-        bot.api.sendMessage(oid, ownerPushMsg, { parse_mode: "Markdown", reply_markup: ownerPushKb }).catch(() => {});
+        bot.api.sendMessage(oid, ownerPushMsg, { parse_mode: "Markdown", reply_markup: ownerPushKb }).catch(() => { });
       }
     } catch (err) {
       console.error("[sugerencia] Error al guardar:", err);
@@ -2999,7 +3000,7 @@ bot.on("message:text", async (ctx) => {
           ...getOwnerIds(),
         ]);
         for (const recipientId of allRecipients) {
-          bot.api.sendMessage(recipientId, pushMsg, { parse_mode: "Markdown" }).catch(() => {});
+          bot.api.sendMessage(recipientId, pushMsg, { parse_mode: "Markdown" }).catch(() => { });
         }
       } else if (mode.startsWith("edit:")) {
         const annId = mode.replace("edit:", "");
