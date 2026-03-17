@@ -1438,7 +1438,7 @@ bot.on("callback_query:data", async (ctx) => {
           .text("✅ Aprobar", `admin_plans_approve_${userId}`)
           .text("❌ Rechazar", `admin_plans_reject_${userId}`)
           .row()
-          .url("📩 Contactar Usuario", `tg://user?id=${userId}`);
+          .url("📩 Contactar Usuario", `tg://openmessage?user_id=${userId}`);
         for (const oid of getOwnerIds().filter((id) => id !== userId)) {
           bot.api.sendMessage(oid, adminMsg, { parse_mode: "Markdown", reply_markup: adminKb }).catch(() => { });
         }

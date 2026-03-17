@@ -185,7 +185,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
                   .text("✅ Aprobar", `admin_plans_approve_${uid}`)
                   .text("❌ Rechazar", `admin_plans_reject_${uid}`)
                   .row()
-                  .url("📩 Contactar Usuario", `tg://user?id=${uid}`);
+                  .url("📩 Contactar Usuario", `tg://openmessage?user_id=${uid}`);
                 for (const oid of ownerIds) {
                   ctxApi?.sendMessage?.(oid, adminPushMsg, { parse_mode: "Markdown", reply_markup: adminKb }).catch(() => {});
                 }
@@ -336,7 +336,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
                 .text("✅ Aprobar", `admin_plans_approve_${uid}`)
                 .text("❌ Rechazar", `admin_plans_reject_${uid}`)
                 .row()
-                .url("📩 Contactar Usuario", `tg://user?id=${uid}`);
+                .url("📩 Contactar Usuario", `tg://openmessage?user_id=${uid}`);
               for (const oid of ownerIds2) {
                 ctxApi?.sendMessage?.(oid, adminPushMsg2, { parse_mode: "Markdown", reply_markup: adminKb2 }).catch(() => {});
               }
