@@ -26,5 +26,6 @@ export {
   clearAllFlows,
   creatingPaymentMethodFlow,
   editingPaymentMethodFlow,
+  updatingHoyFlow,
 } from "./flows.js";
 export { labelToMenuId } from "./menuIdFromLabel.js";

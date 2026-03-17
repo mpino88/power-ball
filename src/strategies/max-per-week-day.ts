@@ -66,7 +66,10 @@ function computeCounts(map: DateDrawsMap, period: "m" | "e", mapSource: "p3" | "
     if (!date) continue;
     const dayOfWeek = date.getDay() as DayOfWeek;
     for (const num of twoDigitNumbers(draw, mapSource)) {
-      if (num >= 0 && num <= 99) count.get(num)!.set(dayOfWeek, (count.get(num)!.get(dayOfWeek) ?? 0) + 1);
+      const dayMap = count.get(num);
+      if (num >= 0 && num <= 99 && dayMap) {
+        dayMap.set(dayOfWeek, (dayMap.get(dayOfWeek) ?? 0) + 1);
+      }
     }
   }
   return count;

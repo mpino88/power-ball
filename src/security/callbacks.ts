@@ -92,6 +92,8 @@ import {
   deletingPlanFlow,
   assigningPlanFlow,
   clearAllFlows,
+  updatingHoyFlow,
+  generatingCacheFlow,
 } from "./flows.js";
 
 const BUILTIN_MENU_IDS = new Set(["est_grupos", "est_individuales"]);
@@ -189,6 +191,26 @@ export async function handleSecurityCallback(
     clearAllFlows(ctx.from.id);
     result = MAIN_MENU_MESSAGE;
     keyboard = deps.buildMainKeyboard(ctx.from.id);
+  } else if (data === "admin_hoy_update") {
+    clearAllFlows(ctx.from.id);
+    updatingHoyFlow.set(ctx.from.id, { step: "selecting_period" });
+    result = "🎯 *Actualizar Sorteo Hoy*\n\n¿Qué sorteo deseas actualizar?";
+    keyboard = new InlineKeyboard()
+      .text("☀️ Mediodía", "admin_hoy_period_m")
+      .text("🌙 Noche", "admin_hoy_period_e")
+      .row()
+      .text("◀️ Cancelar", "security_open");
+  } else if (data.startsWith("admin_hoy_period_")) {
+    const period = data.replace("admin_hoy_period_", "") as "m" | "e";
+    const periodLabel = period === "m" ? "☀️ Mediodía" : "🌙 Noche";
+    updatingHoyFlow.set(ctx.from.id, { step: "input_p3", period });
+    result = `🎯 *Actualizar ${periodLabel}*\n\n🚀 Introduce los 3 dígitos de *Pick 3* (ej: 123).\nSi aún no hay resultado escribe \`-\` o \`null\`.\n\n/cancel para abortar.`;
+    keyboard = new InlineKeyboard().text("◀️ Volver", "admin_hoy_update");
+  } else if (data === "admin_cache_generate") {
+    clearAllFlows(ctx.from.id);
+    generatingCacheFlow.set(ctx.from.id, { step: 1 });
+    result = "💎 *Generar Candidatos Cache*\n\n🚀 Indique la cantidad de candidatos *máximos* que cada estrategia debe pre-calcular (ej: 20).\n\n💡 _Un número mayor aumenta la cobertura (hits) pero requiere más recursos de procesamiento._\n\n/cancel para abortar.";
+    keyboard = new InlineKeyboard().text("◀️ Cancelar", "security_open");
   } else if (data === "admin_list" || data.startsWith("admin_list_p:")) {
     await reloadConfigFromStorage();
     const PAGE_SIZE = 20;

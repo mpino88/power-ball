@@ -52,9 +52,11 @@ function buildStats(
 
   for (const { date, value } of events) {
     if (value < 0 || value > maxVal) continue;
-    const s = map.get(value)!;
-    s.count++;
-    s.dates.push(date);
+    const s = map.get(value);
+    if (s) {
+      s.count++;
+      s.dates.push(date);
+    }
   }
   return map;
 }

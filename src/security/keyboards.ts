@@ -10,9 +10,21 @@ import type { getExtraMenuIds as GetExtraMenuIds, getExtraMenuLabel as GetExtraM
 import type { getUsername as GetUsername, getPhone as GetPhone } from "../user-config.js";
 import type { getPlanById as GetPlanById } from "../plans.js";
 
+import { getLastCacheUpdate } from "../candidate-cache.js";
+
 export function buildSecurityKeyboard(): InlineKeyboard {
+  const lastUpdate = getLastCacheUpdate();
+  const now = Date.now();
+  const isStale = lastUpdate === 0 || (now - lastUpdate) > 24 * 60 * 60 * 1000;
+  
+  let cacheLabel = "💎 Generar Candidatos Cache";
+  if (lastUpdate === 0) cacheLabel = "❌ Sin Caché APEX (Generar)";
+  else if (isStale) cacheLabel = "⚠️ Caché Desactualizado (Regenerar)";
+
   return new InlineKeyboard()
-    .text("👥 Listar usuarios", "admin_list")
+    .text("🎯 Actualizar Sorteo Hoy", "admin_hoy_update")
+    .row()
+    .text("📊 Admin List (Todos)", "admin_list")
     .row()
     .text("➕ Agregar acceso", "admin_add")
     .text("➖ Quitar acceso", "admin_remove")
@@ -26,6 +38,8 @@ export function buildSecurityKeyboard(): InlineKeyboard {
     .text("💳 Formas de pago", "admin_pm_open")
     .row()
     .text("📊 Ver Leads", "admin_leads")
+    .row()
+    .text(cacheLabel, "admin_cache_generate")
     .row()
     .text("◀️ Volver al menú principal", "security_main");
 }

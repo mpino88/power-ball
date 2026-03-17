@@ -53,7 +53,10 @@ function computeGaps(
     if (!date) continue;
 
     for (const num of twoDigitNumbers(draw, mapSource)) {
-      if (num >= 0 && num <= 99) appearances.get(num)!.push(date);
+      const list = appearances.get(num);
+      if (num >= 0 && num <= 99 && list) {
+        list.push(date);
+      }
     }
   }
 

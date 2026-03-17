@@ -9,6 +9,7 @@ import {
   addAllowed,
   setUserInfo,
   getSheetUnavailableReason,
+  getAllowedUsers,
   type PersistResult,
 } from "../user-config.js";
 import { getExtraMenuIds } from "../menu-registry.js";
@@ -30,19 +31,29 @@ import {
   assigningPlanFlow,
   creatingPaymentMethodFlow,
   editingPaymentMethodFlow,
+  updatingHoyFlow,
+  generatingCacheFlow,
   clearAllFlows,
 } from "./flows.js";
+import { warmUpCandidateCache } from "../candidate-cache.js";
 import {
   addAndSavePaymentMethod,
   updateAndSavePaymentMethod,
   getPaymentMethodById,
 } from "../payment-methods.js";
+import { saveHoyResult, getHoyResult } from "../hoy-results.js";
+
+import { findWinningStrategies } from "../neuro-hit-engine.js";
 
 export interface SecurityMessageDeps {
   isOwner: (userId: number) => boolean;
   buildMainKeyboard: (userId: number | undefined) => InlineKeyboard;
   /** createdBy = userId cuando la crea un usuario (se auto-asigna). */
   onMenuCreated: (id: string, label: string, description?: string, createdBy?: number) => void;
+  getP3Map: () => Promise<any>;
+  getP4Map: () => Promise<any>;
+  getHotThresholdDays: () => number;
+  getExtraMenuLabel: (id: string) => string | undefined;
 }
 
 /**
@@ -459,6 +470,110 @@ export async function handleSecurityMessage(
       );
       return true;
     }
+  }
+
+  // ─── Actualizar Sorteo Hoy ───────────────────────────────────────────────
+  const updatingHoy = updatingHoyFlow.get(userId);
+  if (updatingHoy) {
+    const cancelKb = new InlineKeyboard().text("◀️ Cancelar", "security_open");
+    const periodLabel = updatingHoy.period === "m" ? "☀️ Mediodía" : "🌙 Noche";
+
+    if (updatingHoy.step === "input_p3") {
+      const p3 = text.trim();
+      updatingHoyFlow.set(userId, { ...updatingHoy, step: "input_p4", p3 });
+      await ctx.reply(`🎯 *${periodLabel}*\n\nIntroduce los 4 dígitos de *Pick 4* (ej: 1234). Escribe \`-\` o \`null\` si no hay.`, { parse_mode: "Markdown", reply_markup: cancelKb });
+      return true;
+    }
+
+    if (updatingHoy.step === "input_p4") {
+      const p4 = text.trim();
+      updatingHoyFlow.delete(userId);
+      
+      const cleanNull = (v: string) => (v === "-" || v.toLowerCase() === "null") ? "" : v;
+      const currentHoy = getHoyResult();
+      
+      const p3Val = cleanNull(updatingHoy.p3 || "");
+      const p4Val = cleanNull(p4);
+      
+      // Actualizamos solo el periodo seleccionado
+      if (updatingHoy.period === "m") {
+        currentHoy.p3_m = p3Val;
+        currentHoy.p4_m = p4Val;
+      } else {
+        currentHoy.p3_e = p3Val;
+        currentHoy.p4_e = p4Val;
+      }
+      
+      saveHoyResult(currentHoy);
+      
+      await ctx.reply(`✅ *${periodLabel} Actualizado*\n\nEnviando notificación masiva...`, { parse_mode: "Markdown" });
+
+      // Neuromarketing Hit Detection for the new result
+      const winningHits = await findWinningStrategies(
+        { getP3Map: deps.getP3Map, getP4Map: deps.getP4Map },
+        deps.getHotThresholdDays()
+      );
+
+      const periodKeyP3 = updatingHoy.period === "m" ? "p3_m" : "p3_e";
+      const periodKeyP4 = updatingHoy.period === "m" ? "p4_m" : "p4_e";
+      const hitsP3 = winningHits[periodKeyP3];
+      const hitsP4 = winningHits[periodKeyP4];
+
+      const formatHits = (hits: { id: string, label: string }[]) => {
+        if (hits.length === 0) return "";
+        const uniqueLabels = [...new Set(hits.map(h => deps.getExtraMenuLabel(h.label) || h.label))];
+        return `\n🏆 *Ganó:* ${uniqueLabels.join(", ")}`;
+      };
+
+      const allowed = getAllowedUsers();
+      let sentCount = 0;
+      let notification = `🔔 *Nuevo Resultado: ${periodLabel}*\n\n`;
+      if (p3Val) notification += `🎯 Pick 3: *${p3Val}*${formatHits(hitsP3)}\n`;
+      if (p4Val) notification += `🎲 Pick 4: *${p4Val}*${formatHits(hitsP4)}\n`;
+      notification += "\nConsulta todos los detalles en *Fijo/Corrido Hoy*.";
+
+      if (p3Val || p4Val) {
+        for (const uid of allowed) {
+          if (uid === userId) continue;
+          try {
+            await ctx.api.sendMessage(uid, notification, { parse_mode: "Markdown" });
+            sentCount++;
+          } catch(e) { /* ignore */ }
+        }
+      }
+      
+      await ctx.reply(`📣 Notificación enviada a ${sentCount} usuarios.`, { reply_markup: buildSecurityKeyboard() });
+      return true;
+    }
+  }
+
+  // ─── Generar Candidatos Cache ───────────────────────────────────────────
+  const generatingCache = generatingCacheFlow.get(userId);
+  if (generatingCache) {
+    const limit = parseInt(text, 10);
+    if (Number.isNaN(limit) || limit <= 0) {
+      await ctx.reply("❌ Por favor, envía un número válido (ej: 20).", {
+         reply_markup: new InlineKeyboard().text("◀️ Cancelar", "security_open")
+      });
+      return true;
+    }
+
+    generatingCacheFlow.delete(userId);
+    await ctx.reply(`💎 *Iniciando generación de caché APEX...*\n\nLímite: ${limit} candidatos por estrategia.\n\n⏳ _Este proceso puede tardar unos segundos..._`, { parse_mode: "Markdown" });
+
+    try {
+      await warmUpCandidateCache({ getP3Map: deps.getP3Map, getP4Map: deps.getP4Map }, limit);
+      await ctx.reply("✅ *Caché APEX Generado*\n\nTodas las estrategias han sido pre-calculadas y están listas para latencia cero.", {
+        parse_mode: "Markdown",
+        reply_markup: buildSecurityKeyboard()
+      });
+    } catch (e) {
+      console.error("[cache] Error en generación manual:", e);
+      await ctx.reply("❌ *Error al generar caché*\n\nOcurrió un error inesperado al procesar las estrategias. Revisa los logs.", {
+        reply_markup: buildSecurityKeyboard()
+      });
+    }
+    return true;
   }
 
   return false;

@@ -113,6 +113,8 @@ import {
   getStrategy,
   getConsensusSelectableIds,
 } from "./strategies/index.js";
+import { warmUpCandidateCache } from "./candidate-cache.js";
+
 import { filterMapByCutoff, getNextDrawResult, buildTestingVerificationBlock, mmddyyToDate } from "./strategies/utils.js";
 import { STRATEGY_CONTEXT_CALLBACK_PREFIX } from "./strategies/types.js";
 import {
@@ -2701,6 +2703,10 @@ bot.on("message:text", async (ctx) => {
       });
       if (createdBy != null) void toggleExtraMenu(createdBy, id);
     },
+    getP3Map: () => getP3Map(),
+    getP4Map: () => getP4Map(),
+    getHotThresholdDays: () => hotThresholdDays,
+    getExtraMenuLabel: (id) => getExtraMenuLabel(id),
   });
   if (securityHandled) return;
 
@@ -3574,8 +3580,9 @@ async function main(): Promise<void> {
   await normalizeUserMenusAfterLoad();
   await bot.init();
 
-  /* Precarga única: lectura de los PDF y extracción de los mapas de fechas. El resto se calcula on demand. */
-  Promise.all([getP3Map(), getP4Map()]).catch((e) => console.error("Preload PDF:", e));
+  /* Precarga única: lectura de los PDF y extracción de los mapas de fechas. El caché de candidatos ahora es MANUAL. */
+  Promise.all([getP3Map(), getP4Map()])
+    .catch((e) => console.error("Preload Error:", e));
 
   await bot.api.setMyCommands([
     { command: "start", description: "Iniciar y ver opciones" },

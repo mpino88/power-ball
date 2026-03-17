@@ -63,7 +63,10 @@ function computeCycles(
     const draw = map[allDates[i]!]?.[period];
     if (!draw || draw.length < minLen) continue;
     for (const num of twoDigitNumbers(draw, mapSource)) {
-      if (num >= 0 && num <= 99) numAppearDrawIdx.get(num)!.push(i);
+      const idxList = numAppearDrawIdx.get(num);
+      if (num >= 0 && num <= 99 && idxList) {
+        idxList.push(i);
+      }
     }
   }
 

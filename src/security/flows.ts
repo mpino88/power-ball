@@ -43,6 +43,12 @@ export type AssigningPlanStep =
   | { step: 2; targetUserId: number }
   | { step: 3; targetUserId: number; planId: string };
 
+export type UpdatingHoyStep = {
+  step: "selecting_period" | "input_p3" | "input_p4";
+  period?: "m" | "e";
+  p3?: string;
+};
+
 export const addingUserFlow = new Map<number, AddingStep>();
 export const creatingMenuFlow = new Map<number, CreatingStep>();
 export const editingMenuFlow = new Map<number, { menuId: string }>();
@@ -65,6 +71,8 @@ export type EditingPaymentMethodStep =
 
 export const creatingPaymentMethodFlow = new Map<number, CreatingPaymentMethodStep>();
 export const editingPaymentMethodFlow = new Map<number, EditingPaymentMethodStep>();
+export const updatingHoyFlow = new Map<number, UpdatingHoyStep>();
+export const generatingCacheFlow = new Map<number, { step: 1 }>();
 
 export function clearAllFlows(userId: number): void {
   addingUserFlow.delete(userId);
@@ -77,4 +85,5 @@ export function clearAllFlows(userId: number): void {
   assigningPlanFlow.delete(userId);
   creatingPaymentMethodFlow.delete(userId);
   editingPaymentMethodFlow.delete(userId);
+  updatingHoyFlow.delete(userId);
 }

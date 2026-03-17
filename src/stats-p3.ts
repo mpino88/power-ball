@@ -3,6 +3,8 @@
  * Un solo recorrido del historial. El periodo indica si usar solo Mediodía (M) o Noche (E).
  */
 
+import { twoDigitNumbers } from "./strategies/utils.js";
+
 export type StatsPeriod = "M" | "E";
 
 /** Mapa compatible con bot: fecha MM/DD/YY → { m?, e? } con arrays de 3 números. */
@@ -57,7 +59,8 @@ const toGap = (t: Track): GroupGap => ({
  */
 export function computeStatsCombined(
   map: DateDrawsMapStats,
-  period: StatsPeriod
+  period: StatsPeriod,
+  mapSource: "p3" | "p4" = "p3"
 ): {
   groups: { terminales: GroupGap[]; iniciales: GroupGap[]; dobles: GroupGap };
   individual: GroupGap[];
@@ -94,13 +97,16 @@ export function computeStatsCombined(
 
   for (const dateStr of datesWithDraw) {
     const draw = map[dateStr]?.[key]!;
-    const n = twoDigitFromP3(draw);
-    const numbersThisDay = new Set<number>([n]);
-    const groupsThisDay = new Set<string>([
-      `T${n % 10}`,
-      `I${Math.floor(n / 10)}`,
-      ...(DOUBLES_SET.has(n) ? ["D"] : []),
-    ]);
+    // Deep Audit: P4 se separa en 2x2. dos-digitos-numbers devuelve [AB] para P3 y [AB, CD] para P4.
+    const nums = twoDigitNumbers(draw, mapSource);
+    const numbersThisDay = new Set<number>(nums);
+    
+    const groupsThisDay = new Set<string>();
+    for (const n of nums) {
+      groupsThisDay.add(`T${n % 10}`);
+      groupsThisDay.add(`I${Math.floor(n / 10)}`);
+      if (DOUBLES_SET.has(n)) groupsThisDay.add("D");
+    }
 
     const daysSincePrev = prevDateStr !== null ? dayDiff(prevDateStr, dateStr) : 0;
 

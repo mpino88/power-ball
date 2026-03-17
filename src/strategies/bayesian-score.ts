@@ -96,7 +96,9 @@ function computeBayesianScores(
     const date = mmddyyToDate(dateStr);
     if (!date) continue;
     for (const num of twoDigitNumbers(draw, mapSource)) {
-      if (num >= 0 && num <= 99) numAppearDates[num]!.push(date);
+      if (num >= 0 && num <= 99 && numAppearDates[num]) {
+        numAppearDates[num]!.push(date);
+      }
     }
   }
 
@@ -136,7 +138,9 @@ function computeBayesianScores(
     const draw = map[allDates[i]!]?.[period];
     if (!draw || draw.length < minLen) continue;
     for (const num of twoDigitNumbers(draw, mapSource)) {
-      if (num >= 0 && num <= 99) numAppearIdx[num]!.push(i);
+      if (num >= 0 && num <= 99 && numAppearIdx[num]) {
+        numAppearIdx[num]!.push(i);
+      }
     }
   }
 

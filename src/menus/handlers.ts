@@ -18,6 +18,8 @@ import {
   MAIN_MENU_MESSAGE,
   type MainKeyboardDeps,
 } from "./keyboards.js";
+import { getHoyResult } from "../hoy-results.js";
+import { findWinningStrategies } from "../neuro-hit-engine.js";
 
 export interface MenuHandlersDeps extends MainKeyboardDeps {
   /** Genera el texto de ayuda a partir del nombre de plan actual del usuario. */
@@ -208,7 +210,50 @@ export async function handleMenuCallback(
     try {
       let result: string;
       if (scope === "hoy") {
-        result = "☀️🌙 *Hoy*\n\nNo hay datos disponible aún." + getHoyConsultaLink(game);
+        const hoyData = getHoyResult();
+        const todayStr = new Date().toLocaleDateString("en-US", { 
+          timeZone: "America/New_York", 
+          month: "2-digit", 
+          day: "2-digit", 
+          year: "2-digit" 
+        });
+
+        // Neuromarketing Hit Detection
+        const winningHits = await findWinningStrategies(
+          { getP3Map: deps.getP3Map, getP4Map: deps.getP4Map },
+          deps.getHotThresholdDays()
+        );
+
+        const formatDraw = (v: string, fallback: string) => {
+          if (!v) return `_${fallback}_`;
+          if (v.length === 3 || v.length === 4) return `*${v.split("").join("-")}*`;
+          return `*${v}*`;
+        };
+
+        const renderHits = (hits: { id: string, label: string }[]) => {
+          if (hits.length === 0) return "";
+          const uniqueLabels = [...new Set(hits.map(h => {
+             // Resolve label from deps if it's a menuId, otherwise use the stat label
+             return deps.getExtraMenuLabel?.(h.label) || h.label;
+          }))];
+          return `\n🏆 *Ganó:* ${uniqueLabels.join(", ")}`;
+        };
+
+        const title = game === "fijo" ? "Fijo" : (game === "corrido" ? "Corrido" : "Fijo y Corrido");
+        let output = `☀️🌙 *Hoy (${title})* ${todayStr}\n\n`;
+        output += `${todayStr}\n`;
+        
+        if (game === "fijo" || game === "ambos") {
+          output += `☀️ Mediodía (M): ${formatDraw(hoyData.p3_m || "", "Esperando sorteo")}${renderHits(winningHits.p3_m)}\n`;
+          output += `🌙 Noche (E): ${formatDraw(hoyData.p3_e || "", "Esperando sorteo")}${renderHits(winningHits.p3_e)}\n`;
+        }
+        if (game === "corrido" || game === "ambos") {
+          if (game === "ambos") output += "\n";
+          output += `☀️ Mediodía (M): ${formatDraw(hoyData.p4_m || "", "Esperando sorteo")}${renderHits(winningHits.p4_m)}\n`;
+          output += `🌙 Noche (E): ${formatDraw(hoyData.p4_e || "", "Esperando sorteo")}${renderHits(winningHits.p4_e)}\n`;
+        }
+        
+        result = output + getHoyConsultaLink(game);
         return { result, keyboard: mainKb() };
       }
       const [map3, map4] = await Promise.all([deps.getP3Map(), deps.getP4Map()]);
