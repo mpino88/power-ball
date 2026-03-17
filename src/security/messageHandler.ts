@@ -22,6 +22,7 @@ import {
   buildManagePlansKeyboard,
 } from "./keyboards.js";
 import { labelToMenuId } from "./menuIdFromLabel.js";
+import { escapeMd } from "./callbacks.js";
 import {
   addingUserFlow,
   creatingMenuFlow,
@@ -521,7 +522,7 @@ export async function handleSecurityMessage(
 
       const formatHits = (hits: { id: string, label: string }[]) => {
         if (hits.length === 0) return "";
-        const uniqueLabels = [...new Set(hits.map(h => deps.getExtraMenuLabel(h.label) || h.label))];
+        const uniqueLabels = [...new Set(hits.map(h => escapeMd(deps.getExtraMenuLabel(h.label) || h.label)))];
         return `\n🏆 *Ganó:* ${uniqueLabels.join(", ")}`;
       };
 
