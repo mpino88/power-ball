@@ -243,15 +243,16 @@ export async function handleMenuCallback(
 
         const title = game === "fijo" ? "Fijo" : (game === "corrido" ? "Corrido" : "Fijo y Corrido");
         let output = `☀️🌙 *Hoy (${title})* ${todayStr}\n\n`;
-        output += `${todayStr}\n`;
-
+        
         if (game === "fijo" || game === "ambos") {
-          output += `☀️ Mediodía (M): ${formatDraw(hoyData.p3_m || "", "Esperando sorteo")}${renderHits(winningHits.p3_m)}\n`;
+          output += `*Pick3 (Fijo)*\n`;
+          output += `☀️ Mediodía (M): ${formatDraw(hoyData.p3_m || "", "Esperando sorteo")}${renderHits(winningHits.p3_m)}\n\n`;
           output += `🌙 Noche (E): ${formatDraw(hoyData.p3_e || "", "Esperando sorteo")}${renderHits(winningHits.p3_e)}\n`;
         }
         if (game === "corrido" || game === "ambos") {
           if (game === "ambos") output += "\n";
-          output += `☀️ Mediodía (M): ${formatDraw(hoyData.p4_m || "", "Esperando sorteo")}${renderHits(winningHits.p4_m)}\n`;
+          output += `*Pick4 (Corrido)*\n`;
+          output += `☀️ Mediodía (M): ${formatDraw(hoyData.p4_m || "", "Esperando sorteo")}${renderHits(winningHits.p4_m)}\n\n`;
           output += `🌙 Noche (E): ${formatDraw(hoyData.p4_e || "", "Esperando sorteo")}${renderHits(winningHits.p4_e)}\n`;
         }
 
