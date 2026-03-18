@@ -15,7 +15,7 @@ import {
   buildDiasDiferenciaKeyboard,
   buildDiasDiferenciaKeyboardIndividual,
   CONSULTAR_DATOS_CALLBACK,
-  MAIN_MENU_MESSAGE,
+  buildMainMenuMessage,
   type MainKeyboardDeps,
 } from "./keyboards.js";
 import { getHoyResult } from "../hoy-results.js";
@@ -93,7 +93,7 @@ export async function handleMenuCallback(
   if (data === "volver") {
     await deps.reloadUserConfig();
     return {
-      result: MAIN_MENU_MESSAGE,
+      result: buildMainMenuMessage(ctx.from?.first_name || "Usuario"),
       keyboard: mainKb(),
     };
   }
@@ -212,11 +212,11 @@ export async function handleMenuCallback(
       let result: string;
       if (scope === "hoy") {
         const hoyData = getHoyResult();
-        const todayStr = new Date().toLocaleDateString("en-US", { 
-          timeZone: "America/New_York", 
-          month: "2-digit", 
-          day: "2-digit", 
-          year: "2-digit" 
+        const todayStr = new Date().toLocaleDateString("en-US", {
+          timeZone: "America/New_York",
+          month: "2-digit",
+          day: "2-digit",
+          year: "2-digit"
         });
 
         // Neuromarketing Hit Detection
@@ -234,9 +234,9 @@ export async function handleMenuCallback(
         const renderHits = (hits: { id: string, label: string }[]) => {
           if (hits.length === 0) return `\n⚡ *Algoritmos Validados:* _Recalibrando análisis predictivo..._`;
           const uniqueLabels = [...new Set(hits.map(h => {
-             // Resolve label from deps if it's a menuId, otherwise use the stat label
-             const lbl = deps.getExtraMenuLabel?.(h.label) || h.label;
-             return escapeMd(lbl);
+            // Resolve label from deps if it's a menuId, otherwise use the stat label
+            const lbl = deps.getExtraMenuLabel?.(h.label) || h.label;
+            return escapeMd(lbl);
           }))];
           return `\n⚡ *Algoritmos Validados:*\n` + uniqueLabels.map(l => ` ➥ ${l}`).join("\n");
         };
@@ -244,7 +244,7 @@ export async function handleMenuCallback(
         const title = game === "fijo" ? "Fijo" : (game === "corrido" ? "Corrido" : "Fijo y Corrido");
         let output = `☀️🌙 *Hoy (${title})* ${todayStr}\n\n`;
         output += `${todayStr}\n`;
-        
+
         if (game === "fijo" || game === "ambos") {
           output += `☀️ Mediodía (M): ${formatDraw(hoyData.p3_m || "", "Esperando sorteo")}${renderHits(winningHits.p3_m)}\n`;
           output += `🌙 Noche (E): ${formatDraw(hoyData.p3_e || "", "Esperando sorteo")}${renderHits(winningHits.p3_e)}\n`;
@@ -254,7 +254,7 @@ export async function handleMenuCallback(
           output += `☀️ Mediodía (M): ${formatDraw(hoyData.p4_m || "", "Esperando sorteo")}${renderHits(winningHits.p4_m)}\n`;
           output += `🌙 Noche (E): ${formatDraw(hoyData.p4_e || "", "Esperando sorteo")}${renderHits(winningHits.p4_e)}\n`;
         }
-        
+
         result = output + getHoyConsultaLink(game);
         return { result, keyboard: mainKb() };
       }

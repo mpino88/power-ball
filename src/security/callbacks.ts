@@ -81,7 +81,7 @@ import {
   buildPlanMenusKeyboard,
   formatUserLine,
 } from "./keyboards.js";
-import { MAIN_MENU_MESSAGE } from "../menus/keyboards.js";
+import { buildMainMenuMessage } from "../menus/keyboards.js";
 import {
   addingUserFlow,
   creatingMenuFlow,
@@ -189,7 +189,7 @@ export async function handleSecurityCallback(
     keyboard = buildSecurityKeyboard();
   } else if (data === "security_main") {
     clearAllFlows(ctx.from.id);
-    result = MAIN_MENU_MESSAGE;
+    result = buildMainMenuMessage(ctx.from?.first_name || "Usuario");
     keyboard = deps.buildMainKeyboard(ctx.from.id);
   } else if (data === "admin_hoy_update") {
     clearAllFlows(ctx.from.id);
@@ -222,7 +222,7 @@ export async function handleSecurityCallback(
     const ownerIdsSet = new Set(ownersList);
     // Lista única de todos para mostrar: Dueños + Permitidos
     const list = Array.from(new Set([...ownersList, ...allowed]));
-    
+
     let basicoCount = 0;
     let proCount = 0;
     list.forEach((uid) => {
@@ -230,7 +230,7 @@ export async function handleSecurityCallback(
       const rawPlan = getPlan(uid) || "";
       // Normalizar para quitar acentos y pasar a minúsculas
       const p = rawPlan.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      
+
       if (p.includes("pro")) proCount++;
       else if (p.includes("basico") || p.includes("trial")) basicoCount++;
     });
@@ -474,7 +474,7 @@ export async function handleSecurityCallback(
         const sLabel = getExtraMenuLabel(r.menuId) ?? r.menuId;
         const shortName = uName.length > 10 ? uName.slice(0, 10) + "…" : uName;
         const shortStrat = sLabel.length > 15 ? sLabel.slice(0, 15) + "…" : sLabel;
-        
+
         const menuFragment = r.menuId.length > 25 ? r.menuId.slice(0, 25) : r.menuId;
         const payload = `${r.userId}|${menuFragment}`;
         keyboard
@@ -503,7 +503,7 @@ export async function handleSecurityCallback(
       ctx.api.sendMessage(uid,
         `🎉 *¡Tu solicitud fue aprobada!*\n\nYa tienes acceso a la estrategia *${escapeMd(label)}*. Ve a tu menú de estrategias para usarla.`,
         { parse_mode: "Markdown" }
-      ).catch(() => {});
+      ).catch(() => { });
       keyboard = new InlineKeyboard().text("◀️ Volver a Solicitudes", "admin_estrategias_requests");
     }
   } else if (data.startsWith("admin_estrategias_reject_")) {
@@ -524,7 +524,7 @@ export async function handleSecurityCallback(
       ctx.api.sendMessage(uid,
         `❌ *Tu solicitud fue rechazada*\n\nEl administrador no aprobó el acceso a *${escapeMd(label)}*. Puedes contactarlo para más información.`,
         { parse_mode: "Markdown" }
-      ).catch(() => {});
+      ).catch(() => { });
       keyboard = new InlineKeyboard().text("◀️ Volver a Solicitudes", "admin_estrategias_requests");
     }
   } else if (data === "admin_estrategias_visibility") {
@@ -832,7 +832,7 @@ export async function handleSecurityCallback(
         ctx.api.sendMessage(userId,
           `🎉 *¡Tu acceso fue aprobado!*\n\nYa tienes acceso activo al plan *${planLabel}*${tLabelClean}. ¡Bienvenido! Usa /start para entrar al bot.`,
           { parse_mode: "Markdown" }
-        ).catch(() => {});
+        ).catch(() => { });
       } else {
         result = `❌ *Error al aprobar*\n\n${approveResult.error ?? "No se pudo procesar la solicitud."}\n\nRevisa las solicitudes pendientes.`;
       }
@@ -848,13 +848,13 @@ export async function handleSecurityCallback(
       const requested = getRequestedPlanUsers().find((u) => u.userId === userId);
       const planLabel = escapeMd(requested?.plan ?? "plan solicitado");
       // Eliminar la solicitud del estado pendiente
-      await approvePlanRequest(userId, []).catch(() => {}); // ensures the pending row is cleared
+      await approvePlanRequest(userId, []).catch(() => { }); // ensures the pending row is cleared
       result = `❌ *Solicitud rechazada*\n\nSolicitud de \`${userId}\` para el plan *${planLabel}* fue rechazada.`;
       // Notificar al solicitante
       ctx.api.sendMessage(userId,
         `❌ *Tu solicitud de plan fue rechazada*\n\nEl administrador no aprobó el acceso al plan *${planLabel}*. Puedes contactarlo para más información.`,
         { parse_mode: "Markdown" }
-      ).catch(() => {});
+      ).catch(() => { });
       keyboard = new InlineKeyboard().text("💻 Ver Solicitudes Pendientes", "admin_plans_requests").row().text("◀️ Gestionar Planes", "admin_plans_manage");
     }
   } else if (data === "admin_leads" || data === "admin_leads_refresh") {
@@ -1095,9 +1095,9 @@ export async function handleEstrategiasUserCallback(
     const price = getMenuPrice(menuId) || "10";
 
     result = `🛒 *Detalles de la Estrategia*\n\n` +
-             `*Nombre:* ${escapeMd(label)}\n` +
-             `*Precio:* $${escapeMd(price)} USD\n\n` +
-             `*Descripción:* \n${escapeMd(desc)}\n\n`;
+      `*Nombre:* ${escapeMd(label)}\n` +
+      `*Precio:* $${escapeMd(price)} USD\n\n` +
+      `*Descripción:* \n${escapeMd(desc)}\n\n`;
 
     const createdBy = (userId !== undefined) ? deps.getMenuCreatedBy?.(menuId) : undefined;
     const hasAccess = (userId !== undefined) && (deps.getExtraMenus(userId).includes(menuId) || createdBy === userId || deps.isOwner(userId));
@@ -1133,7 +1133,7 @@ export async function handleEstrategiasUserCallback(
     const menuId = data.replace("estrategias_confirm_request_", "");
     const added = await addStrategyRequest(userId, menuId);
     const label = deps.getExtraMenuLabel(menuId) ?? menuId;
-    
+
     if (added) {
       // Notificar al admin
       const adminId = getOwnerId();
@@ -1149,7 +1149,7 @@ export async function handleEstrategiasUserCallback(
           .url("📩 Contactar Usuario", `tg://openmessage?user_id=${userId}`);
         // Notificar a todos los owners
         for (const oid of getOwnerIds().filter((id) => id !== userId)) {
-          ctx.api.sendMessage(oid, adminMsg, { parse_mode: "Markdown", reply_markup: adminKb }).catch(() => {});
+          ctx.api.sendMessage(oid, adminMsg, { parse_mode: "Markdown", reply_markup: adminKb }).catch(() => { });
         }
       }
     }

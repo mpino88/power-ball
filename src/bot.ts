@@ -100,7 +100,7 @@ import {
   buildMySugerenciasKeyboard,
   handleMenuCallback,
   ESTRATEGIAS_OPEN_CALLBACK,
-  MAIN_MENU_MESSAGE,
+  buildMainMenuMessage,
   type GameMenu,
 } from "./menus/index.js";
 import type { StrategyContext } from "./strategies/types.js";
@@ -811,7 +811,7 @@ bot.command("start", async (ctx) => {
     announcementBanner = buildAnnouncementsBanner(annItems);
   }
   await ctx.reply(
-    announcementBanner + MAIN_MENU_MESSAGE,
+    announcementBanner + buildMainMenuMessage(ctx.from?.first_name || "Usuario"),
     { parse_mode: "Markdown", reply_markup: buildMainKb(startUserId) }
   );
 });
