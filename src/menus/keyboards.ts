@@ -53,8 +53,11 @@ export const ESTRATEGIAS_OPEN_CALLBACK = "estrategias_open";
 
 /** Mensaje del menú principal — se usa en /start, volver y security_main. */
 export function buildMainMenuMessage(name: string): string {
-  return `🤖 SISTEMA BALL BOT INICIADO: ${name} Autenticado .\n` +
-         `"El azar es para los que apuestan; la estadística es para los que invierten."`;
+  return `⬛️ *TERMINAL CUANTITATIVA BALL BOT* ⬛️\n\n` +
+         `👤 ID Autenticado: *${name}*\n` +
+         `📡 Sincronizado con Florida Lottery en tiempo real.\n\n` +
+         `_"El azar es para los que apuestan; la estadística es para los que invierten."_\n\n` +
+         `👇 *ESPERANDO INPUT OPERATIVO:*`;
 }
 
 /** Callback al pulsar "Consultar Datos": abre el submenú de consulta. */
