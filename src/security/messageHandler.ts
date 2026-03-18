@@ -120,30 +120,30 @@ export async function handleSecurityMessage(
       return true;
     }
     if (creating.step === 3) {
-    const price = text.trim() === "-" || text.trim() === "" ? undefined : text.trim();
-    const label = creating.label;
-    const description = creating.description;
-    const id = labelToMenuId(label)!;
-    const createdBy = creating.createdBy;
-    const fromAdmin = creating.fromAdmin ?? false;
-    creatingMenuFlow.delete(userId);
-    if (!addCustomMenu(id, label, description, createdBy, price, "private" /* nueva estrategia siempre privada */)) {
-      const backKb = fromAdmin ? buildManageEstrategiasKeyboard() : buildManageEstrategiasKeyboardUser();
-      await ctx.reply("No se pudo crear (id duplicado).", { reply_markup: backKb });
-      return true;
-    }
-    deps.onMenuCreated(id, label, description, createdBy);
-    const kb = new InlineKeyboard();
-    if (fromAdmin) {
-      kb.text("📋 Asignar a usuarios", "admin_menus").row();
-      kb.text("◀️ Volver a Gestionar Estrategias", "admin_estrategias_manage");
-    } else {
-      kb.text("◀️ Volver a Gestionar estrategias", "estrategias_manage");
-    }
-    await ctx.reply(
-      `✅ Estrategia creada: *${label}* (\`${id}\`). Se te ha asignado automáticamente.\n\nEstado: _pendiente de implementación_ hasta que se asocie una función.`,
-      { parse_mode: "Markdown", reply_markup: kb }
-    );
+      const price = text.trim() === "-" || text.trim() === "" ? undefined : text.trim();
+      const label = creating.label;
+      const description = creating.description;
+      const id = labelToMenuId(label)!;
+      const createdBy = creating.createdBy;
+      const fromAdmin = creating.fromAdmin ?? false;
+      creatingMenuFlow.delete(userId);
+      if (!addCustomMenu(id, label, description, createdBy, price, "private" /* nueva estrategia siempre privada */)) {
+        const backKb = fromAdmin ? buildManageEstrategiasKeyboard() : buildManageEstrategiasKeyboardUser();
+        await ctx.reply("No se pudo crear (id duplicado).", { reply_markup: backKb });
+        return true;
+      }
+      deps.onMenuCreated(id, label, description, createdBy);
+      const kb = new InlineKeyboard();
+      if (fromAdmin) {
+        kb.text("📋 Asignar a usuarios", "admin_menus").row();
+        kb.text("◀️ Volver a Gestionar Estrategias", "admin_estrategias_manage");
+      } else {
+        kb.text("◀️ Volver a Gestionar estrategias", "estrategias_manage");
+      }
+      await ctx.reply(
+        `✅ Estrategia creada: *${label}* (\`${id}\`). Se te ha asignado automáticamente.\n\nEstado: _pendiente de implementación_ hasta que se asocie una función.`,
+        { parse_mode: "Markdown", reply_markup: kb }
+      );
     }
     return true;
   }
@@ -489,13 +489,13 @@ export async function handleSecurityMessage(
     if (updatingHoy.step === "input_p4") {
       const p4 = text.trim();
       updatingHoyFlow.delete(userId);
-      
+
       const cleanNull = (v: string) => (v === "-" || v.toLowerCase() === "null") ? "" : v;
       const currentHoy = getHoyResult();
-      
+
       const p3Val = cleanNull(updatingHoy.p3 || "");
       const p4Val = cleanNull(p4);
-      
+
       // Actualizamos solo el periodo seleccionado
       if (updatingHoy.period === "m") {
         currentHoy.p3_m = p3Val;
@@ -504,9 +504,9 @@ export async function handleSecurityMessage(
         currentHoy.p3_e = p3Val;
         currentHoy.p4_e = p4Val;
       }
-      
+
       saveHoyResult(currentHoy);
-      
+
       await ctx.reply(`✅ *${periodLabel} Actualizado*\n\nEnviando notificación masiva...`, { parse_mode: "Markdown" });
 
       // Neuromarketing Hit Detection for the new result
@@ -529,8 +529,8 @@ export async function handleSecurityMessage(
       const allowed = getAllowedUsers();
       let sentCount = 0;
       let notification = `🔔 *Nuevo Resultado: ${periodLabel}*\n\n`;
-      if (p3Val) notification += `🎯 Pick 3: *${p3Val}*${formatHits(hitsP3)}\n\n`;
-      if (p4Val) notification += `🎲 Pick 4: *${p4Val}*${formatHits(hitsP4)}\n`;
+      if (p3Val) notification += `🎯 Pick 3 (Fijo): *${p3Val}*${formatHits(hitsP3)}\n\n`;
+      if (p4Val) notification += `🎲 Pick 4 (Corrido): *${p4Val}*${formatHits(hitsP4)}\n`;
       notification += "\nConsulta todos los detalles en *Fijo/Corrido Hoy*.";
 
       if (p3Val || p4Val) {
@@ -541,10 +541,10 @@ export async function handleSecurityMessage(
               reply_markup: deps.buildMainKeyboard(uid)
             });
             sentCount++;
-          } catch(e) { /* ignore */ }
+          } catch (e) { /* ignore */ }
         }
       }
-      
+
       await ctx.reply(`📣 Notificación enviada a ${sentCount} usuarios.`, { reply_markup: buildSecurityKeyboard() });
       return true;
     }
@@ -556,7 +556,7 @@ export async function handleSecurityMessage(
     const limit = parseInt(text, 10);
     if (Number.isNaN(limit) || limit <= 0) {
       await ctx.reply("❌ Por favor, envía un número válido (ej: 20).", {
-         reply_markup: new InlineKeyboard().text("◀️ Cancelar", "security_open")
+        reply_markup: new InlineKeyboard().text("◀️ Cancelar", "security_open")
       });
       return true;
     }
