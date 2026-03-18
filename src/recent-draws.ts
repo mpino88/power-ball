@@ -36,10 +36,10 @@ export function buildRecentDrawsDisplay(
   const formatP4 = (draw?: number[]) => draw ? draw.join("-") : "N/A";
 
   return `☀️🌙 Ultimos sorteos 🎰\n\n` +
-         `☀️ Mediodía ${mDate} |\n` +
-         ` 🎯 Pick3 (Fijo): ${formatP3(p3_m)}\n` +
-         `🎲 Pick4 (Corrido): ${formatP4(p4_m)}\n\n` +
-         `🌙 Noche ${eDate} |\n` +
-         ` 🎯 Pick3 (Fijo): ${formatP3(p3_e)}\n` +
-         `🎲 Pick4 (Corrido): ${formatP4(p4_e)}`;
+    `☀️ Mediodía ${mDate}\n` +
+    ` 🎯 Pick3 (Fijo): ${formatP3(p3_m)}\n` +
+    `🎲 Pick4 (Corrido): ${formatP4(p4_m)}\n\n` +
+    `🌙 Noche ${eDate}\n` +
+    ` 🎯 Pick3 (Fijo): ${formatP3(p3_e)}\n` +
+    `🎲 Pick4 (Corrido): ${formatP4(p4_e)}`;
 }
