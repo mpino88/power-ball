@@ -157,6 +157,10 @@ export interface SecurityCallbackDeps {
   getStorageBackend?: () => "sheet" | "file";
   loadPlansFromSheet?: () => Promise<{ id: string; title: string; description: string; price: string; menuIds: string; price_1m: string; price_3m: string; price_6m: string; price_9m: string; price_1a: string; autoApprove: string }[]>;
   initPlansFromSheet?: (rows: { id: string; title: string; description: string; price: string; menuIds: string; price_1m: string; price_3m: string; price_6m: string; price_9m: string; price_1a: string; autoApprove: string }[]) => void;
+  getP3Map: () => Promise<any>;
+  getP4Map: () => Promise<any>;
+  getTodayFloridaMMDDYY: () => string;
+  getYesterdayFloridaMMDDYY: () => string;
 }
 
 export async function handleSecurityCallback(
@@ -189,7 +193,10 @@ export async function handleSecurityCallback(
     keyboard = buildSecurityKeyboard();
   } else if (data === "security_main") {
     clearAllFlows(ctx.from.id);
-    result = buildMainMenuMessage(ctx.from?.first_name || "Usuario");
+    const [p3, p4] = await Promise.all([deps.getP3Map(), deps.getP4Map()]);
+    const { buildRecentDrawsDisplay } = await import("../recent-draws.js");
+    const recentDrawsText = buildRecentDrawsDisplay(p3, p4, deps.getTodayFloridaMMDDYY(), deps.getYesterdayFloridaMMDDYY());
+    result = buildMainMenuMessage(ctx.from?.first_name || "Usuario", recentDrawsText);
     keyboard = deps.buildMainKeyboard(ctx.from.id);
   } else if (data === "admin_hoy_update") {
     clearAllFlows(ctx.from.id);

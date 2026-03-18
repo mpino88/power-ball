@@ -52,12 +52,16 @@ function getStrategyIcon(
 export const ESTRATEGIAS_OPEN_CALLBACK = "estrategias_open";
 
 /** Mensaje del menú principal — se usa en /start, volver y security_main. */
-export function buildMainMenuMessage(name: string): string {
-  return `🔮  BALL BOT ❇️ TERMINAL CUANTITATIVA 🪄✅\n\n` +
+export function buildMainMenuMessage(name: string, recentDrawsText?: string): string {
+  const intro = `🔮  BALL BOT ❇️ TERMINAL CUANTITATIVA 🪄✅\n\n` +
     `👤 Usuario Verificado 🫆 *${name}*\n` +
     `📡 Sincronizado con Florida Lottery 🧠 en tiempo real.\n\n` +
-    `"El azar es para los que apuestan; la estadística para los que invierten. 💸💰"\n\n` +
-    `👇 ESPERANDO INPUT OPERATIVO:`;
+    `"El azar es para los que apuestan; la estadística para los que invierten. 💸💰"\n\n`;
+    
+  const mid = recentDrawsText ? `${recentDrawsText}\n\n` : '';
+  const cta = `👇 ESPERANDO INPUT OPERATIVO:`;
+  
+  return intro + mid + cta;
 }
 
 /** Callback al pulsar "Consultar Datos": abre el submenú de consulta. */

@@ -801,6 +801,8 @@ bot.use(
   })
 );
 
+import { buildRecentDrawsDisplay } from "./recent-draws.js";
+
 bot.command("start", async (ctx) => {
   await reloadConfigFromStorage();
   const startUserId = ctx.from?.id;
@@ -810,8 +812,12 @@ bot.command("start", async (ctx) => {
     const { buildAnnouncementsBanner } = await import("./announcements.js");
     announcementBanner = buildAnnouncementsBanner(annItems);
   }
+  
+  const [p3, p4] = await Promise.all([getP3Map(), getP4Map()]);
+  const recentDrawsText = buildRecentDrawsDisplay(p3, p4, getTodayFloridaMMDDYY(), getYesterdayFloridaMMDDYY());
+
   await ctx.reply(
-    announcementBanner + buildMainMenuMessage(ctx.from?.first_name || "Usuario"),
+    announcementBanner + buildMainMenuMessage(ctx.from?.first_name || "Usuario", recentDrawsText),
     { parse_mode: "Markdown", reply_markup: buildMainKb(startUserId) }
   );
 });
@@ -893,6 +899,10 @@ bot.on("callback_query:data", async (ctx) => {
       getStorageBackend,
       loadPlansFromSheet,
       initPlansFromSheet,
+      getP3Map,
+      getP4Map,
+      getTodayFloridaMMDDYY,
+      getYesterdayFloridaMMDDYY,
     });
     if (out) {
       try {
