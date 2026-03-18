@@ -20,6 +20,7 @@ import {
 } from "./keyboards.js";
 import { getHoyResult } from "../hoy-results.js";
 import { findWinningStrategies } from "../neuro-hit-engine.js";
+import { escapeMd } from "../security/callbacks.js";
 
 export interface MenuHandlersDeps extends MainKeyboardDeps {
   /** Genera el texto de ayuda a partir del nombre de plan actual del usuario. */
@@ -231,12 +232,13 @@ export async function handleMenuCallback(
         };
 
         const renderHits = (hits: { id: string, label: string }[]) => {
-          if (hits.length === 0) return "";
+          if (hits.length === 0) return `\n⚡ *Algoritmos Validados:* _Recalibrando análisis predictivo..._`;
           const uniqueLabels = [...new Set(hits.map(h => {
              // Resolve label from deps if it's a menuId, otherwise use the stat label
-             return deps.getExtraMenuLabel?.(h.label) || h.label;
+             const lbl = deps.getExtraMenuLabel?.(h.label) || h.label;
+             return escapeMd(lbl);
           }))];
-          return `\n🏆 *Ganó:* ${uniqueLabels.join(", ")}`;
+          return `\n⚡ *Algoritmos Validados:*\n` + uniqueLabels.map(l => ` ➥ ${l}`).join("\n");
         };
 
         const title = game === "fijo" ? "Fijo" : (game === "corrido" ? "Corrido" : "Fijo y Corrido");

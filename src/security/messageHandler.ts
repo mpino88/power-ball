@@ -521,9 +521,9 @@ export async function handleSecurityMessage(
       const hitsP4 = winningHits[periodKeyP4];
 
       const formatHits = (hits: { id: string, label: string }[]) => {
-        if (hits.length === 0) return `\n🏆 *Ganó:* _Ninguno_`;
+        if (hits.length === 0) return `\n⚡ *Algoritmos Validados:* _Recalibrando análisis predictivo..._`;
         const uniqueLabels = [...new Set(hits.map(h => escapeMd(deps.getExtraMenuLabel(h.label) || h.label)))];
-        return `\n🏆 *Ganó:* ${uniqueLabels.join(", ")}`;
+        return `\n⚡ *Algoritmos Validados:*\n` + uniqueLabels.map(l => ` ➥ ${l}`).join("\n");
       };
 
       const allowed = getAllowedUsers();
