@@ -233,6 +233,20 @@ async function loadFromSheet(): Promise<UsersConfig> {
         };
         continue;
       }
+      // Usuarios rechazados: guardar su info pero NO darles acceso
+      if (planStatus === "rejected") {
+        userInfo[uidStr] = {
+          name: getCol(COL_NOMBRE) || undefined,
+          phone: getCol(COL_TELEFONO) || undefined,
+          plan: planName || undefined,
+          plan_status: "rejected",
+          pending_plan: undefined,
+          plan_temporality: undefined,
+          plan_expiry: undefined,
+          trial_used: getCol(COL_TRIAL_USED) === "true" || undefined,
+        };
+        continue;
+      }
       allowed.push(uid);
       let menuIds: string[] = [];
       const menusStr = getCol(COL_MENUS);
@@ -359,7 +373,23 @@ async function saveToSheet(): Promise<void> {
       plan_expiry: "",
       trial_used: "",
     }));
-    const rows: SheetRow[] = [...allowedRows, ...requestedRows];
+    // Usuarios rechazados: se guardan en el sheet para persistir su estado
+    const rejectedRows: SheetRow[] = Object.entries(config.userInfo)
+      .filter(([uid, info]) => info.plan_status === "rejected" && !config.allowed.includes(parseInt(uid, 10)))
+      .map(([uid, info]) => ({
+        userId: uid,
+        nombre: info.name ?? "",
+        telefono: info.phone ?? "",
+        menus: "",
+        menus_labels: "",
+        plan: info.plan ?? "",
+        plan_status: "rejected",
+        pending_plan: "",
+        plan_temporality: "",
+        plan_expiry: "",
+        trial_used: info.trial_used ? "true" : "",
+      }));
+    const rows: SheetRow[] = [...allowedRows, ...requestedRows, ...rejectedRows];
     if (rows.length > 0) {
       if (sheet.title.includes(":")) {
         const msg = "[user-config] Google Sheet: renombra la hoja y quita el carácter ':' del título (la API de Google falla si el nombre tiene ':').";
@@ -1077,6 +1107,43 @@ export async function approvePlanRequest(userId: number, _planMenuIds?: string[]
       pending_plan: undefined,
       plan_temporality: temporality || undefined,
       plan_expiry: temporality ? computeExpiryStr(temporality) : undefined,
+    };
+    return persist();
+  }
+
+  return { backend: getStorageBackend(), ok: false, count: config.allowed.length, error: "Usuario no tiene solicitud pendiente." };
+}
+
+/** Rechaza solicitud de plan. Marca plan_status=rejected y limpia la solicitud pendiente, sin dar acceso al usuario.
+ * - Usuario nuevo (en requestedPlans): elimina la solicitud y guarda plan_status=rejected.
+ * - Usuario con cambio pendiente (pending_plan): borra el pending_plan y guarda plan_status=rejected.
+ */
+export async function rejectPlanRequest(userId: number): Promise<PersistResult> {
+  const key = String(userId);
+
+  // Caso 1: usuario nuevo sin acceso (en requestedPlans)
+  const req = config.requestedPlans[key];
+  if (req) {
+    delete config.requestedPlans[key];
+    // Guardar info del usuario (nombre/teléfono) y marcar como rechazado, sin dar acceso
+    config.userInfo[key] = {
+      ...config.userInfo[key],
+      name: req.name ?? config.userInfo[key]?.name,
+      phone: req.phone ?? config.userInfo[key]?.phone,
+      plan: req.plan,
+      plan_status: "rejected",
+      pending_plan: undefined,
+    };
+    return persist();
+  }
+
+  // Caso 2: usuario con acceso que solicita cambio de plan (pending_plan)
+  const pendingRaw = config.userInfo[key]?.pending_plan;
+  if (pendingRaw) {
+    config.userInfo[key] = {
+      ...config.userInfo[key],
+      pending_plan: undefined,
+      plan_status: "rejected",
     };
     return persist();
   }
