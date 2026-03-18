@@ -814,7 +814,8 @@ bot.command("start", async (ctx) => {
   }
   
   const [p3, p4] = await Promise.all([getP3Map(), getP4Map()]);
-  const recentDrawsText = buildRecentDrawsDisplay(p3, p4, getTodayFloridaMMDDYY(), getYesterdayFloridaMMDDYY());
+  const { getHoyResult } = await import("./hoy-results.js");
+  const recentDrawsText = buildRecentDrawsDisplay(p3, p4, getTodayFloridaMMDDYY(), getYesterdayFloridaMMDDYY(), getHoyResult());
 
   await ctx.reply(
     announcementBanner + buildMainMenuMessage(ctx.from?.first_name || "Usuario", recentDrawsText),

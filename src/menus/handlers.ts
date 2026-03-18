@@ -94,7 +94,8 @@ export async function handleMenuCallback(
     await deps.reloadUserConfig();
     const [p3, p4] = await Promise.all([deps.getP3Map(), deps.getP4Map()]);
     const { buildRecentDrawsDisplay } = await import("../recent-draws.js");
-    const recentDrawsText = buildRecentDrawsDisplay(p3, p4, deps.getTodayFloridaMMDDYY(), deps.getYesterdayFloridaMMDDYY());
+    const { getHoyResult } = await import("../hoy-results.js");
+    const recentDrawsText = buildRecentDrawsDisplay(p3, p4, deps.getTodayFloridaMMDDYY(), deps.getYesterdayFloridaMMDDYY(), getHoyResult());
     return {
       result: buildMainMenuMessage(ctx.from?.first_name || "Usuario", recentDrawsText),
       keyboard: mainKb(),
@@ -215,48 +216,56 @@ export async function handleMenuCallback(
       let result: string;
       if (scope === "hoy") {
         const hoyData = getHoyResult();
-        const todayStr = new Date().toLocaleDateString("en-US", {
-          timeZone: "America/New_York",
-          month: "2-digit",
-          day: "2-digit",
-          year: "2-digit"
-        });
+        const todayKey = deps.getTodayFloridaMMDDYY();
 
-        // Neuromarketing Hit Detection
+        // Neuromarketing Hit Detection — solo evalúa slots que tengan dato
         const winningHits = await findWinningStrategies(
           { getP3Map: deps.getP3Map, getP4Map: deps.getP4Map },
           deps.getHotThresholdDays()
         );
 
-        const formatDraw = (v: string, fallback: string) => {
-          if (!v) return `_${fallback}_`;
+        /** Formatea el número como "0-3-6" en bold */
+        const formatDraw = (v: string) => {
           if (v.length === 3 || v.length === 4) return `*${v.split("").join("-")}*`;
           return `*${v}*`;
         };
 
-        const renderHits = (hits: { id: string, label: string }[]) => {
+        /** Bloque de algoritmos según si el dato es del día actual o anterior */
+        const renderHits = (hits: { id: string; label: string }[]) => {
           if (hits.length === 0) return `\n⚡ *Algoritmos Validados:* _Recalibrando análisis predictivo..._`;
           const uniqueLabels = [...new Set(hits.map(h => {
-            // Resolve label from deps if it's a menuId, otherwise use the stat label
             const lbl = deps.getExtraMenuLabel?.(h.label) || h.label;
             return escapeMd(lbl);
           }))];
           return `\n⚡ *Algoritmos Validados:*\n` + uniqueLabels.map(l => ` ➥ ${l}`).join("\n");
         };
 
+        /** Renderiza un slot completo: resultado + algoritmos o "Sin datos" */
+        const fmtSlot = (
+          val: string | undefined,
+          slotDate: string | undefined,
+          hits: { id: string; label: string }[]
+        ): string => {
+          if (!val) return `_Sin datos disponibles_`;
+          const draw = formatDraw(val);
+          const isToday = slotDate === todayKey;
+          const dateTag = !isToday && slotDate ? ` _(${slotDate})_` : "";
+          return draw + dateTag + (isToday ? renderHits(hits) : `\n⚡ *Algoritmos Validados:* _Recalibrando análisis predictivo..._`);
+        };
+
         const title = game === "fijo" ? "Fijo" : (game === "corrido" ? "Corrido" : "Fijo y Corrido");
-        let output = `☀️🌙 *Hoy (${title})* ${todayStr}\n\n`;
-        
+        let output = `☀️🌙 *Últimos Sorteos 🏆 (${title})* ${todayKey}\n\n`;
+
         if (game === "fijo" || game === "ambos") {
           output += `*Pick3 (Fijo)*\n`;
-          output += `☀️ Mediodía (M): ${formatDraw(hoyData.p3_m || "", "Esperando sorteo")}${renderHits(winningHits.p3_m)}\n\n`;
-          output += `🌙 Noche (E): ${formatDraw(hoyData.p3_e || "", "Esperando sorteo")}${renderHits(winningHits.p3_e)}\n`;
+          output += `☀️ Mediodía (M): ${fmtSlot(hoyData.p3_m, hoyData.p3_m_date, winningHits.p3_m)}\n\n`;
+          output += `🌙 Noche (E): ${fmtSlot(hoyData.p3_e, hoyData.p3_e_date, winningHits.p3_e)}\n`;
         }
         if (game === "corrido" || game === "ambos") {
           if (game === "ambos") output += "\n";
           output += `*Pick4 (Corrido)*\n`;
-          output += `☀️ Mediodía (M): ${formatDraw(hoyData.p4_m || "", "Esperando sorteo")}${renderHits(winningHits.p4_m)}\n\n`;
-          output += `🌙 Noche (E): ${formatDraw(hoyData.p4_e || "", "Esperando sorteo")}${renderHits(winningHits.p4_e)}\n`;
+          output += `☀️ Mediodía (M): ${fmtSlot(hoyData.p4_m, hoyData.p4_m_date, winningHits.p4_m)}\n\n`;
+          output += `🌙 Noche (E): ${fmtSlot(hoyData.p4_e, hoyData.p4_e_date, winningHits.p4_e)}\n`;
         }
 
         result = output + getHoyConsultaLink(game);

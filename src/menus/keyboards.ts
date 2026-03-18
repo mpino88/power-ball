@@ -84,7 +84,7 @@ const CONSENSUS_MENU_ID = "consensus_multi";
 
 export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboardDeps): InlineKeyboard {
   const kb = new InlineKeyboard()
-    .text("☀️🌙 Sorteos de Hoy", "ambos_hoy").row()
+    .text("☀️🌙 Últimos Sorteos 🏆", "ambos_hoy").row()
     .text("🔎 Consultar Datos", CONSULTAR_DATOS_CALLBACK);
   const ownerId = deps.getOwnerId();
   const uid = userId ?? 0;

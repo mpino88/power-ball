@@ -195,7 +195,8 @@ export async function handleSecurityCallback(
     clearAllFlows(ctx.from.id);
     const [p3, p4] = await Promise.all([deps.getP3Map(), deps.getP4Map()]);
     const { buildRecentDrawsDisplay } = await import("../recent-draws.js");
-    const recentDrawsText = buildRecentDrawsDisplay(p3, p4, deps.getTodayFloridaMMDDYY(), deps.getYesterdayFloridaMMDDYY());
+    const { getHoyResult } = await import("../hoy-results.js");
+    const recentDrawsText = buildRecentDrawsDisplay(p3, p4, deps.getTodayFloridaMMDDYY(), deps.getYesterdayFloridaMMDDYY(), getHoyResult());
     result = buildMainMenuMessage(ctx.from?.first_name || "Usuario", recentDrawsText);
     keyboard = deps.buildMainKeyboard(ctx.from.id);
   } else if (data === "admin_hoy_update") {
