@@ -373,9 +373,14 @@ async function saveToSheet(): Promise<void> {
       plan_expiry: "",
       trial_used: "",
     }));
-    // Usuarios rechazados: se guardan en el sheet para persistir su estado
+    // Usuarios rechazados: se guardan en el sheet para persistir su estado.
+    // Se excluyen los que ya re-solicitaron (están en requestedPlans) para evitar duplicados.
     const rejectedRows: SheetRow[] = Object.entries(config.userInfo)
-      .filter(([uid, info]) => info.plan_status === "rejected" && !config.allowed.includes(parseInt(uid, 10)))
+      .filter(([uid, info]) =>
+        info.plan_status === "rejected" &&
+        !config.allowed.includes(parseInt(uid, 10)) &&
+        !config.requestedPlans[uid]
+      )
       .map(([uid, info]) => ({
         userId: uid,
         nombre: info.name ?? "",
@@ -961,13 +966,20 @@ export async function setExtraMenus(userId: number, menuIds: string[]): Promise<
   return persist();
 }
 
-/** Registra solicitud de plan (columnas plan, plan_status=requested, nombre, telefono). */
+/** Registra solicitud de plan (columnas plan, plan_status=requested, nombre, telefono).
+ * Si el usuario ya existe como "rejected" en userInfo, se limpia ese estado para evitar
+ * duplicación en el sheet: fluye únicamente por requestedPlans.
+ */
 export async function addPlanRequest(
   userId: number,
   planName: string,
   opts?: { name?: string; phone?: string; temporality?: string }
 ): Promise<PersistResult> {
   const key = String(userId);
+  // Si estaba rechazado, limpiar el userInfo para que no genere fila duplicada
+  if (config.userInfo[key]?.plan_status === "rejected" && !config.allowed.includes(userId)) {
+    delete config.userInfo[key];
+  }
   const existing = config.requestedPlans[key];
   config.requestedPlans[key] = {
     plan: planName,
