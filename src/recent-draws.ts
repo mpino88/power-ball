@@ -7,10 +7,15 @@ export interface DateDrawsMap {
   };
 }
 
-/** Formatea el número como "0-3-6" */
+/** Formatea el número como "1-2-3" o "1-2-3-4" */
 const formatDigits = (v: string | number[]) => {
   if (Array.isArray(v)) return v.join("-");
-  if (v.length === 3 || v.length === 4) return v.split("").join("-");
+  if (typeof v === 'string') {
+    // Si ya tiene guiones, dejarlo
+    if (v.includes("-")) return v;
+    // Si es una cadena pegada (ej: "123")
+    if (v.length === 3 || v.length === 4) return v.split("").join("-");
+  }
   return v;
 };
 
@@ -21,7 +26,6 @@ export function buildRecentDrawsDisplay(
   yesterday: string,
   hoyData: HoyResult
 ): string {
-  // Encontrar el mejor dato para cada slot. Prioridad 1: hoyData. Prioridad 2: Map PDF (today -> yesterday)
   
   const resolveDraw = (source: "p3"|"p4", period: "m"|"e") => {
     const key = `${source}_${period}` as keyof HoyResult;
@@ -42,7 +46,7 @@ export function buildRecentDrawsDisplay(
       return { draw: formatDigits(map[yesterday][period]!), date: yesterday };
     }
     
-    return { draw: "N/A", date: "" };
+    return { draw: "---", date: "" };
   };
 
   const mP3 = resolveDraw("p3", "m");
@@ -50,20 +54,19 @@ export function buildRecentDrawsDisplay(
   const mP4 = resolveDraw("p4", "m");
   const eP4 = resolveDraw("p4", "e");
 
-  const fmtLabel = (res: { draw: string, date: string }) => {
-    if (res.draw === "N/A") return "❌ _Pendiente_";
-    const isToday = res.date === today;
-    const timeTag = isToday 
-      ? `🟢 *[HOY]*` 
-      : `⚪ *[AYER - ${res.date}]*`;
-    return `*${res.draw}*  ${timeTag}`;
+  const getSectionTag = (drawA: {date: string}, drawB: {date: string}) => {
+    const d = drawA.date || drawB.date || today;
+    return d === today ? "🟢 [HOY]" : `⚪ [AYER - ${d}]`;
   };
 
-  return `📊 *TERMINAL DE RESULTADOS* 🎰\n\n` +
-    `☀️ *MEDIODÍA*\n` +
-    ` 🎯 Pick3: ${fmtLabel(mP3)}\n` +
-    ` 🎲 Pick4: ${fmtLabel(mP4)}\n\n` +
-    `🌙 *NOCHE*\n` +
-    ` 🎯 Pick3: ${fmtLabel(eP3)}\n` +
-    ` 🎲 Pick4: ${fmtLabel(eP4)}`;
+  const mediodiaTag = getSectionTag(mP3, mP4);
+  const nocheTag = getSectionTag(eP3, eP4);
+
+  return `\n` +
+    `☀️ MEDIODÍA ${mediodiaTag}\n` +
+    ` 🎯 Fijo (P3): *${mP3.draw}*\n` +
+    ` 🎲 Corrido (P4): *${mP4.draw}*\n\n` +
+    `🌙 NOCHE ${nocheTag}\n` +
+    ` 🎯 Fijo (P3): *${eP3.draw}*\n` +
+    ` 🎲 Corrido (P4): *${eP4.draw}*`;
 }

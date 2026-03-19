@@ -212,89 +212,79 @@ export async function handleMenuCallback(
     const game = gameStr as GameMenu;
     const label = game === "fijo" ? "Fijo" : game === "corrido" ? "Corrido" : "Fijo y Corrido";
     await ctx.answerCallbackQuery({ text: `Cargando ${label}…` });
+
     try {
       let result: string;
+      const todayKey = deps.getTodayFloridaMMDDYY();
+      const yesterdayKey = deps.getYesterdayFloridaMMDDYY();
+
       if (scope === "hoy") {
         const hoyData = getHoyResult();
-        const todayKey = deps.getTodayFloridaMMDDYY();
-
-        // Neuromarketing Hit Detection — solo evalúa slots que tengan dato
         const winningHits = await findWinningStrategies(
           { getP3Map: deps.getP3Map, getP4Map: deps.getP4Map },
           deps.getHotThresholdDays()
         );
 
-        /** Formatea el número como "0-3-6" en bold */
-        const formatDraw = (v: string) => {
+        const formatDrawBold = (v: string | undefined) => {
+          if (!v) return "_---_";
+          if (v.includes("-")) return `${v}`;
           if (v.length === 3 || v.length === 4) return `*${v.split("").join("-")}*`;
           return `*${v}*`;
         };
 
-        /** Bloque de algoritmos según si el dato es del día actual o anterior */
-        const renderHits = (hits: { id: string; label: string }[]) => {
-          if (hits.length === 0) return `\n⚡ *Algoritmos Validados:* _Recalibrando análisis predictivo..._`;
-          const uniqueLabels = [...new Set(hits.map(h => {
-            const lbl = deps.getExtraMenuLabel?.(h.label) || h.label;
-            return escapeMd(lbl);
-          }))];
+        const renderHitsConditional = (hits: { id: string; label: string }[], date: string | undefined) => {
+          const isToday = date === todayKey || !date;
+          if (!isToday) return "";
+          if (hits.length === 0) return `\n⚡ Algoritmos Validados: _Recalculando..._`;
+          const uniqueLabels = [...new Set(hits.map(h => escapeMd(deps.getExtraMenuLabel?.(h.label) || h.label)))];
           return `\n⚡ *Algoritmos Validados:*\n` + uniqueLabels.map(l => ` ➥ ${l}`).join("\n");
         };
 
-        /** Renderiza un slot completo con tags ultra-claros y arquitectura High-Authority */
-        const fmtSlot = (
-          val: string | undefined,
-          slotDate: string | undefined,
-          hits: { id: string; label: string }[]
-        ): string => {
-          if (!val) return `_Esperando datos oficiales_`;
-          
-          const draw = formatDraw(val);
-          const isToday = slotDate === todayKey;
-          
-          // Etiqueta de tiempo explícita con Icono para eliminación de disonancia
-          const timeTag = isToday 
-            ? `🟢 *[HOY]*` 
-            : `⚪ *[AYER - ${slotDate}]*`;
-          
-          const algContent = isToday 
-            ? renderHits(hits) 
-            : `\n⚡ *Algoritmos Validados:* _Archivados (Análisis completado)_`;
-          
-          return `${draw}  ${timeTag}${algContent}`;
+        const getSectionTag = (d1: string | undefined, d2: string | undefined) => {
+          const d = d1 || d2 || todayKey;
+          return d === todayKey ? "🟢 HOY" : `🟠 AYER (${d})`;
         };
 
-        const title = game === "fijo" ? "Fijo" : (game === "corrido" ? "Corrido" : "Fijo y Corrido");
-        let output = `☀️🌙 *Últimos Sorteos 🏆 (${title})* ${todayKey}\n\n`;
+        const mTag = getSectionTag(hoyData.p3_m_date, hoyData.p4_m_date);
+        const eTag = getSectionTag(hoyData.p3_e_date, hoyData.p4_e_date);
 
+        const title = game === "fijo" ? "Fijo (P3)" : (game === "corrido" ? "Corrido (P4)" : "Fijo y Corrido");
+        let output = `*Últimos Sorteos 🏆 (${title})*\n\n`;
+
+        // --- MEDIODÍA ---
+        output += `☀️ MEDIODÍA ${mTag}\n`;
         if (game === "fijo" || game === "ambos") {
-          output += `*Pick3 (Fijo)*\n`;
-          output += `☀️ Mediodía (M): ${fmtSlot(hoyData.p3_m, hoyData.p3_m_date, winningHits.p3_m)}\n\n`;
-          output += `🌙 Noche (E): ${fmtSlot(hoyData.p3_e, hoyData.p3_e_date, winningHits.p3_e)}\n`;
+          output += ` 🎯 Fijo (P3): ${formatDrawBold(hoyData.p3_m)}${renderHitsConditional(winningHits.p3_m, hoyData.p3_m_date)}\n`;
         }
         if (game === "corrido" || game === "ambos") {
-          if (game === "ambos") output += "\n";
-          output += `*Pick4 (Corrido)*\n`;
-          output += `☀️ Mediodía (M): ${fmtSlot(hoyData.p4_m, hoyData.p4_m_date, winningHits.p4_m)}\n\n`;
-          output += `🌙 Noche (E): ${fmtSlot(hoyData.p4_e, hoyData.p4_e_date, winningHits.p4_e)}\n`;
+          output += ` 🎲 Corrido (P4): ${formatDrawBold(hoyData.p4_m)}${renderHitsConditional(winningHits.p4_m, hoyData.p4_m_date)}\n`;
+        }
+
+        // --- NOCHE ---
+        output += `\n🌙 NOCHE ${eTag}\n`;
+        if (game === "fijo" || game === "ambos") {
+          output += ` 🎯 Fijo (P3): ${formatDrawBold(hoyData.p3_e)}${renderHitsConditional(winningHits.p3_e, hoyData.p3_e_date)}\n`;
+        }
+        if (game === "corrido" || game === "ambos") {
+          output += ` 🎲 Corrido (P4): ${formatDrawBold(hoyData.p4_e)}${renderHitsConditional(winningHits.p4_e, hoyData.p4_e_date)}\n`;
         }
 
         result = output + getHoyConsultaLink(game);
-        return { result, keyboard: mainKb() };
-      }
-      const [map3, map4] = await Promise.all([deps.getP3Map(), deps.getP4Map()]);
-      if (scope === "ayer") {
-        const key = deps.getYesterdayFloridaMMDDYY();
-        const d3 = map3[key] ?? {};
-        const d4 = map4[key] ?? {};
-        result = deps.buildResultOneDay(key, d3, d4, game, "Ayer");
       } else {
-        const dates = deps.getThisWeekFloridaMMDDYY();
-        result = deps.buildResultWeek(map3, map4, dates, game);
+        const [map3, map4] = await Promise.all([deps.getP3Map(), deps.getP4Map()]);
+        if (scope === "ayer") {
+          const d3 = map3[yesterdayKey] ?? {};
+          const d4 = map4[yesterdayKey] ?? {};
+          result = deps.buildResultOneDay(yesterdayKey, d3, d4, game, "Ayer");
+        } else {
+          const dates = deps.getThisWeekFloridaMMDDYY();
+          result = deps.buildResultWeek(map3, map4, dates, game);
+        }
       }
       return { result, keyboard: mainKb() };
     } catch (e) {
-      console.error("PDF map error:", e);
-      return { result: "No pude cargar los PDF. Prueba más tarde.", keyboard: mainKb() };
+      console.error("Menu handler error:", e);
+      return { result: "No pude procesar la consulta. Prueba más tarde.", keyboard: mainKb() };
     }
   }
 
