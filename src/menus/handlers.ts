@@ -21,6 +21,7 @@ import {
 import { getHoyResult } from "../hoy-results.js";
 import { findWinningStrategies } from "../neuro-hit-engine.js";
 import { escapeMd } from "../security/callbacks.js";
+import { resolveLatestDraw } from "../draw-resolver.js";
 
 export interface MenuHandlersDeps extends MainKeyboardDeps {
   /** Genera el texto de ayuda a partir del nombre de plan actual del usuario. */
@@ -220,56 +221,63 @@ export async function handleMenuCallback(
 
       if (scope === "hoy") {
         const hoyData = getHoyResult();
+        const [p3Map, p4Map] = await Promise.all([deps.getP3Map(), deps.getP4Map()]);
+        const maps = { p3: p3Map, p4: p4Map };
+        const dates = { today: todayKey, yesterday: yesterdayKey };
+
+        // 1. Resolvemos los resultados (Hoy o Fallback Ayer)
+        const resMP3 = resolveLatestDraw("p3", "m", maps, dates, hoyData);
+        const resMP4 = resolveLatestDraw("p4", "m", maps, dates, hoyData);
+        const resEP3 = resolveLatestDraw("p3", "e", maps, dates, hoyData);
+        const resEP4 = resolveLatestDraw("p4", "e", maps, dates, hoyData);
+
+        // 2. Auditamos los "Hits" basados en los resultados efectivamente resueltos
         const winningHits = await findWinningStrategies(
           { getP3Map: deps.getP3Map, getP4Map: deps.getP4Map },
-          deps.getHotThresholdDays()
+          deps.getHotThresholdDays(),
+          {
+            p3_m: resMP3.draw.replace(/-/g, ""),
+            p3_e: resEP3.draw.replace(/-/g, ""),
+            p4_m: resMP4.draw.replace(/-/g, ""),
+            p4_e: resEP4.draw.replace(/-/g, ""),
+          }
         );
 
         const formatDrawBold = (v: string | undefined) => {
-          if (!v) return "_---_";
-          if (v.includes("-")) return `${v}`;
+          if (!v || v === "---") return "_---_";
+          if (v.includes("-")) return `*${v}*`;
           if (v.length === 3 || v.length === 4) return `*${v.split("").join("-")}*`;
           return `*${v}*`;
         };
 
-        const renderHitsConditional = (hits: { id: string; label: string }[], date: string | undefined) => {
-          const isToday = date === todayKey || !date;
-          if (!isToday) return "";
-          if (hits.length === 0) return `\n\n⚡ Algoritmos Validados: _Recalculando..._`;
+        const renderHitsConditional = (hits: { id: string; label: string }[]) => {
+          if (hits.length === 0) return `\n⚡ Algoritmos Validados: _Auditando estrategia..._`;
           const uniqueLabels = [...new Set(hits.map(h => escapeMd(deps.getExtraMenuLabel?.(h.label) || h.label)))];
-          return `\n\n⚡ *Algoritmos Validados:*\n` + uniqueLabels.map(l => ` ➥ ${l}`).join("\n");
+          return `\n⚡ *Algoritmos Validados:*\n` + uniqueLabels.map(l => ` ➥ ${l}`).join("\n");
         };
-
-        const getSectionTag = (d1: string | undefined, d2: string | undefined) => {
-          const d = d1 || d2 || todayKey;
-          return d === todayKey ? "🟢 HOY" : `🟠 (${d}) - AYER`;
-        };
-
-        const mTag = getSectionTag(hoyData.p3_m_date, hoyData.p4_m_date);
-        const eTag = getSectionTag(hoyData.p3_e_date, hoyData.p4_e_date);
 
         const title = game === "fijo" ? "Fijo (P3)" : (game === "corrido" ? "Corrido (P4)" : "Fijo y Corrido");
         let output = `*Últimos Sorteos 🏆 (${title})*\n\n`;
 
         // --- MEDIODÍA ---
-        output += `☀️ MEDIODÍA ${mTag}\n`;
+        output += `☀️ MEDIODÍA ${resMP3.label}\n\n`;
         if (game === "fijo" || game === "ambos") {
-          output += ` 🎯 Fijo (P3): ${formatDrawBold(hoyData.p3_m)}${renderHitsConditional(winningHits.p3_m, hoyData.p3_m_date)}\n`;
+          output += ` 🎯 Fijo (P3): ${formatDrawBold(resMP3.draw)}${renderHitsConditional(winningHits.p3_m)}\n\n`;
         }
         if (game === "corrido" || game === "ambos") {
-          output += ` 🎲 Corrido (P4): ${formatDrawBold(hoyData.p4_m)}${renderHitsConditional(winningHits.p4_m, hoyData.p4_m_date)}\n`;
+          output += ` 🎲 Corrido (P4): ${formatDrawBold(resMP4.draw)}${renderHitsConditional(winningHits.p4_m)}\n\n`;
         }
 
         // --- NOCHE ---
-        output += `\n🌙 NOCHE ${eTag}\n`;
+        output += `🌙 NOCHE ${resEP3.label}\n\n`;
         if (game === "fijo" || game === "ambos") {
-          output += ` 🎯 Fijo (P3): ${formatDrawBold(hoyData.p3_e)}${renderHitsConditional(winningHits.p3_e, hoyData.p3_e_date)}\n`;
+          output += ` 🎯 Fijo (P3): ${formatDrawBold(resEP3.draw)}${renderHitsConditional(winningHits.p3_e)}\n\n`;
         }
         if (game === "corrido" || game === "ambos") {
-          output += ` 🎲 Corrido (P4): ${formatDrawBold(hoyData.p4_e)}${renderHitsConditional(winningHits.p4_e, hoyData.p4_e_date)}\n`;
+          output += ` 🎲 Corrido (P4): ${formatDrawBold(resEP4.draw)}${renderHitsConditional(winningHits.p4_e)}\n\n`;
         }
 
-        result = output + getHoyConsultaLink(game);
+        result = output.trim() + getHoyConsultaLink(game);
       } else {
         const [map3, map4] = await Promise.all([deps.getP3Map(), deps.getP4Map()]);
         if (scope === "ayer") {

@@ -1,23 +1,7 @@
 import type { HoyResult } from "./hoy-results.js";
+import { resolveLatestDraw, type DateDrawsMap } from "./draw-resolver.js";
 
-export interface DateDrawsMap {
-  [date: string]: {
-    m?: number[];
-    e?: number[];
-  };
-}
-
-/** Formatea el número como "1-2-3" o "1-2-3-4" */
-const formatDigits = (v: string | number[]) => {
-  if (Array.isArray(v)) return v.join("-");
-  if (typeof v === 'string') {
-    // Si ya tiene guiones, dejarlo
-    if (v.includes("-")) return v;
-    // Si es una cadena pegada (ej: "123")
-    if (v.length === 3 || v.length === 4) return v.split("").join("-");
-  }
-  return v;
-};
+export { type DateDrawsMap };
 
 export function buildRecentDrawsDisplay(
   p3Map: DateDrawsMap,
@@ -26,41 +10,19 @@ export function buildRecentDrawsDisplay(
   yesterday: string,
   hoyData: HoyResult
 ): string {
+  const maps = { p3: p3Map, p4: p4Map };
+  const dates = { today, yesterday };
 
-  const resolveDraw = (source: "p3" | "p4", period: "m" | "e") => {
-    const key = `${source}_${period}` as keyof HoyResult;
-    const dateKey = `${source}_${period}_date` as keyof HoyResult;
+  // Resolvemos los 4 slots principales usando el motor centralizado
+  const mP3 = resolveLatestDraw("p3", "m", maps, dates, hoyData);
+  const mP4 = resolveLatestDraw("p4", "m", maps, dates, hoyData);
+  const eP3 = resolveLatestDraw("p3", "e", maps, dates, hoyData);
+  const eP4 = resolveLatestDraw("p4", "e", maps, dates, hoyData);
 
-    // 1. Manually Pushed / Saved Result
-    if (hoyData[key]) {
-      const date = hoyData[dateKey] || today;
-      return { draw: formatDigits(hoyData[key] as string), date };
-    }
-
-    // 2. Fallback to Scraped PDF
-    const map = source === "p3" ? p3Map : p4Map;
-    if (map[today] && map[today][period]) {
-      return { draw: formatDigits(map[today][period]!), date: today };
-    }
-    if (map[yesterday] && map[yesterday][period]) {
-      return { draw: formatDigits(map[yesterday][period]!), date: yesterday };
-    }
-
-    return { draw: "---", date: "" };
-  };
-
-  const mP3 = resolveDraw("p3", "m");
-  const eP3 = resolveDraw("p3", "e");
-  const mP4 = resolveDraw("p4", "m");
-  const eP4 = resolveDraw("p4", "e");
-
-  const getSectionTag = (drawA: { date: string }, drawB: { date: string }) => {
-    const d = drawA.date || drawB.date || today;
-    return d === today ? "🟢 HOY" : `🟠 ${d} - AYER`;
-  };
-
-  const mediodiaTag = getSectionTag(mP3, mP4);
-  const nocheTag = getSectionTag(eP3, eP4);
+  // El Dashboard (Portada) ya no calcula las etiquetas, solo las proyecta.
+  // La asimetría positiva en la resolución de tags (🟢 HOY / 🟠 AYER) ya viene inyectada.
+  const mediodiaTag = mP3.label; 
+  const nocheTag = eP3.label;
 
   return `\n` +
     `☀️ MEDIODÍA ${mediodiaTag}\n` +

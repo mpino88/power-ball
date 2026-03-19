@@ -16,9 +16,10 @@ export interface WinningStrategy {
  */
 export async function findWinningStrategies(
   deps: StrategyDeps,
-  hotThreshold: number
+  hotThreshold: number,
+  customResults?: { p3_m?: string; p3_e?: string; p4_m?: string; p4_e?: string }
 ): Promise<{ p3_m: WinningStrategy[]; p3_e: WinningStrategy[]; p4_m: WinningStrategy[]; p4_e: WinningStrategy[] }> {
-  const hoyData = getHoyResult();
+  const hoyData = customResults || getHoyResult();
   
   const parseToDigits = (v?: string): number[] | null => {
     if (!v) return null;
