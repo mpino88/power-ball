@@ -26,17 +26,17 @@ export function buildRecentDrawsDisplay(
   yesterday: string,
   hoyData: HoyResult
 ): string {
-  
-  const resolveDraw = (source: "p3"|"p4", period: "m"|"e") => {
+
+  const resolveDraw = (source: "p3" | "p4", period: "m" | "e") => {
     const key = `${source}_${period}` as keyof HoyResult;
     const dateKey = `${source}_${period}_date` as keyof HoyResult;
-    
+
     // 1. Manually Pushed / Saved Result
     if (hoyData[key]) {
       const date = hoyData[dateKey] || today;
       return { draw: formatDigits(hoyData[key] as string), date };
     }
-    
+
     // 2. Fallback to Scraped PDF
     const map = source === "p3" ? p3Map : p4Map;
     if (map[today] && map[today][period]) {
@@ -45,7 +45,7 @@ export function buildRecentDrawsDisplay(
     if (map[yesterday] && map[yesterday][period]) {
       return { draw: formatDigits(map[yesterday][period]!), date: yesterday };
     }
-    
+
     return { draw: "---", date: "" };
   };
 
@@ -54,9 +54,9 @@ export function buildRecentDrawsDisplay(
   const mP4 = resolveDraw("p4", "m");
   const eP4 = resolveDraw("p4", "e");
 
-  const getSectionTag = (drawA: {date: string}, drawB: {date: string}) => {
+  const getSectionTag = (drawA: { date: string }, drawB: { date: string }) => {
     const d = drawA.date || drawB.date || today;
-    return d === today ? "🟢 [HOY]" : `⚪ [AYER - ${d}]`;
+    return d === today ? "🟢 HOY" : `🟠 AYER - ${d}`;
   };
 
   const mediodiaTag = getSectionTag(mP3, mP4);
@@ -64,9 +64,9 @@ export function buildRecentDrawsDisplay(
 
   return `\n` +
     `☀️ MEDIODÍA ${mediodiaTag}\n` +
-    ` 🎯 Fijo (P3): *${mP3.draw}*\n` +
-    ` 🎲 Corrido (P4): *${mP4.draw}*\n\n` +
+    ` 🎯 Fijo (P3): ${mP3.draw}\n` +
+    ` 🎲 Corrido (P4): ${mP4.draw}\n\n` +
     `🌙 NOCHE ${nocheTag}\n` +
-    ` 🎯 Fijo (P3): *${eP3.draw}*\n` +
-    ` 🎲 Corrido (P4): *${eP4.draw}*`;
+    ` 🎯 Fijo (P3): ${eP3.draw}\n` +
+    ` 🎲 Corrido (P4): ${eP4.draw}`;
 }
