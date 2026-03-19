@@ -528,10 +528,11 @@ export async function handleSecurityMessage(
 
       const allowed = getAllowedUsers();
       let sentCount = 0;
+      const formatVal = (v: string) => v.split("").join("-");
       let notification = `🔔 *Nuevo Resultado: ${periodLabel}*\n\n`;
-      if (p3Val) notification += `🎯 Pick 3 (Fijo): *${p3Val}*${formatHits(hitsP3)}\n\n`;
-      if (p4Val) notification += `🎲 Pick 4 (Corrido): *${p4Val}*${formatHits(hitsP4)}\n`;
-      notification += "\nConsulta todos los detalles en *Fijo/Corrido Hoy*.";
+      if (p3Val) notification += `🎯 Pick 3 (Fijo): *${formatVal(p3Val)}*\n${formatHits(hitsP3)}\n\n`;
+      if (p4Val) notification += `🎲 Pick 4 (Corrido): *${formatVal(p4Val)}*\n${formatHits(hitsP4)}\n`;
+      notification += "\nConsulta todos los detalles en ☀️🌙 Últimos Sorteos 🏆";
 
       if (p3Val || p4Val) {
         for (const uid of allowed) {
