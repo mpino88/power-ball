@@ -51,16 +51,19 @@ export function buildRecentDrawsDisplay(
   const eP4 = resolveDraw("p4", "e");
 
   const fmtLabel = (res: { draw: string, date: string }) => {
-    if (res.draw === "N/A") return "N/A";
-    const dateLabel = res.date && res.date !== today ? ` _(${res.date})_` : "";
-    return res.draw + dateLabel;
+    if (res.draw === "N/A") return "❌ _Pendiente_";
+    const isToday = res.date === today;
+    const timeTag = isToday 
+      ? `🟢 *[HOY]*` 
+      : `⚪ *[AYER - ${res.date}]*`;
+    return `*${res.draw}*  ${timeTag}`;
   };
 
-  return `☀️🌙 Ultimos sorteos 🎰\n\n` +
-    `☀️ Mediodía ${today}\n` +
-    ` 🎯 Pick3 (Fijo): ${fmtLabel(mP3)}\n` +
-    `🎲 Pick4 (Corrido): ${fmtLabel(mP4)}\n\n` +
-    `🌙 Noche ${today}\n` +
-    ` 🎯 Pick3 (Fijo): ${fmtLabel(eP3)}\n` +
-    `🎲 Pick4 (Corrido): ${fmtLabel(eP4)}`;
+  return `📊 *TERMINAL DE RESULTADOS* 🎰\n\n` +
+    `☀️ *MEDIODÍA*\n` +
+    ` 🎯 Pick3: ${fmtLabel(mP3)}\n` +
+    ` 🎲 Pick4: ${fmtLabel(mP4)}\n\n` +
+    `🌙 *NOCHE*\n` +
+    ` 🎯 Pick3: ${fmtLabel(eP3)}\n` +
+    ` 🎲 Pick4: ${fmtLabel(eP4)}`;
 }

@@ -240,17 +240,27 @@ export async function handleMenuCallback(
           return `\n⚡ *Algoritmos Validados:*\n` + uniqueLabels.map(l => ` ➥ ${l}`).join("\n");
         };
 
-        /** Renderiza un slot completo: resultado + algoritmos o "Sin datos" */
+        /** Renderiza un slot completo con tags ultra-claros y arquitectura High-Authority */
         const fmtSlot = (
           val: string | undefined,
           slotDate: string | undefined,
           hits: { id: string; label: string }[]
         ): string => {
-          if (!val) return `_Sin datos disponibles_`;
+          if (!val) return `_Esperando datos oficiales_`;
+          
           const draw = formatDraw(val);
           const isToday = slotDate === todayKey;
-          const dateTag = !isToday && slotDate ? ` _(${slotDate})_` : "";
-          return draw + dateTag + (isToday ? renderHits(hits) : `\n⚡ *Algoritmos Validados:* _Recalibrando análisis predictivo..._`);
+          
+          // Etiqueta de tiempo explícita con Icono para eliminación de disonancia
+          const timeTag = isToday 
+            ? `🟢 *[HOY]*` 
+            : `⚪ *[AYER - ${slotDate}]*`;
+          
+          const algContent = isToday 
+            ? renderHits(hits) 
+            : `\n⚡ *Algoritmos Validados:* _Archivados (Análisis completado)_`;
+          
+          return `${draw}  ${timeTag}${algContent}`;
         };
 
         const title = game === "fijo" ? "Fijo" : (game === "corrido" ? "Corrido" : "Fijo y Corrido");
