@@ -25,6 +25,7 @@ import {
   removeMenuFromAllUsers,
   getRequestedPlanUsers,
   approvePlanRequest,
+  rejectPlanRequest,
   assignPlanToUser,
   reloadConfigFromStorage,
   addStrategyRequest,
@@ -855,8 +856,8 @@ export async function handleSecurityCallback(
     } else {
       const requested = getRequestedPlanUsers().find((u) => u.userId === userId);
       const planLabel = escapeMd(requested?.plan ?? "plan solicitado");
-      // Eliminar la solicitud del estado pendiente
-      await approvePlanRequest(userId, []).catch(() => { }); // ensures the pending row is cleared
+      // Rechazar la solicitud: plan_status=rejected, sin dar acceso
+      await rejectPlanRequest(userId).catch(() => { });
       result = `❌ *Solicitud rechazada*\n\nSolicitud de \`${userId}\` para el plan *${planLabel}* fue rechazada.`;
       // Notificar al solicitante
       ctx.api.sendMessage(userId,

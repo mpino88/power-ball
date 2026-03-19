@@ -8,7 +8,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import { GoogleSpreadsheet } from "google-spreadsheet";
 import { JWT } from "google-auth-library";
-import { getPlanByTitle } from "./plans.js";
+import { getPlanByTitle, computeExpiryDate, formatDateMMDDYY } from "./plans.js";
 import { isCustomMenu, adjustSubscriberCount, getMenuCreatedBy } from "./custom-menus.js";
 
 const CONFIG_DIR = path.join(process.cwd(), "data");
@@ -37,6 +37,8 @@ export interface PlanRequest {
   phone?: string;
   /** Temporalidad solicitada: 1m, 3m, 6m, 1a. */
   temporality?: string;
+  /** Fecha de caducidad calculada para la renovación (MM/DD/YY). */
+  expiry?: string;
 }
 
 interface UsersConfig {
@@ -230,6 +232,21 @@ async function loadFromSheet(): Promise<UsersConfig> {
           name: getCol(COL_NOMBRE) || undefined,
           phone: getCol(COL_TELEFONO) || undefined,
           temporality: getCol(COL_PLAN_TEMPORALITY) || undefined,
+          expiry: getCol(COL_PLAN_EXPIRY) || undefined,
+        };
+        continue;
+      }
+      // Usuarios rechazados: guardar su info pero NO darles acceso
+      if (planStatus === "rejected") {
+        userInfo[uidStr] = {
+          name: getCol(COL_NOMBRE) || undefined,
+          phone: getCol(COL_TELEFONO) || undefined,
+          plan: planName || undefined,
+          plan_status: "rejected",
+          pending_plan: undefined,
+          plan_temporality: undefined,
+          plan_expiry: undefined,
+          trial_used: getCol(COL_TRIAL_USED) === "true" || undefined,
         };
         continue;
       }
@@ -356,10 +373,31 @@ async function saveToSheet(): Promise<void> {
       plan_status: "requested",
       pending_plan: "",
       plan_temporality: req.temporality ?? "",
-      plan_expiry: "",
+      plan_expiry: req.expiry ?? "",
       trial_used: "",
     }));
-    const rows: SheetRow[] = [...allowedRows, ...requestedRows];
+    // Usuarios rechazados: se guardan en el sheet para persistir su estado.
+    // Se excluyen los que ya re-solicitaron (están en requestedPlans) para evitar duplicados.
+    const rejectedRows: SheetRow[] = Object.entries(config.userInfo)
+      .filter(([uid, info]) =>
+        info.plan_status === "rejected" &&
+        !config.allowed.includes(parseInt(uid, 10)) &&
+        !config.requestedPlans[uid]
+      )
+      .map(([uid, info]) => ({
+        userId: uid,
+        nombre: info.name ?? "",
+        telefono: info.phone ?? "",
+        menus: "",
+        menus_labels: "",
+        plan: info.plan ?? "",
+        plan_status: "rejected",
+        pending_plan: "",
+        plan_temporality: "",
+        plan_expiry: "",
+        trial_used: info.trial_used ? "true" : "",
+      }));
+    const rows: SheetRow[] = [...allowedRows, ...requestedRows, ...rejectedRows];
     if (rows.length > 0) {
       if (sheet.title.includes(":")) {
         const msg = "[user-config] Google Sheet: renombra la hoja y quita el carácter ':' del título (la API de Google falla si el nombre tiene ':').";
@@ -931,13 +969,20 @@ export async function setExtraMenus(userId: number, menuIds: string[]): Promise<
   return persist();
 }
 
-/** Registra solicitud de plan (columnas plan, plan_status=requested, nombre, telefono). */
+/** Registra solicitud de plan (columnas plan, plan_status=requested, nombre, telefono).
+ * Si el usuario ya existe como "rejected" en userInfo, se limpia ese estado para evitar
+ * duplicación en el sheet: fluye únicamente por requestedPlans.
+ */
 export async function addPlanRequest(
   userId: number,
   planName: string,
   opts?: { name?: string; phone?: string; temporality?: string }
 ): Promise<PersistResult> {
   const key = String(userId);
+  // Si estaba rechazado, limpiar el userInfo para que no genere fila duplicada
+  if (config.userInfo[key]?.plan_status === "rejected" && !config.allowed.includes(userId)) {
+    delete config.userInfo[key];
+  }
   const existing = config.requestedPlans[key];
   config.requestedPlans[key] = {
     plan: planName,
@@ -987,23 +1032,104 @@ export function getRequestedPlanUsers(): RequestedPlanUser[] {
   return [...fromNew, ...fromChange];
 }
 
+/**
+ * Registra una solicitud de renovación para un usuario que ya tiene o tuvo acceso (caducado).
+ * 1. Calcula la nueva fecha de caducidad (sumando a la actual si es futura, o desde hoy).
+ * 2. Si es Sheet, busca la fila del usuario y la actualiza (UPSERT).
+ * 3. Actualiza la memoria local: quita de allowed y pone en requestedPlans.
+ */
+export async function requestPlanRenewal(
+  userId: number,
+  planName: string,
+  opts: { name?: string; phone?: string; temporality: string }
+): Promise<PersistResult> {
+  const key = String(userId);
+  const info = config.userInfo[key];
+  
+  // Calcular base para la nueva fecha
+  let baseDate = new Date();
+  const currentExpiry = info?.plan_expiry;
+  if (currentExpiry) {
+    const parsed = parseMMDDYY(currentExpiry);
+    // Si la fecha actual de caducidad es futura, sumamos a partir de ella
+    if (parsed && parsed > baseDate) baseDate = parsed;
+  }
+  
+  const newExpiryDate = computeExpiryDate(baseDate, opts.temporality);
+  const newExpiryStr = formatDateMMDDYY(newExpiryDate);
+
+  // 1. Actualizar memoria local
+  // Si estaba en allowed, quitarlo (pasa a ser requested)
+  config.allowed = config.allowed.filter(id => id !== userId);
+  
+  // Registrar en requestedPlans
+  config.requestedPlans[key] = {
+    plan: planName,
+    name: opts.name ?? info?.name,
+    phone: opts.phone ?? info?.phone,
+    temporality: opts.temporality,
+    expiry: newExpiryStr
+  };
+  
+  // Si estaba en userInfo como approved/rejected, limpiar estado para que fluya por requested
+  if (config.userInfo[key]) {
+    config.userInfo[key] = {
+      ...config.userInfo[key],
+      plan_status: "requested",
+      plan: planName,
+      // No tocamos plan_expiry aquí, se usará el de requestedPlans al persistir
+    };
+  }
+
+  // 2. Persistir (Sheet UPSERT logic if applicable)
+  const backend = getStorageBackend();
+  if (backend === "sheet") {
+    const sheetId = getSheetId();
+    const auth = getSheetAuth();
+    if (sheetId && auth) {
+      try {
+        const doc = new GoogleSpreadsheet(sheetId, auth);
+        await doc.loadInfo();
+        const sheet = doc.sheetsByIndex[0];
+        if (sheet) {
+          const rows = await sheet.getRows();
+          const existing = rows.find(r => String(r.get("userId")) === key);
+          
+          const rowData = {
+            userId: key,
+            nombre: opts.name ?? info?.name ?? "",
+            telefono: opts.phone ?? info?.phone ?? "",
+            plan: planName,
+            plan_status: "requested",
+            plan_temporality: opts.temporality,
+            plan_expiry: newExpiryStr,
+            pending_plan: ""
+          };
+
+          if (existing) {
+            Object.assign(existing, rowData);
+            await existing.save();
+            console.log(`[user-config] Renewal UPSERT: fila actualizada para ${userId}`);
+            return { backend: "sheet", ok: true, count: config.allowed.length };
+          }
+        }
+      } catch (e) {
+        console.error("[user-config] requestPlanRenewal Sheet error:", e);
+        // Fallback to regular persist if specialized UPSERT fails
+      }
+    }
+  }
+
+  return persist();
+}
+
 /** Calcula la fecha de caducidad y la devuelve como "MM/DD/YY". */
 function computeExpiryStr(temporality: string): string {
   // Obtener fecha actual en Florida
   const nowStr = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
   const d = new Date(nowStr);
-
-  switch (temporality) {
-    case "1d": d.setDate(d.getDate() + 1); break;
-    case "1m": d.setMonth(d.getMonth() + 1); break;
-    case "3m": d.setMonth(d.getMonth() + 3); break;
-    case "6m": d.setMonth(d.getMonth() + 6); break;
-    case "1a": d.setFullYear(d.getFullYear() + 1); break;
-  }
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  const yy = String(d.getFullYear()).slice(-2);
-  return `${mm}/${dd}/${yy}`;
+  const expiryDate = computeExpiryDate(d, temporality);
+  return formatDateMMDDYY(expiryDate);
 }
 
 /** Asigna un plan directamente a un usuario (por el dueño). Le da acceso y plan/plan_status=approved. */
@@ -1059,7 +1185,7 @@ export async function approvePlanRequest(userId: number, _planMenuIds?: string[]
       plan_status: "approved",
       pending_plan: undefined,
       plan_temporality: req.temporality || undefined,
-      plan_expiry: req.temporality ? computeExpiryStr(req.temporality) : undefined,
+      plan_expiry: req.expiry || (req.temporality ? computeExpiryStr(req.temporality) : undefined),
     };
     return persist();
   }
@@ -1077,6 +1203,43 @@ export async function approvePlanRequest(userId: number, _planMenuIds?: string[]
       pending_plan: undefined,
       plan_temporality: temporality || undefined,
       plan_expiry: temporality ? computeExpiryStr(temporality) : undefined,
+    };
+    return persist();
+  }
+
+  return { backend: getStorageBackend(), ok: false, count: config.allowed.length, error: "Usuario no tiene solicitud pendiente." };
+}
+
+/** Rechaza solicitud de plan. Marca plan_status=rejected y limpia la solicitud pendiente, sin dar acceso al usuario.
+ * - Usuario nuevo (en requestedPlans): elimina la solicitud y guarda plan_status=rejected.
+ * - Usuario con cambio pendiente (pending_plan): borra el pending_plan y guarda plan_status=rejected.
+ */
+export async function rejectPlanRequest(userId: number): Promise<PersistResult> {
+  const key = String(userId);
+
+  // Caso 1: usuario nuevo sin acceso (en requestedPlans)
+  const req = config.requestedPlans[key];
+  if (req) {
+    delete config.requestedPlans[key];
+    // Guardar info del usuario (nombre/teléfono) y marcar como rechazado, sin dar acceso
+    config.userInfo[key] = {
+      ...config.userInfo[key],
+      name: req.name ?? config.userInfo[key]?.name,
+      phone: req.phone ?? config.userInfo[key]?.phone,
+      plan: req.plan,
+      plan_status: "rejected",
+      pending_plan: undefined,
+    };
+    return persist();
+  }
+
+  // Caso 2: usuario con acceso que solicita cambio de plan (pending_plan)
+  const pendingRaw = config.userInfo[key]?.pending_plan;
+  if (pendingRaw) {
+    config.userInfo[key] = {
+      ...config.userInfo[key],
+      pending_plan: undefined,
+      plan_status: "rejected",
     };
     return persist();
   }

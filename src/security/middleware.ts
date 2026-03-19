@@ -6,7 +6,7 @@
 
 import { InlineKeyboard, Keyboard } from "grammy";
 import type { getOwnerId as GetOwnerId, isAllowed as IsAllowed } from "../user-config.js";
-import { addPlanRequest, assignPlanToUser, getPlanTemporality, hasUsedTrial, isPlanExpired, refreshIfStale, saveLead, getOwnerIds } from "../user-config.js";
+import { addPlanRequest, requestPlanRenewal, assignPlanToUser, getPlanTemporality, hasUsedTrial, isPlanExpired, refreshIfStale, saveLead, getOwnerIds } from "../user-config.js";
 import { getPlans, getPriceForTemporality, formatPlanPrice, REGULAR_TEMPORALITIES, TEMPORALITIES, TRIAL_TEMPORALITIES } from "../plans.js";
 import { getPaymentMethods, loadPaymentMethodsFromSheet } from "../payment-methods.js";
 
@@ -174,7 +174,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
               // Enviar menú principal en mensaje aparte
               await ctx.reply("Selecciona una opción:", { reply_markup: options.buildMainKeyboard(uid) });
             } else {
-              await addPlanRequest(uid, renewal.planName, { name, phone, temporality: renewal.temporality });
+              await requestPlanRenewal(uid, renewal.planName, { name, phone, temporality: renewal.temporality });
               // Notificar a todos los owners con botones de aprobar/rechazar
               const ownerIds = getOwnerIds().filter((id) => id !== uid);
               if (ownerIds.length > 0) {
