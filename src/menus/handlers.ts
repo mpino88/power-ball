@@ -235,14 +235,14 @@ export async function handleMenuCallback(
         const renderHitsConditional = (hits: { id: string; label: string }[], date: string | undefined) => {
           const isToday = date === todayKey || !date;
           if (!isToday) return "";
-          if (hits.length === 0) return `\n⚡ Algoritmos Validados: _Recalculando..._`;
+          if (hits.length === 0) return `\n\n⚡ Algoritmos Validados: _Recalculando..._`;
           const uniqueLabels = [...new Set(hits.map(h => escapeMd(deps.getExtraMenuLabel?.(h.label) || h.label)))];
-          return `\n⚡ *Algoritmos Validados:*\n` + uniqueLabels.map(l => ` ➥ ${l}`).join("\n");
+          return `\n\n⚡ *Algoritmos Validados:*\n` + uniqueLabels.map(l => ` ➥ ${l}`).join("\n");
         };
 
         const getSectionTag = (d1: string | undefined, d2: string | undefined) => {
           const d = d1 || d2 || todayKey;
-          return d === todayKey ? "🟢 HOY" : `🟠 AYER (${d})`;
+          return d === todayKey ? "🟢 HOY" : `🟠 (${d}) - AYER`;
         };
 
         const mTag = getSectionTag(hoyData.p3_m_date, hoyData.p4_m_date);

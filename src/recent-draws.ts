@@ -56,7 +56,7 @@ export function buildRecentDrawsDisplay(
 
   const getSectionTag = (drawA: { date: string }, drawB: { date: string }) => {
     const d = drawA.date || drawB.date || today;
-    return d === today ? "🟢 HOY" : `🟠 AYER - ${d}`;
+    return d === today ? "🟢 HOY" : `🟠 ${d} - AYER`;
   };
 
   const mediodiaTag = getSectionTag(mP3, mP4);
