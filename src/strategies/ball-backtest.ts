@@ -143,10 +143,17 @@ export async function runBallBackTest(params: BBTParams): Promise<BBTResult> {
   const allMapKeys = keyTimeArr.map((x) => x.k);
   const keyTime = new Map<string, number>(keyTimeArr.map((x) => [x.k, x.t]));
 
-  // Un día es válido si tiene al menos un sorteo en cualquiera de los contextos seleccionados
+  // Un día es válido si tiene al menos un sorteo en cualquiera de los contextos seleccionados.
+  // Para contextos Ambos (params.ambos=true) basta con que exista M o E.
   const validateDraw = (date: string, ctx: StrategyContext) => {
-    const draw = fullMap[date]?.[ctx.period];
     const minLen = ctx.mapSource === "p4" ? 4 : 3;
+    if (ctx.params?.ambos) {
+      const drawM = fullMap[date]?.["m"];
+      const drawE = fullMap[date]?.["e"];
+      return (drawM != null && drawM.length >= minLen) ||
+             (drawE != null && drawE.length >= minLen);
+    }
+    const draw = fullMap[date]?.[ctx.period];
     return draw != null && draw.length >= minLen;
   };
 
@@ -219,16 +226,20 @@ export async function runBallBackTest(params: BBTParams): Promise<BBTResult> {
       continue;
     }
 
-    // Obtener ganadores combinados de todos los contextos activos para este sorteo
+    // Obtener ganadores combinados de todos los contextos activos para este sorteo.
+    // Para contextos Ambos, se recogen M y E del siguiente sorteo como pool unificado.
     const actualsSet = new Set<number>();
     const activeContextNames: string[] = [];
 
     for (const ctx of contexts) {
-      const draw = fullMap[nextDateStr]?.[ctx.period];
       const minLen = ctx.mapSource === "p4" ? 4 : 3;
-      if (draw && draw.length >= minLen) {
-        twoDigitNumbers(draw, ctx.mapSource).forEach(n => actualsSet.add(n));
-        activeContextNames.push(`${ctx.mapSource.toUpperCase()}${ctx.period.toUpperCase()}`);
+      const periods: Array<"m" | "e"> = ctx.params?.ambos ? ["m", "e"] : [ctx.period];
+      for (const p of periods) {
+        const draw = fullMap[nextDateStr]?.[p];
+        if (draw && draw.length >= minLen) {
+          twoDigitNumbers(draw, ctx.mapSource).forEach(n => actualsSet.add(n));
+          activeContextNames.push(`${ctx.mapSource.toUpperCase()}${p.toUpperCase()}`);
+        }
       }
     }
 
@@ -256,10 +267,17 @@ export async function runBallBackTest(params: BBTParams): Promise<BBTResult> {
       })
     );
 
-    // Identificar qué contextos tienen sorteo real para este "nextDate"
+    // Identificar qué contextos tienen sorteo real para este "nextDate".
+    // Contextos Ambos son activos si tienen M o E en ese sorteo.
     const activeContexts = contexts.filter(ctx => {
+      const minLen = ctx.mapSource === "p4" ? 4 : 3;
+      if (ctx.params?.ambos) {
+        const dm = fullMap[nextDateStr]?.["m"];
+        const de = fullMap[nextDateStr]?.["e"];
+        return (dm != null && dm.length >= minLen) || (de != null && de.length >= minLen);
+      }
       const d = fullMap[nextDateStr]?.[ctx.period];
-      return d && d.length >= (ctx.mapSource === "p4" ? 4 : 3);
+      return d != null && d.length >= (ctx.mapSource === "p4" ? 4 : 3);
     });
 
     if (activeContexts.length === 0) {
@@ -269,8 +287,12 @@ export async function runBallBackTest(params: BBTParams): Promise<BBTResult> {
 
     const allWinningNums = new Set<number>();
     activeContexts.forEach(ctx => {
-      const d = fullMap[nextDateStr]![ctx.period]!;
-      twoDigitNumbers(d, ctx.mapSource).forEach(n => allWinningNums.add(n));
+      const minLen = ctx.mapSource === "p4" ? 4 : 3;
+      const periods: Array<"m" | "e"> = ctx.params?.ambos ? ["m", "e"] : [ctx.period];
+      for (const p of periods) {
+        const d = fullMap[nextDateStr]?.[p];
+        if (d && d.length >= minLen) twoDigitNumbers(d, ctx.mapSource).forEach(n => allWinningNums.add(n));
+      }
     });
 
     const forensicEntry: BBTForensicEntry = {
@@ -452,6 +474,7 @@ export function buildBBTContextKeyboard(selected?: Set<string>): InlineKeyboard 
   const options = [
     { id: "p3_m", label: "📌 P3 Fijos · ☀️ Mediodía" },
     { id: "p3_e", label: "📌 P3 Fijos · 🌙 Noche" },
+    { id: "p3_a", label: "📌 P3 Fijos · 🌗 Ambos (M+E unif.)" },
     { id: "p4_m", label: "🎲 P4 Corridos · ☀️ Mediodía" },
     { id: "p4_e", label: "🎲 P4 Corridos · 🌙 Noche" },
   ];
@@ -462,8 +485,8 @@ export function buildBBTContextKeyboard(selected?: Set<string>): InlineKeyboard 
   }
 
   // Botones de acción rápida
-  kb.text("⚡ P3 Ambos", "bbt_ctx_p3_both")
-    .text("⚡ P4 Ambos", "bbt_ctx_p4_both").row()
+  kb.text("⚡ P3 Sep.", "bbt_ctx_p3_both")
+    .text("⚡ P4 Sep.", "bbt_ctx_p4_both").row()
     .text("🌟 Seleccionar TODO", "bbt_ctx_all").row();
 
   if (selected && selected.size > 0) {
