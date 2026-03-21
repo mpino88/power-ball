@@ -29,6 +29,7 @@ import {
   truncateMsg,
   validDateKeys,
   getDateRangeStr,
+  getStrategiesTopN,
 } from "./utils.js";
 
 const RECENT_WINDOW = 30;
@@ -272,6 +273,6 @@ export const decadeFamily: StrategyDefinition = {
         if (!seen.has(x.num)) { seen.add(x.num); result.push(x.num); }
       }
     }
-    return result.slice(0, 20);
+    return result.slice(0, getStrategiesTopN());
   },
 };

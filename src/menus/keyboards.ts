@@ -128,7 +128,7 @@ export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboard
  * - Usuarios normales: ven solo las estrategias en su getExtraMenus().
  *   Su botón de gestión abre el panel de usuario (crear/eliminar/tienda propias).
  */
-export function buildEstrategiasKeyboard(userId: number | undefined, deps: MainKeyboardDeps): InlineKeyboard {
+export function buildEstrategiasKeyboard(userId: number | undefined, deps: MainKeyboardDeps, currentTopN: number): InlineKeyboard {
   const ownerId = deps.getOwnerId();
   const uid = userId ?? 0;
   const isOwnerUser = deps.isOwner(uid);
@@ -154,6 +154,7 @@ export function buildEstrategiasKeyboard(userId: number | undefined, deps: MainK
     }
   }
 
+  kb.row().text(`🔢 Resultados por estrategia: ${currentTopN}`, "topn_open");
   kb.row().text("⚙️ Gestionar estrategias", "estrategias_manage");
   kb.row().text("◀️ Volver", "volver");
   return kb;
@@ -212,6 +213,37 @@ export function buildDiasDiferenciaKeyboardIndividual(): InlineKeyboard {
     .text("10", "stats_individual_days_10")
     .row()
     .text("◀️ Volver", "stats_individual_back");
+}
+
+// ─── Top-N (sorteosParaAnalisis) ────────────────────────────────────────────
+
+/** Opciones disponibles para el número de resultados por estrategia. */
+export const TOP_N_OPTIONS = [5, 8, 10, 15, 20, 25, 30] as const;
+
+/** Teclado de selección de top-N (todos los usuarios). */
+export function buildTopNKeyboard(current: number): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  let col = 0;
+  for (const n of TOP_N_OPTIONS) {
+    const label = n === current ? `✅ ${n}` : `${n}`;
+    kb.text(label, `topn_set_${n}`);
+    col++;
+    if (col % 4 === 0) kb.row();
+  }
+  kb.row().text("◀️ Volver", "estrategias_open");
+  return kb;
+}
+
+/** Mensaje descriptivo del menú de selección. */
+export function buildTopNMenuMessage(current: number): string {
+  return (
+    `🔢 *Resultados por estrategia*\n\n` +
+    `Controla cuántos números muestra cada estrategia en su tabla de resultados ` +
+    `y cuántos candidatos aporta al Consenso Multi-Estrategia.\n\n` +
+    `ℹ️ Valor actual: *${current}* números.\n` +
+    `_Rango válido: 5\u201330. El cambio es inmediato para todos los usuarios._\n\n` +
+    `Elige el nuevo valor:`
+  );
 }
 
 /**

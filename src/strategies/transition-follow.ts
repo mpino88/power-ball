@@ -15,7 +15,7 @@
 
 import type { StrategyContext, StrategyDefinition, DateDrawsMap } from "./types.js";
 import { buildDefaultContextKeyboard, getDefaultContextMessage } from "./context-menu.js";
-import { mmddyyToDate, twoDigitNumbers, truncateMsg, validDateKeys, getDateRangeStr } from "./utils.js";
+import { mmddyyToDate, twoDigitNumbers, truncateMsg, validDateKeys, getDateRangeStr, getStrategiesTopN } from "./utils.js";
 
 interface TransitionResult {
   matrix: Map<number, Map<number, number>>;
@@ -129,7 +129,7 @@ function formatMessage(
   const consensus = [...votes.entries()]
     .filter(([, v]) => v >= Math.min(2, lastNums.length))
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 10);
+    .slice(0, getStrategiesTopN());
 
   if (consensus.length > 0) {
     lines.push("★ CONSENSO (candidatos de múltiples números anteriores):");
@@ -167,7 +167,7 @@ export const transitionFollow: StrategyDefinition = {
     }
     return [...combined.entries()]
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 20)
+      .slice(0, getStrategiesTopN())
       .map(([num]) => num);
   },
 };

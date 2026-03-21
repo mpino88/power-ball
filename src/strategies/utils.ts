@@ -5,6 +5,29 @@
 
 import type { DateDrawsMap, StrategyContext, StrategyMapSource, StrategyPeriod } from "./types.js";
 
+/**
+ * ──────────────────────────────────────────────────────────────────────────────
+ * CONFIGURACIÓN GLOBAL DE ESTRATEGIAS — sorteosParaAnalisis
+ * ──────────────────────────────────────────────────────────────────────────────
+ * Controla cuántos candidatos retorna `getCandidates()` y cuántas filas
+ * muestra la tabla de resultados en TODAS las estrategias.
+ * Modificable en runtime desde el menú "Resultados por estrategia".
+ * Rango válido: 5–30. Default: 15.
+ * ──────────────────────────────────────────────────────────────────────────────
+ */
+export const DEFAULT_STRATEGIES_TOP_N = 15;
+let _strategiesTopN: number = DEFAULT_STRATEGIES_TOP_N;
+
+/** Retorna el número actual de candidatos / filas por estrategia. */
+export function getStrategiesTopN(): number {
+  return _strategiesTopN;
+}
+
+/** Actualiza el número de candidatos / filas. Rango válido: 5–30. */
+export function setStrategiesTopN(n: number): void {
+  if (n >= 5 && n <= 30) _strategiesTopN = n;
+}
+
 /** Convierte clave "MM/DD/YY" a Date. Retorna null si el formato es inválido. */
 export function mmddyyToDate(key: string): Date | null {
   const m = key.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);

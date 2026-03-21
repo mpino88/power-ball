@@ -34,6 +34,7 @@ import {
   truncateMsg,
   validDateKeys,
   getDateRangeStr,
+  getStrategiesTopN,
 } from "./utils.js";
 
 interface StreakStat {
@@ -267,6 +268,6 @@ export const streakAnalysis: StrategyDefinition = {
     for (const n of [...hotNums, ...coldNums]) {
       if (!seen.has(n)) { seen.add(n); result.push(n); }
     }
-    return result.slice(0, 20);
+    return result.slice(0, getStrategiesTopN());
   },
 };
