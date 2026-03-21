@@ -292,6 +292,9 @@ function getAccessibleStrategyIds(userId: number): string[] {
  */
 const waitingProgressiveDate = new Map<number, "start" | "end">();
 
+/** Sesiones activas esperando límite de candidatos en UNODOSTRES+. */
+const waitingPlusLimit = new Map<number, { menuId: string; context: StrategyContext }>();
+
 /**
  * Caché de la fecha de corte de testing (5 min).
  * Lee la celda A2 de la pestaña "Testing" (índice 4) del Sheet.
@@ -1564,6 +1567,29 @@ bot.on("callback_query:data", async (ctx) => {
       }
 
       if (hasStrategyRunner(parsed.menuId)) {
+        if (parsed.menuId === "unodostres_plus") {
+          await ctx.answerCallbackQuery();
+          const userId = ctx.from?.id;
+          if (userId) {
+            waitingPlusLimit.set(userId, { menuId: parsed.menuId, context: parsed.context });
+            try {
+              await ctx.editMessageText(
+                `✨ *UnoDosTres+*\n\n` +
+                `Has elegido la base de datos y período.\n` +
+                `👉 **Escribe la cantidad de candidatos que deseas ver.** (Ej: \`10\`, \`20\`, \`30\`)\n\n` +
+                `_/cancel para cancelar._`,
+                {
+                  parse_mode: "Markdown",
+                  reply_markup: new InlineKeyboard().text("❌ Cancelar", "plus_cancel"),
+                }
+              );
+            } catch (e) {
+              if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+            }
+          }
+          return;
+        }
+
         await runStrategyAndShowResult(ctx, parsed.menuId, parsed.context);
         return;
       }
@@ -1616,6 +1642,17 @@ bot.on("callback_query:data", async (ctx) => {
         return;
       }
     }
+  }
+
+  if (data === "plus_cancel" && ctx.from) {
+    waitingPlusLimit.delete(ctx.from.id);
+    await ctx.answerCallbackQuery({ text: "Cancelado" });
+    try {
+      await ctx.editMessageText("Operación cancelada.", { reply_markup: buildMainKb(ctx.from.id) });
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
   }
 
   if (data.startsWith("strat_store_preview_")) {
@@ -2728,6 +2765,40 @@ bot.on("message:text", async (ctx) => {
     getExtraMenuLabel: (id) => getExtraMenuLabel(id),
   });
   if (securityHandled) return;
+
+  // ── UNODOSTRES+: Entrada interactiva cantidad de candidatos ───────────────
+  if (userId && waitingPlusLimit.has(userId)) {
+    const session = waitingPlusLimit.get(userId)!;
+    if (text === "/cancel" || text.toLowerCase() === "cancelar") {
+      waitingPlusLimit.delete(userId);
+      await ctx.reply("Operación cancelada.", { reply_markup: buildMainKb(userId) });
+      return;
+    }
+    
+    const limit = parseInt(text, 10);
+    if (isNaN(limit) || limit <= 0 || limit > 100) {
+      await ctx.reply("❌ Por favor escribe un número válido entre 1 y 100.");
+      return;
+    }
+
+    waitingPlusLimit.delete(userId);
+    session.context.params = { ...session.context.params, limit };
+    
+    // Ejecutar asíncronamente con un wrapper ctx falso que responde en el mismo chat
+    const fakeCtx = {
+      from: { id: userId },
+      answerCallbackQuery: async () => {}, // Noop para un msg
+      editMessageText: async (msgText: string, opts?: object) => {
+        await ctx.reply(msgText, opts as any);
+      },
+      reply: async (msgText: string, opts?: object) => {
+        await ctx.reply(msgText, opts as any);
+      }
+    };
+    
+    await runStrategyAndShowResult(fakeCtx, session.menuId, session.context);
+    return;
+  }
 
   // ── Progresivo: entrada de fechas inicial/final (solo dueño) ─────────────
   if (userId && isOwner(userId) && waitingProgressiveDate.has(userId)) {

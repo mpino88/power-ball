@@ -16,7 +16,7 @@ export type StrategyPeriod = "m" | "e";
 export interface StrategyContext {
   mapSource: StrategyMapSource;
   period: StrategyPeriod;
-  /** Parámetros adicionales por estrategia (ej. días de historial, filtros). */
+  /** Parámetros adicionales por estrategia (ej. días de historial, filtros, etc.). */
   params?: Record<string, unknown>;
 }
 
@@ -44,9 +44,9 @@ export interface StrategyDefinition {
 export const STRATEGY_CONTEXT_CALLBACK_PREFIX = "strat_";
 
 /** 
- * Parsea callback tipo strat_<menuId>_<p3|p4>_<m|e> o strat_<menuId>_<p3|p4>_<m|e>_<limit>.
+ * Parsea callback tipo strat_<menuId>_<p3|p4>_<m|e|a> o strat_<menuId>_<p3|p4>_<m|e|a>_<limit>.
  * menuId puede contener _ (ej. max_per_week_day) o no (ej. unodostres).
- * limit es opcional (10, 20, 30) para estrategias como unodostres_plus.
+ * limit es opcional (10, 20, 30...) para estrategias como unodostres_plus.
  */
 export function parseStrategyContextCallback(data: string): { menuId: string; context: StrategyContext } | null {
   if (!data.startsWith(STRATEGY_CONTEXT_CALLBACK_PREFIX)) return null;
@@ -65,17 +65,24 @@ export function parseStrategyContextCallback(data: string): { menuId: string; co
 
   if (searchParts.length < 3) return null;
   const mapSource = searchParts[searchParts.length - 2];
-  const period    = searchParts[searchParts.length - 1];
+  const periodStr = searchParts[searchParts.length - 1];
   if (mapSource !== "p3" && mapSource !== "p4") return null;
-  if (period !== "m" && period !== "e") return null;
+  if (periodStr !== "m" && periodStr !== "e" && periodStr !== "a") return null;
   const menuId = searchParts.slice(0, -2).join("_");
+
+  const ambos = periodStr === "a";
+  const finalPeriod = ambos ? "m" : periodStr;
+  
+  const params: Record<string, unknown> = {};
+  if (limit !== undefined) params.limit = limit;
+  if (ambos) params.ambos = true;
 
   return {
     menuId,
     context: {
       mapSource: mapSource as StrategyMapSource,
-      period: period as StrategyPeriod,
-      ...(limit !== undefined ? { params: { limit } } : {}),
+      period: finalPeriod as StrategyPeriod,
+      ...(Object.keys(params).length > 0 ? { params } : {}),
     },
   };
 }
