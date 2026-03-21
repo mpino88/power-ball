@@ -373,7 +373,21 @@ async function showStrategyContextSelection(
 ): Promise<void> {
   await ctx.answerCallbackQuery();
   const title = getExtraMenuLabel(menuId) || menuId;
+  const stratDef = getStrategy(menuId);
+  const desc = stratDef?.description || getExtraMenuDescription(menuId);
 
+  // Para estrategias propias del usuario, usar el mensaje y teclado definidos en
+  // la estrategia. Esto permite opciones exclusivas por estrategia (ej. P3 Ambos
+  // en unodostres_plus) sin hardcodear el teclado genérico.
+  if (source === "mine" && stratDef) {
+    const escapedDesc = desc ? escapeMd(desc) : undefined;
+    const msg = stratDef.getContextMessage(title, escapedDesc);
+    const kb = stratDef.buildContextKeyboard(menuId);
+    await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
+    return;
+  }
+
+  // Fallback genérico para previsualizaciones de tienda o estrategias sin runner.
   const resultKb = new InlineKeyboard();
   const pre = source === "store"
     ? `${STRATEGY_STORE_PREVIEW_CALLBACK_PREFIX}${menuId}_`
@@ -397,17 +411,11 @@ async function showStrategyContextSelection(
 
   const promptText = source === "store" ? "Previa de Estrategia" : "Estrategia";
   let msg = `🎯 *${promptText}:* ${escapeMd(title)}`;
-
-  const stratDef = getStrategy(menuId);
-  const desc = stratDef?.description || getExtraMenuDescription(menuId);
-  if (desc) {
-    msg += `\n\n_${escapeMd(desc)}_`;
-  }
+  if (desc) msg += `\n\n_${escapeMd(desc)}_`;
 
   const selectionPrompt = source === "store"
     ? "Por favor, selecciona la base de conocimiento y el período que deseas usar para la previsualización:"
     : "Por favor, selecciona la base de conocimiento y el período que deseas analizar:";
-
   msg += `\n\n${selectionPrompt}`;
 
   await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: resultKb });
@@ -473,14 +481,29 @@ async function runStrategyAndShowResult(
         }
         resultKb.row();
       }
-      const pre = `${STRATEGY_CONTEXT_CALLBACK_PREFIX}${menuId}_`;
-      resultKb
-        .text("P3 (Fijos) ☀️ Mediodía", `${pre}p3_m`)
-        .text("P3 (Fijos) 🌙 Noche", `${pre}p3_e`)
-        .row()
-        .text("P4 (Corridos) ☀️ Mediodía", `${pre}p4_m`)
-        .text("P4 (Corridos) 🌙 Noche", `${pre}p4_e`)
-        .row();
+      // Usar el teclado de contexto propio de la estrategia para los botones de
+      // re-ejecución, preservando opciones exclusivas (ej. P3 Ambos en unodostres_plus).
+      // Se omite la última fila (◀️ Volver) para agregar navegación específica del resultado.
+      const contextKb = stratDef?.buildContextKeyboard(menuId);
+      if (contextKb) {
+        const rows = contextKb.inline_keyboard;
+        const dataRows = rows.slice(0, -1); // omitir fila ◀️ Volver
+        for (const row of dataRows) {
+          for (const btn of row) {
+            if ("callback_data" in btn && btn.callback_data) resultKb.text(btn.text, btn.callback_data);
+          }
+          resultKb.row();
+        }
+      } else {
+        const pre = `${STRATEGY_CONTEXT_CALLBACK_PREFIX}${menuId}_`;
+        resultKb
+          .text("P3 (Fijos) ☀️ Mediodía", `${pre}p3_m`)
+          .text("P3 (Fijos) 🌙 Noche", `${pre}p3_e`)
+          .row()
+          .text("P4 (Corridos) ☀️ Mediodía", `${pre}p4_m`)
+          .text("P4 (Corridos) 🌙 Noche", `${pre}p4_e`)
+          .row();
+      }
       resultKb.text("🔄 Probar otra estrategia", ESTRATEGIAS_OPEN_CALLBACK).row();
       resultKb.text("🏠 Volver al Inicio", "volver");
     }
