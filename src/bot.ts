@@ -152,6 +152,13 @@ import {
   buildBBTResultMessage,
   BBT_MAX_STRATEGIES,
   type BallBackTestSession,
+  runBBTCompare,
+  buildBBTCompareStrategyKeyboard,
+  buildBBTComparePeriodKeyboard,
+  buildBBTCompareLimitKeyboard,
+  buildBBTCompareResultMessage,
+  type BBTCompareSession,
+  type BBTCmpPeriodId,
 } from "./strategies/ball-backtest.js";
 import {
   buildCharadaMenuKeyboard,
@@ -275,6 +282,10 @@ const bbtResultCache = new Map<number, Buffer>();
 const waitingBBTDate = new Map<number, "start" | "end">();
 const waitingBBTTopN = new Set<number>();
 
+// BBT Compare state
+const bbtCmpSessionMap = new Map<number, BBTCompareSession>();
+const waitingBBTCmpLimit = new Set<number>();
+
 /**
  * Retorna los IDs de estrategias seleccionables en Consenso Multi-Estrategia
  * filtrados por los menús que el usuario tiene activos (plan + asignados).
@@ -357,6 +368,52 @@ const STRATEGY_RUN_TIMEOUT_MS = 90_000;
 
 /** Contexto por defecto al abrir una estrategia desde el menú (P3 Mediodía). */
 const DEFAULT_STRATEGY_CONTEXT: StrategyContext = { mapSource: "p3", period: "m" };
+
+/** Ejecuta el motor de comparación y muestra el resultado al owner. */
+async function runAndShowCmpResult(
+  ctx: { reply: (text: string, opts?: object) => Promise<unknown> },
+  userId: number,
+  session: BBTCompareSession
+): Promise<void> {
+  bbtCmpSessionMap.delete(userId);
+  waitingBBTCmpLimit.delete(userId);
+
+  const stratIds = [...session.selectedIds];
+  const periods = [...session.selectedPeriods] as BBTCmpPeriodId[];
+
+  const progressMsg = await ctx.reply(
+    `⏳ *Comparando estrategias…*\n\n` +
+    `🎯 Top ${session.limit} · ${stratIds.length} estrategias · ${periods.length} período(s)`,
+    { parse_mode: "Markdown" }
+  ) as { chat: { id: number }; message_id: number };
+
+  try {
+    const result = await runBBTCompare(
+      stratIds,
+      periods,
+      session.limit,
+      async (source) => source === "p3" ? await getP3Map() : (await getP4Map()) as DateDrawsMap,
+      getStrategy
+    );
+
+    const getLabel = (id: string) => STRATEGY_LABEL_BY_ID.get(id) ?? id;
+    const msg = buildBBTCompareResultMessage(result, getLabel);
+
+    await (ctx as any).api?.editMessageText(
+      progressMsg.chat.id, progressMsg.message_id, msg,
+      { parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("🏠 Inicio", "volver") }
+    ).catch(async () => {
+      // fallback si no hay api directo en ctx
+      await ctx.reply(msg, {
+        parse_mode: "Markdown",
+        reply_markup: new InlineKeyboard().text("🏠 Inicio", "volver"),
+      });
+    });
+  } catch (err) {
+    console.error("[bbt_cmp] Error:", err);
+    await ctx.reply("❌ Error al ejecutar comparación. Revisa los logs.");
+  }
+}
 
 /**
  * Ejecuta la estrategia con el contexto dado y muestra la salida en el mensaje.
@@ -2304,6 +2361,165 @@ bot.on("callback_query:data", async (ctx) => {
         return;
       }
     }
+    // ── BBT Compare Mode ─────────────────────────────────────────────────────
+
+    if (data === "bbt_cmp_open") {
+      bbtCmpSessionMap.set(userId, {
+        step: "strategies",
+        selectedIds: new Set(),
+        selectedPeriods: new Set(),
+        limit: 10,
+        waitingCustomLimit: false,
+      });
+      await ctx.answerCallbackQuery();
+      const selectableIds = getAccessibleStrategyIds(userId);
+      try {
+        await ctx.editMessageText(
+          `🔬 *Análisis Comparativo — Paso 1/3*\n\n` +
+          `_Compara el Top N de múltiples estrategias sobre el mismo período y ve quién coincide._\n\n` +
+          `Selecciona las estrategias a comparar *(mínimo 2)*:`,
+          { parse_mode: "Markdown", reply_markup: buildBBTCompareStrategyKeyboard(new Set(), selectableIds) }
+        );
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
+
+    if (data === "bbt_cmp_cancel") {
+      bbtCmpSessionMap.delete(userId);
+      waitingBBTCmpLimit.delete(userId);
+      await ctx.answerCallbackQuery({ text: "Cancelado" });
+      const current = await loadTestingCutoffDate();
+      try {
+        await ctx.editMessageText(buildTestingMessage(current), {
+          parse_mode: "Markdown",
+          reply_markup: buildTestingKeyboard(current),
+        });
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
+
+    // Toggle estrategia (Compare)
+    if (data.startsWith("bbt_cmp_st_") && data !== "bbt_cmp_st_done" && data !== "bbt_cmp_st_hint") {
+      const session = bbtCmpSessionMap.get(userId);
+      if (!session || session.step !== "strategies") { await ctx.answerCallbackQuery(); return; }
+      const stratId = data.slice("bbt_cmp_st_".length);
+      const selectableIds = getAccessibleStrategyIds(userId);
+      if (selectableIds.includes(stratId)) {
+        if (session.selectedIds.has(stratId)) session.selectedIds.delete(stratId);
+        else session.selectedIds.add(stratId);
+      }
+      await ctx.answerCallbackQuery();
+      try {
+        await ctx.editMessageReplyMarkup({
+          reply_markup: buildBBTCompareStrategyKeyboard(session.selectedIds, selectableIds),
+        });
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
+
+    if (data === "bbt_cmp_st_hint") {
+      await ctx.answerCallbackQuery({ text: "Selecciona al menos 2 estrategias para comparar" });
+      return;
+    }
+
+    // Confirmar estrategias → pasar a período
+    if (data === "bbt_cmp_st_done") {
+      const session = bbtCmpSessionMap.get(userId);
+      if (!session || session.selectedIds.size < 2) {
+        await ctx.answerCallbackQuery({ text: "⚠️ Selecciona al menos 2 estrategias" });
+        return;
+      }
+      session.step = "period";
+      await ctx.answerCallbackQuery();
+      try {
+        await ctx.editMessageText(
+          `🔬 *Análisis Comparativo — Paso 2/3*\n\n` +
+          `Estrategias: *${session.selectedIds.size}* seleccionadas\n\n` +
+          `Selecciona los *períodos* a analizar _(puedes elegir varios)_:`,
+          { parse_mode: "Markdown", reply_markup: buildBBTComparePeriodKeyboard(session.selectedPeriods) }
+        );
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
+
+    // Toggle período (Compare)
+    if (data.startsWith("bbt_cmp_ctx_") && data !== "bbt_cmp_ctx_done") {
+      const session = bbtCmpSessionMap.get(userId);
+      if (!session || session.step !== "period") { await ctx.answerCallbackQuery(); return; }
+      const periodId = data.slice("bbt_cmp_ctx_".length) as BBTCmpPeriodId;
+      if (session.selectedPeriods.has(periodId)) session.selectedPeriods.delete(periodId);
+      else session.selectedPeriods.add(periodId);
+      await ctx.answerCallbackQuery();
+      try {
+        await ctx.editMessageReplyMarkup({
+          reply_markup: buildBBTComparePeriodKeyboard(session.selectedPeriods),
+        });
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
+
+    // Confirmar períodos → seleccionar límite
+    if (data === "bbt_cmp_ctx_done") {
+      const session = bbtCmpSessionMap.get(userId);
+      if (!session || session.selectedPeriods.size === 0) {
+        await ctx.answerCallbackQuery({ text: "⚠️ Selecciona al menos un período" });
+        return;
+      }
+      session.step = "limit";
+      await ctx.answerCallbackQuery();
+      try {
+        await ctx.editMessageText(
+          `🔬 *Análisis Comparativo — Paso 3/3*\n\n` +
+          `¿Cuántos candidatos (Top N) quieres comparar por estrategia?`,
+          { parse_mode: "Markdown", reply_markup: buildBBTCompareLimitKeyboard() }
+        );
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
+
+    // Límite preset (5, 10, 20, 30)
+    if (data.startsWith("bbt_cmp_lim_") && data !== "bbt_cmp_lim_custom") {
+      const session = bbtCmpSessionMap.get(userId);
+      if (!session || session.step !== "limit") { await ctx.answerCallbackQuery(); return; }
+      const n = parseInt(data.slice("bbt_cmp_lim_".length), 10);
+      if (isNaN(n) || n <= 0) { await ctx.answerCallbackQuery(); return; }
+      session.limit = n;
+      await ctx.answerCallbackQuery({ text: `Top ${n} seleccionado` });
+      await runAndShowCmpResult(ctx, userId, session);
+      return;
+    }
+
+    // Límite personalizado (esperar texto)
+    if (data === "bbt_cmp_lim_custom") {
+      const session = bbtCmpSessionMap.get(userId);
+      if (!session || session.step !== "limit") { await ctx.answerCallbackQuery(); return; }
+      session.waitingCustomLimit = true;
+      waitingBBTCmpLimit.add(userId);
+      await ctx.answerCallbackQuery();
+      try {
+        await ctx.editMessageText(
+          `🔬 *Análisis Comparativo — Top N Personalizado*\n\n` +
+          `Escribe la cantidad de candidatos (1–100):`,
+          { parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("❌ Cancelar", "bbt_cmp_cancel") }
+        );
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
+
     // ── BallBackTest JSON Export ─────────────────────────────────────────────
     if (data === "bbt_export_json" && ctx.from && isOwner(ctx.from.id)) {
       const userId = ctx.from.id;
@@ -3030,6 +3246,24 @@ bot.on("message:text", async (ctx) => {
           .text("❌ Cancelar", "bbt_cancel"),
       }
     );
+    return;
+  }
+
+  // ── BBT Compare: entrada de límite personalizado (solo dueño) ───────────────
+  if (userId && isOwner(userId) && waitingBBTCmpLimit.has(userId)) {
+    const session = bbtCmpSessionMap.get(userId);
+    if (!session || !session.waitingCustomLimit) {
+      waitingBBTCmpLimit.delete(userId);
+      return;
+    }
+    const n = parseInt(text, 10);
+    if (isNaN(n) || n <= 0 || n > 100) {
+      await ctx.reply("❌ Ingresa un número válido entre 1 y 100.");
+      return;
+    }
+    session.limit = n;
+    session.waitingCustomLimit = false;
+    await runAndShowCmpResult(ctx, userId, session);
     return;
   }
 
