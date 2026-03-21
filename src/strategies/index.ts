@@ -23,6 +23,7 @@ import { cycleDetector } from "./cycle-detector.js";
 import { streakAnalysis } from "./streak-analysis.js";
 import { bayesianScore } from "./bayesian-score.js";
 import { unodostres } from "./unodostres.js";
+import { unodostresPlus } from "./unodostres-plus.js";
 import * as ballBacktest from "./ball-backtest.js";
 
 export type { DateDrawsMap, StrategyContext, StrategyDefinition, StrategyMapSource, StrategyPeriod } from "./types.js";
@@ -119,5 +120,6 @@ registerStrategy(cycleDetector);
 registerStrategy(streakAnalysis);
 registerStrategy(bayesianScore);
 registerStrategy(unodostres);
+registerStrategy(unodostresPlus);
 // —— Meta-estrategia (siempre al final) ——
 registerStrategy(consensusMulti);
