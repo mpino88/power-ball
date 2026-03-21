@@ -43,19 +43,39 @@ export interface StrategyDefinition {
 
 export const STRATEGY_CONTEXT_CALLBACK_PREFIX = "strat_";
 
-/** Parsea callback tipo strat_<menuId>_<p3|p4>_<m|e>. menuId puede contener _ (ej. max_per_week_day) o no (ej. unodostres). */
+/** 
+ * Parsea callback tipo strat_<menuId>_<p3|p4>_<m|e> o strat_<menuId>_<p3|p4>_<m|e>_<limit>.
+ * menuId puede contener _ (ej. max_per_week_day) o no (ej. unodostres).
+ * limit es opcional (10, 20, 30) para estrategias como unodostres_plus.
+ */
 export function parseStrategyContextCallback(data: string): { menuId: string; context: StrategyContext } | null {
   if (!data.startsWith(STRATEGY_CONTEXT_CALLBACK_PREFIX)) return null;
-  const rest = data.slice(STRATEGY_CONTEXT_CALLBACK_PREFIX.length);
+  const rest  = data.slice(STRATEGY_CONTEXT_CALLBACK_PREFIX.length);
   const parts = rest.split("_");
   if (parts.length < 3) return null;
-  const mapSource = parts[parts.length - 2];
-  const period = parts[parts.length - 1];
+
+  // Detectar sufijo numérico opcional (limit: 10, 20, 30...)
+  let limit: number | undefined;
+  let searchParts = parts;
+  const lastPart = parts[parts.length - 1];
+  if (lastPart && /^\d+$/.test(lastPart)) {
+    limit       = parseInt(lastPart, 10);
+    searchParts = parts.slice(0, -1);
+  }
+
+  if (searchParts.length < 3) return null;
+  const mapSource = searchParts[searchParts.length - 2];
+  const period    = searchParts[searchParts.length - 1];
   if (mapSource !== "p3" && mapSource !== "p4") return null;
   if (period !== "m" && period !== "e") return null;
-  const menuId = parts.slice(0, -2).join("_");
+  const menuId = searchParts.slice(0, -2).join("_");
+
   return {
     menuId,
-    context: { mapSource: mapSource as StrategyMapSource, period: period as StrategyPeriod },
+    context: {
+      mapSource: mapSource as StrategyMapSource,
+      period: period as StrategyPeriod,
+      ...(limit !== undefined ? { params: { limit } } : {}),
+    },
   };
 }
