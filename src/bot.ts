@@ -115,7 +115,7 @@ import {
 } from "./strategies/index.js";
 import { warmUpCandidateCache } from "./candidate-cache.js";
 
-import { filterMapByCutoff, getNextDrawResult, buildTestingVerificationBlock, mmddyyToDate, getStrategiesTopN, setStrategiesTopN } from "./strategies/utils.js";
+import { filterMapByCutoff, getNextDrawResult, buildTestingVerificationBlock, mmddyyToDate, getStrategiesTopN, getUserTopN, setUserTopN, runWithUserTopN } from "./strategies/utils.js";
 import { STRATEGY_CONTEXT_CALLBACK_PREFIX } from "./strategies/types.js";
 import {
   runConsensusAggregation,
@@ -507,10 +507,12 @@ async function runStrategyAndShowResult(
   await ctx.answerCallbackQuery({ text: "Calculando…" });
   const userId = ctx.from?.id;
   try {
-    const runPromise = runStrategy(menuId, context, {
-      getP3Map: () => getStrategyP3Map(userId),
-      getP4Map: () => getStrategyP4Map(userId),
-    });
+    const runPromise = runWithUserTopN(userId ?? 0, () =>
+      runStrategy(menuId, context, {
+        getP3Map: () => getStrategyP3Map(userId),
+        getP4Map: () => getStrategyP4Map(userId),
+      })
+    );
     const timeoutPromise = new Promise<string>((_, reject) => {
       setTimeout(() => reject(new Error("STRATEGY_TIMEOUT")), STRATEGY_RUN_TIMEOUT_MS);
     });
@@ -593,7 +595,9 @@ async function runStrategyAndShowResult(
             let candidates: number[] = [];
             if (strat?.getCandidates) {
               const filteredMap = isP3 ? await getStrategyP3Map(userId) : await getStrategyP4Map(userId);
-              candidates = await strat.getCandidates(context, filteredMap);
+              candidates = await runWithUserTopN(userId ?? 0, () =>
+                strat.getCandidates!(context, filteredMap)
+              );
             }
             const verifBlock = buildTestingVerificationBlock(nextResult, candidates, context);
             await ctx.reply(verifBlock, { parse_mode: "Markdown" });
@@ -1444,7 +1448,7 @@ bot.on("callback_query:data", async (ctx) => {
     // exactamente las estrategias asignadas al usuario (especialmente al dueño).
     await reloadConfigFromStorage();
     const result = "➕ *Estrategias*\n\nElige una estrategia o gestiona las tuyas:";
-    const keyboard = buildEstrategiasKeyboard(ctx.from?.id, mainKbDeps, getStrategiesTopN());
+    const keyboard = buildEstrategiasKeyboard(ctx.from?.id, mainKbDeps, getUserTopN(ctx.from?.id ?? 0));
     try {
       await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
     } catch (e) {
@@ -1603,8 +1607,8 @@ bot.on("callback_query:data", async (ctx) => {
     setHotThresholdDays: (n: number) => {
       if (n >= 1 && n <= 30) hotThresholdDays = n;
     },
-    getStrategiesTopN: () => getStrategiesTopN(),
-    setStrategiesTopN: (n: number) => setStrategiesTopN(n),
+    getStrategiesTopN: () => getUserTopN(0), // legacy — handlers usan userId explícito
+    setStrategiesTopN: (_n: number) => { /* no-op legacy */ },
     getP3Map,
     getP4Map,
     buildGroupStatsMessage: buildGroupStatsMessageFromStats,

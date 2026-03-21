@@ -24,6 +24,7 @@ import {
 } from "./keyboards.js";
 import { getHoyResult } from "../hoy-results.js";
 import { findWinningStrategies } from "../neuro-hit-engine.js";
+import { getUserTopN, setUserTopN } from "../strategies/utils.js";
 import { escapeMd } from "../security/callbacks.js";
 import { resolveLatestDraw } from "../draw-resolver.js";
 
@@ -36,7 +37,7 @@ export interface MenuHandlersDeps extends MainKeyboardDeps {
   ownerUserId?: number;
   getHotThresholdDays: () => number;
   setHotThresholdDays: (n: number) => void;
-  /** Control global de cuántos resultados se muestran por estrategia (sorteosParaAnalisis). */
+  /** @deprecated Configuración ahora es per-user (getUserTopN/setUserTopN). Mantenida por compatibilidad. */
   getStrategiesTopN: () => number;
   setStrategiesTopN: (n: number) => void;
   getP3Map: () => Promise<Record<string, { m?: number[]; e?: number[] }>>;
@@ -110,20 +111,22 @@ export async function handleMenuCallback(
     };
   }
 
-  // ── Top-N: resultados por estrategia (todos los usuarios) ─────────────────────────
+  // ── Top-N: resultados por estrategia (por usuario) ────────────────────────
   if (data === "topn_open") {
+    const current = getUserTopN(userId ?? 0);
     return {
-      result: buildTopNMenuMessage(deps.getStrategiesTopN()),
-      keyboard: buildTopNKeyboard(deps.getStrategiesTopN()),
+      result: buildTopNMenuMessage(current),
+      keyboard: buildTopNKeyboard(current),
     };
   }
   if (/^topn_set_\d+$/.test(data)) {
     const n = parseInt(data.replace("topn_set_", ""), 10);
-    deps.setStrategiesTopN(n);
-    await ctx.answerCallbackQuery({ text: `🔢 Resultados por estrategia: ${deps.getStrategiesTopN()}` });
+    if (userId) setUserTopN(userId, n);
+    const updated = getUserTopN(userId ?? 0);
+    await ctx.answerCallbackQuery({ text: `🔢 Resultados por estrategia: ${updated}` });
     return {
-      result: buildTopNMenuMessage(deps.getStrategiesTopN()),
-      keyboard: buildTopNKeyboard(deps.getStrategiesTopN()),
+      result: buildTopNMenuMessage(updated),
+      keyboard: buildTopNKeyboard(updated),
     };
   }
   // ── fin Top-N ──────────────────────────────────────────────────────────────
