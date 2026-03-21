@@ -228,6 +228,8 @@ export function buildTestingKeyboard(currentDate: string | null): InlineKeyboard
     .text("📈 Progresivo", "prog_open")
     .text("🚀 BallBackTest", "bbt_open")
     .row()
+    .text("🔬 Comparar Estrategias", "bbt_cmp_open")
+    .row()
     .text("◀️ Volver", "volver");
   return kb;
 }

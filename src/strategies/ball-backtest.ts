@@ -542,3 +542,195 @@ export function buildBBTResultMessage(result: BBTResult, strategyLabels: string[
   msg += `\n_Resultados basados en auditoría forense Bliss Systems._`;
   return msg;
 }
+
+// ── BBT Compare Mode ──────────────────────────────────────────────────────────
+
+/** Períodos disponibles en el modo comparativo, incluye P3 Ambos. */
+export const BBT_CMP_PERIODS = [
+  { id: "p3_m", label: "P3 ☀️ Mediodía" },
+  { id: "p3_e", label: "P3 🌙 Noche" },
+  { id: "p3_a", label: "P3 🌗 Ambos" },
+  { id: "p4_m", label: "P4 ☀️ Mediodía" },
+  { id: "p4_e", label: "P4 🌙 Noche" },
+] as const;
+
+export type BBTCmpPeriodId = (typeof BBT_CMP_PERIODS)[number]["id"];
+
+export interface BBTCompareSession {
+  step: "strategies" | "period" | "limit" | "running";
+  selectedIds: Set<string>;
+  selectedPeriods: Set<BBTCmpPeriodId>;
+  limit: number;
+  waitingCustomLimit: boolean;
+}
+
+export interface BBTCompareEntry {
+  stratId: string;
+  period: BBTCmpPeriodId;
+  candidates: number[];
+}
+
+export interface BBTCompareResult {
+  entries: BBTCompareEntry[];
+  limit: number;
+  selectedIds: string[];
+  selectedPeriods: BBTCmpPeriodId[];
+}
+
+// ── Teclados Compare ─────────────────────────────────────────────────────────
+
+export function buildBBTCompareStrategyKeyboard(
+  selectedIds: Set<string>,
+  selectableIds: string[]
+): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const id of selectableIds) {
+    const isSelected = selectedIds.has(id);
+    const label = id.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 22);
+    kb.text(`${isSelected ? "✅" : "⬜"} ${label}`, `bbt_cmp_st_${id}`).row();
+  }
+  if (selectedIds.size >= 2) {
+    kb.text(`▶️ Continuar (${selectedIds.size} estrategias)`, "bbt_cmp_st_done").row();
+  } else {
+    kb.text("⚠️ Selecciona mínimo 2 para comparar", "bbt_cmp_st_hint").row();
+  }
+  kb.text("❌ Cancelar", "bbt_cmp_cancel");
+  return kb;
+}
+
+export function buildBBTComparePeriodKeyboard(selected: Set<string>): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const opt of BBT_CMP_PERIODS) {
+    const isSelected = selected.has(opt.id);
+    kb.text(`${isSelected ? "✅" : "⬜"} ${opt.label}`, `bbt_cmp_ctx_${opt.id}`).row();
+  }
+  if (selected.size >= 1) {
+    kb.text(`▶️ Continuar (${selected.size} período(s))`, "bbt_cmp_ctx_done").row();
+  }
+  kb.text("❌ Cancelar", "bbt_cmp_cancel");
+  return kb;
+}
+
+export function buildBBTCompareLimitKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("5",  "bbt_cmp_lim_5")
+    .text("10", "bbt_cmp_lim_10")
+    .text("20", "bbt_cmp_lim_20")
+    .text("30", "bbt_cmp_lim_30")
+    .row()
+    .text("✏️ Personalizado", "bbt_cmp_lim_custom")
+    .row()
+    .text("❌ Cancelar", "bbt_cmp_cancel");
+}
+
+// ── Motor de comparación ─────────────────────────────────────────────────────
+
+export async function runBBTCompare(
+  selectedIds: string[],
+  selectedPeriods: BBTCmpPeriodId[],
+  limit: number,
+  getMap: (source: "p3" | "p4") => Promise<DateDrawsMap>,
+  getStrategyFn: (id: string) => StrategyDefinition | undefined
+): Promise<BBTCompareResult> {
+  const mapCache = new Map<string, DateDrawsMap>();
+  const cachedMap = async (source: "p3" | "p4"): Promise<DateDrawsMap> => {
+    if (!mapCache.has(source)) mapCache.set(source, await getMap(source));
+    return mapCache.get(source)!;
+  };
+
+  const entries: BBTCompareEntry[] = [];
+
+  for (const period of selectedPeriods) {
+    const [source, rawPeriod] = period.split("_") as ["p3" | "p4", string];
+    const ambos = rawPeriod === "a";
+    const finalPeriod: "m" | "e" = ambos ? "m" : (rawPeriod as "m" | "e");
+    const map = await cachedMap(source);
+
+    for (const stratId of selectedIds) {
+      const strat = getStrategyFn(stratId);
+      if (!strat?.getCandidates) continue;
+
+      const ctx: StrategyContext = {
+        mapSource: source,
+        period: finalPeriod,
+        params: ambos ? { ambos: true, limit } : { limit },
+      };
+
+      const candidates = (await strat.getCandidates(ctx, map)).slice(0, limit);
+      entries.push({ stratId, period, candidates });
+    }
+  }
+
+  return { entries, limit, selectedIds, selectedPeriods };
+}
+
+// ── Formateador del resultado ─────────────────────────────────────────────────
+
+export function buildBBTCompareResultMessage(
+  result: BBTCompareResult,
+  getLabel: (id: string) => string
+): string {
+  const { entries, limit, selectedIds, selectedPeriods } = result;
+
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const PERIOD_LABEL: Record<string, string> = {
+    p3_m: "P3 ☀️ Mediodía",
+    p3_e: "P3 🌙 Noche",
+    p3_a: "P3 🌗 Ambos",
+    p4_m: "P4 ☀️ Mediodía",
+    p4_e: "P4 🌙 Noche",
+  };
+
+  const stratLabels = selectedIds.map(getLabel);
+  const lines: string[] = [
+    `🔬 *Análisis Comparativo — Top ${limit}*`,
+    `Estrategias: ${stratLabels.join(", ")}`,
+    "",
+  ];
+
+  for (const period of selectedPeriods) {
+    const periodEntries = entries.filter((e) => e.period === period);
+    if (periodEntries.length === 0) continue;
+
+    lines.push(`━━━ *${PERIOD_LABEL[period] ?? period}* ━━━`);
+
+    // Candidatos por estrategia
+    for (const entry of periodEntries) {
+      const label = getLabel(entry.stratId).slice(0, 16).padEnd(16);
+      lines.push(`*${label}:* \`${entry.candidates.map(pad).join(" ")}\``);
+    }
+
+    // Consenso (intersección de todas las estrategias en este período)
+    if (periodEntries.length >= 2) {
+      let shared = new Set(periodEntries[0]!.candidates);
+      for (const e of periodEntries.slice(1)) {
+        shared = new Set(e.candidates.filter((x) => shared.has(x)));
+      }
+      const sharedArr = [...shared];
+      lines.push(
+        `✅ *Consenso (${sharedArr.length}/${limit}):* ` +
+        (sharedArr.length ? `\`${sharedArr.map(pad).join(" ")}\`` : "—")
+      );
+
+      // Exclusivos por estrategia
+      for (const entry of periodEntries) {
+        const others = new Set(
+          periodEntries.filter((e) => e.stratId !== entry.stratId).flatMap((e) => e.candidates)
+        );
+        const only = entry.candidates.filter((x) => !others.has(x));
+        if (only.length > 0) {
+          const lbl = getLabel(entry.stratId).slice(0, 10);
+          lines.push(`   _Solo ${lbl}:_ \`${only.map(pad).join(" ")}\``);
+        }
+      }
+    }
+
+    lines.push("");
+  }
+
+  lines.push(`_Motor: Fibonacci Resonance — datos reales Florida Lottery_`);
+
+  // Telegram limit safe
+  const full = lines.join("\n").trimEnd();
+  return full.length > 4000 ? full.slice(0, 3990) + "\n\n_… (recortado)_" : full;
+}
