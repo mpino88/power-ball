@@ -22,7 +22,7 @@
 
 import type { StrategyContext, StrategyDefinition, DateDrawsMap } from "./types.js";
 import { buildDefaultContextKeyboard, getDefaultContextMessage } from "./context-menu.js";
-import { mmddyyToDate, truncateMsg, validDateKeys, p3Positions, p4Pairs, DAY_NAMES, MONTH_NAMES, getDateRangeStr } from "./utils.js";
+import { mmddyyToDate, truncateMsg, validDateKeys, p3Positions, p4Pairs, DAY_NAMES, MONTH_NAMES, getDateRangeStr, getStrategiesTopN } from "./utils.js";
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -315,7 +315,7 @@ function analyzeP4(map: DateDrawsMap, period: "m" | "e"): string {
   for (let pi = 0; pi < 2; pi++) {
     // Pair-level stats (00-99)
     const pairStatsMap = buildStats(pairEvents[pi]!, 99);
-    const pairRows = toPairRows(pairStatsMap, today).slice(0, 12);
+    const pairRows = toPairRows(pairStatsMap, today).slice(0, getStrategiesTopN());
     const pairTotal = pairEvents[pi]!.length;
 
     // Decena stats (0-9)
@@ -428,7 +428,7 @@ export const positionalAnalysis: StrategyDefinition = {
 
       return [...scores.entries()]
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 20)
+        .slice(0, getStrategiesTopN())
         .map(([num]) => num);
     } else {
       // P4: collect pair events per slot (pairIdx 0=AB, 1=CD)
@@ -453,7 +453,7 @@ export const positionalAnalysis: StrategyDefinition = {
       }
       return [...combined.entries()]
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 20)
+        .slice(0, getStrategiesTopN())
         .map(([num]) => num);
     }
   },

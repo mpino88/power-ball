@@ -17,6 +17,7 @@ import {
   sortDateKeys,
   getDateRangeStr,
   mmddyyToDate,
+  getStrategiesTopN,
 } from "./utils.js";
 
 // ── Parámetros del modelo ────────────────────────────────────────────────────
@@ -288,14 +289,14 @@ export const unodostresPlus: StrategyDefinition = {
   buildContextKeyboard: buildPlusContextKeyboard,
 
   async run(context: StrategyContext, map: DateDrawsMap): Promise<string> {
-    const limit  = typeof context.params?.limit === "number" ? context.params.limit : 20;
+    const limit  = typeof context.params?.limit === "number" ? context.params.limit : getStrategiesTopN();
     const ambos  = !!context.params?.ambos;
     const result = computeFibStats(map, context.period, ambos, context.mapSource);
     return formatMessage(result, context.mapSource, context.period, ambos, limit);
   },
 
   async getCandidates(context: StrategyContext, map: DateDrawsMap): Promise<number[]> {
-    const limit  = typeof context.params?.limit === "number" ? context.params.limit : 20;
+    const limit  = typeof context.params?.limit === "number" ? context.params.limit : getStrategiesTopN();
     const ambos  = !!context.params?.ambos;
     const { stats } = computeFibStats(map, context.period, ambos, context.mapSource);
     return stats

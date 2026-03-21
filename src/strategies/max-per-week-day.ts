@@ -7,7 +7,7 @@
 import type { StrategyContext, StrategyDefinition } from "./types.js";
 import type { DateDrawsMap } from "./types.js";
 import { buildDefaultContextKeyboard, getDefaultContextMessage } from "./context-menu.js";
-import { twoDigitNumbers, getDateRangeStr } from "./utils.js";
+import { twoDigitNumbers, getDateRangeStr, getStrategiesTopN } from "./utils.js";
 
 /** Día de la semana: 0=Dom, 1=Lun, …, 6=Sáb. */
 type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -75,15 +75,15 @@ function computeCounts(map: DateDrawsMap, period: "m" | "e", mapSource: "p3" | "
   return count;
 }
 
-/** Top 10 por día. */
-function getTop10PerDay(result: CountMap, day: DayOfWeek): { num: number; count: number }[] {
+/** Top N por día (N = getStrategiesTopN()). */
+function getTopNPerDay(result: CountMap, day: DayOfWeek): { num: number; count: number }[] {
   const items: { num: number; count: number }[] = [];
   for (let n = 0; n < 100; n++) {
     const c = result.get(n)?.get(day) ?? 0;
     if (c > 0) items.push({ num: n, count: c });
   }
   items.sort((a, b) => b.count - a.count);
-  return items.slice(0, 10);
+  return items.slice(0, getStrategiesTopN());
 }
 
 /** Un solo mensaje con bloques separados: L Ma Mi | J | V S D para distinguir bien la data. */
@@ -97,12 +97,12 @@ function formatMessage(result: CountMap, mapSource: "p3" | "p4", period: "m" | "
     `📊 *Más salidores x día de la semana* — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr}`,
     "",
-    "📖 _Qué mide:_ te dice directamente cuáles son los 10 números favoritos de cada día de la semana\\.",
+    `📖 _Qué mide:_ te dice directamente cuáles son los ${getStrategiesTopN()} números favoritos de cada día de la semana\\.`,
     "Formato _##\\(n\\)_ = número y veces que salió ese día · L=Lun · Ma=Mar · Mi=Mié · J=Jue · V=Vie · S=Sáb · D=Dom",
     "→ Enfócate en la columna del día que corresponde al PRÓXIMO sorteo estimado",
     "",
     "```",
-    "Top 10 por día (formato #(count))",
+    `Top ${getStrategiesTopN()} por día (formato #(count))`,
   ];
 
   const dayToHeader: Record<DayOfWeek, string> = { 0: "D", 1: "L", 2: "Ma", 3: "Mi", 4: "J", 5: "V", 6: "S" };
@@ -111,11 +111,11 @@ function formatMessage(result: CountMap, mapSource: "p3" | "p4", period: "m" | "
     const sep = "─".repeat(block.length * (W_CELL + 1) - 1);
     lines.push(headers);
     lines.push(sep);
-    for (let row = 0; row < 10; row++) {
+    for (let row = 0; row < getStrategiesTopN(); row++) {
       const cells: string[] = [];
       for (const day of block) {
-        const top10 = getTop10PerDay(result, day);
-        const item = top10[row];
+        const topN = getTopNPerDay(result, day);
+        const item = topN[row];
         cells.push(item ? cell(item.num, item.count) : "".padEnd(W_CELL));
       }
       lines.push(cells.join(" "));
@@ -152,6 +152,6 @@ export const maxPerWeekDay: StrategyDefinition = {
     const latestDate = latestKey ? mmddyyToDate(latestKey) : null;
     const nextDate = latestDate ? new Date(latestDate.getTime() + 86_400_000) : new Date();
     const targetDay = nextDate.getDay() as DayOfWeek;
-    return getTop10PerDay(counts, targetDay).map((item) => item.num);
+    return getTopNPerDay(counts, targetDay).map((item) => item.num);
   },
 };

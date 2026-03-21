@@ -14,7 +14,11 @@ import {
   buildIndividualPeriodKeyboard,
   buildDiasDiferenciaKeyboard,
   buildDiasDiferenciaKeyboardIndividual,
+  buildEstrategiasKeyboard,
+  buildTopNKeyboard,
+  buildTopNMenuMessage,
   CONSULTAR_DATOS_CALLBACK,
+  ESTRATEGIAS_OPEN_CALLBACK,
   buildMainMenuMessage,
   type MainKeyboardDeps,
 } from "./keyboards.js";
@@ -32,6 +36,9 @@ export interface MenuHandlersDeps extends MainKeyboardDeps {
   ownerUserId?: number;
   getHotThresholdDays: () => number;
   setHotThresholdDays: (n: number) => void;
+  /** Control global de cuántos resultados se muestran por estrategia (sorteosParaAnalisis). */
+  getStrategiesTopN: () => number;
+  setStrategiesTopN: (n: number) => void;
   getP3Map: () => Promise<Record<string, { m?: number[]; e?: number[] }>>;
   getP4Map: () => Promise<Record<string, { m?: number[]; e?: number[] }>>;
   buildGroupStatsMessage: (
@@ -102,6 +109,24 @@ export async function handleMenuCallback(
       keyboard: mainKb(),
     };
   }
+
+  // ── Top-N: resultados por estrategia (todos los usuarios) ─────────────────────────
+  if (data === "topn_open") {
+    return {
+      result: buildTopNMenuMessage(deps.getStrategiesTopN()),
+      keyboard: buildTopNKeyboard(deps.getStrategiesTopN()),
+    };
+  }
+  if (/^topn_set_\d+$/.test(data)) {
+    const n = parseInt(data.replace("topn_set_", ""), 10);
+    deps.setStrategiesTopN(n);
+    await ctx.answerCallbackQuery({ text: `🔢 Resultados por estrategia: ${deps.getStrategiesTopN()}` });
+    return {
+      result: buildTopNMenuMessage(deps.getStrategiesTopN()),
+      keyboard: buildTopNKeyboard(deps.getStrategiesTopN()),
+    };
+  }
+  // ── fin Top-N ──────────────────────────────────────────────────────────────
 
   if (data === CONSULTAR_DATOS_CALLBACK) {
     return {

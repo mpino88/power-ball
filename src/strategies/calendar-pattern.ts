@@ -23,6 +23,7 @@ import {
   DAY_NAMES,
   MONTH_NAMES,
   getDateRangeStr,
+  getStrategiesTopN,
 } from "./utils.js";
 
 type CountMap = Map<number, number>;
@@ -84,7 +85,7 @@ function computeCalendarPatterns(
   return { byDow, byMonth, byDom, byDowMonth, latestDateStr, latestDate };
 }
 
-function topN(cmap: CountMap, n: number): { num: number; count: number }[] {
+function topItems(cmap: CountMap, n: number): { num: number; count: number }[] {
   const items: { num: number; count: number }[] = [];
   for (const [num, count] of cmap.entries()) {
     if (count > 0) items.push({ num, count });
@@ -146,29 +147,29 @@ function formatMessage(
     const month = nextDate.getMonth() + 1;
     const dom = nextDate.getDate();
     const dmKey = `${dow}_${month}`;
+    const n = getStrategiesTopN();
 
-    // Most specific: (day-of-week, month) combo
     section(
       `${DAY_NAMES[dow]}S DE ${MONTH_NAMES[month - 1].toUpperCase()} (combinación exacta):`,
-      topN(byDowMonth.get(dmKey) ?? new Map(), 10),
+      topItems(byDowMonth.get(dmKey) ?? new Map(), n),
       lines
     );
 
     section(
       `${DAY_NAMES[dow]}S EN GENERAL:`,
-      topN(byDow.get(dow) ?? new Map(), 10),
+      topItems(byDow.get(dow) ?? new Map(), n),
       lines
     );
 
     section(
       `MES DE ${MONTH_NAMES[month - 1].toUpperCase()} EN GENERAL:`,
-      topN(byMonth.get(month) ?? new Map(), 10),
+      topItems(byMonth.get(month) ?? new Map(), n),
       lines
     );
 
     section(
       `DÍA ${dom} DE CADA MES:`,
-      topN(byDom.get(dom) ?? new Map(), 10),
+      topItems(byDom.get(dom) ?? new Map(), n),
       lines
     );
   }
@@ -199,7 +200,8 @@ export const calendarPattern: StrategyDefinition = {
     const dom = nextDate.getDate();
     const dmKey = `${dow}_${month}`;
 
-    const pickTop = (cmap: Map<number, number>, n: number): number[] =>
+    const n = getStrategiesTopN();
+    const pickTop = (cmap: Map<number, number>): number[] =>
       [...cmap.entries()]
         .filter(([, c]) => c > 0)
         .sort((a, b) => b[1] - a[1])
@@ -209,16 +211,16 @@ export const calendarPattern: StrategyDefinition = {
     const seen = new Set<number>();
     const result: number[] = [];
     for (const num of [
-      ...pickTop(byDowMonth.get(dmKey) ?? new Map(), 10),
-      ...pickTop(byDow.get(dow) ?? new Map(), 10),
-      ...pickTop(byMonth.get(month) ?? new Map(), 10),
-      ...pickTop(byDom.get(dom) ?? new Map(), 10),
+      ...pickTop(byDowMonth.get(dmKey) ?? new Map()),
+      ...pickTop(byDow.get(dow) ?? new Map()),
+      ...pickTop(byMonth.get(month) ?? new Map()),
+      ...pickTop(byDom.get(dom) ?? new Map()),
     ]) {
       if (!seen.has(num)) {
         seen.add(num);
         result.push(num);
       }
     }
-    return result.slice(0, 20);
+    return result.slice(0, n);
   },
 };

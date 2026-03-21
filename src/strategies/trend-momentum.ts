@@ -18,7 +18,7 @@
 
 import type { StrategyContext, StrategyDefinition, DateDrawsMap } from "./types.js";
 import { buildDefaultContextKeyboard, getDefaultContextMessage } from "./context-menu.js";
-import { twoDigitNumbers, truncateMsg, validDateKeys, getDateRangeStr } from "./utils.js";
+import { twoDigitNumbers, truncateMsg, validDateKeys, getDateRangeStr, getStrategiesTopN } from "./utils.js";
 
 const RECENT_WINDOW = 30;
 
@@ -95,15 +95,17 @@ function formatMessage(
   const mapLabel = mapSource === "p3" ? "P3 (Fijos)" : "P4 (Corridos)";
 
   // Rising: filter out noise (need at least 3 historical appearances)
+  const topN = getStrategiesTopN();
+
   const rising = [...stats]
     .filter((s) => s.countAll >= 3)
     .sort((a, b) => b.momentum - a.momentum)
-    .slice(0, 15);
+    .slice(0, topN);
 
   const falling = [...stats]
     .filter((s) => s.countAll >= 5)
     .sort((a, b) => a.momentum - b.momentum)
-    .slice(0, 10);
+    .slice(0, topN);
 
   const momentumLabel = (m: number) => {
     if (m >= 3.0) return "↑↑↑";
@@ -122,7 +124,7 @@ function formatMessage(
     "→ ↑↑↑ ≥3x alza fuerte · ↑↑ ≥1\\.5x alza · ↓ en baja · Complementa al Análisis de Frecuencia",
     "",
     "```",
-    "📈 TOP 15 EN ALZA",
+    `📈 TOP ${topN} EN ALZA`,
     "Num  Rec.   Hist.   Moment.",
     "────────────────────────────",
   ];
@@ -137,7 +139,7 @@ function formatMessage(
   }
 
   lines.push("");
-  lines.push("📉 TOP 10 EN BAJA");
+  lines.push(`📉 TOP ${topN} EN BAJA`);
   lines.push("Num  Rec.   Hist.   Moment.");
   lines.push("────────────────────────────");
 
@@ -172,7 +174,7 @@ export const trendMomentum: StrategyDefinition = {
     return stats
       .filter((s) => s.countAll >= 3 && s.momentum >= 1.0)
       .sort((a, b) => b.momentum - a.momentum)
-      .slice(0, 20)
+      .slice(0, getStrategiesTopN())
       .map((s) => s.num);
   },
 };

@@ -115,7 +115,7 @@ import {
 } from "./strategies/index.js";
 import { warmUpCandidateCache } from "./candidate-cache.js";
 
-import { filterMapByCutoff, getNextDrawResult, buildTestingVerificationBlock, mmddyyToDate } from "./strategies/utils.js";
+import { filterMapByCutoff, getNextDrawResult, buildTestingVerificationBlock, mmddyyToDate, getStrategiesTopN, setStrategiesTopN } from "./strategies/utils.js";
 import { STRATEGY_CONTEXT_CALLBACK_PREFIX } from "./strategies/types.js";
 import {
   runConsensusAggregation,
@@ -1429,7 +1429,7 @@ bot.on("callback_query:data", async (ctx) => {
     // exactamente las estrategias asignadas al usuario (especialmente al dueño).
     await reloadConfigFromStorage();
     const result = "➕ *Estrategias*\n\nElige una estrategia o gestiona las tuyas:";
-    const keyboard = buildEstrategiasKeyboard(ctx.from?.id, mainKbDeps);
+    const keyboard = buildEstrategiasKeyboard(ctx.from?.id, mainKbDeps, getStrategiesTopN());
     try {
       await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
     } catch (e) {
@@ -1588,6 +1588,8 @@ bot.on("callback_query:data", async (ctx) => {
     setHotThresholdDays: (n: number) => {
       if (n >= 1 && n <= 30) hotThresholdDays = n;
     },
+    getStrategiesTopN: () => getStrategiesTopN(),
+    setStrategiesTopN: (n: number) => setStrategiesTopN(n),
     getP3Map,
     getP4Map,
     buildGroupStatsMessage: buildGroupStatsMessageFromStats,

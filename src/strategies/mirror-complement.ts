@@ -29,6 +29,7 @@ import {
   truncateMsg,
   validDateKeys,
   getDateRangeStr,
+  getStrategiesTopN,
 } from "./utils.js";
 
 /** Espejo: invierte los dígitos de un número 00-99. 47 → 74, 30 → 03. */
@@ -227,7 +228,7 @@ function formatMessage(
   const allRels = [...relations.values()]
     .filter((r) => r.timesSourceSeen >= 5)
     .sort((a, b) => b.pct3 - a.pct3)
-    .slice(0, 15);
+    .slice(0, getStrategiesTopN());
 
   for (const rel of allRels) {
     const sn = String(rel.source).padStart(2, "0");
@@ -284,13 +285,13 @@ export const mirrorComplement: StrategyDefinition = {
       return [...relations.values()]
         .filter((r) => r.timesSourceSeen >= 5)
         .sort((a, b) => b.pct3 - a.pct3)
-        .slice(0, 20)
+        .slice(0, getStrategiesTopN())
         .map((r) => r.target);
     }
 
     return [...scores.entries()]
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 20)
+      .slice(0, getStrategiesTopN())
       .map(([n]) => n);
   },
 };

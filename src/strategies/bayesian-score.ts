@@ -37,6 +37,7 @@ import {
   truncateMsg,
   validDateKeys,
   getDateRangeStr,
+  getStrategiesTopN,
 } from "./utils.js";
 
 const RECENT_WINDOW = 30;
@@ -282,7 +283,7 @@ function formatMessage(
 
   const ranked = [...vectors.entries()]
     .sort((a, b) => b[1].score - a[1].score)
-    .slice(0, 20);
+    .slice(0, getStrategiesTopN());
 
   const scoreBar = (val: number): string => {
     const filled = Math.round(val * 5);
@@ -344,7 +345,7 @@ export const bayesianScore: StrategyDefinition = {
     const { vectors } = computeBayesianScores(map, context.period, context.mapSource);
     return [...vectors.entries()]
       .sort((a, b) => b[1].score - a[1].score)
-      .slice(0, 20)
+      .slice(0, getStrategiesTopN())
       .map(([num]) => num);
   },
 };

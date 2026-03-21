@@ -139,7 +139,8 @@ export function computeStatsCombined(
 }
 
 export function getTop10HottestIndividual(
-  stats: GroupGap[]
+  stats: GroupGap[],
+  limit = 10
 ): { num: number; maxGapDays: number; currentGapDays: number }[] {
   const withCur: { num: number; maxGapDays: number; currentGapDays: number }[] = [];
   for (let n = 0; n < 100; n++) {
@@ -148,7 +149,7 @@ export function getTop10HottestIndividual(
       withCur.push({ num: n, maxGapDays: s.maxGapDays, currentGapDays: s.currentGapDays });
   }
   withCur.sort((a, b) => a.maxGapDays - a.currentGapDays - (b.maxGapDays - b.currentGapDays));
-  return withCur.slice(0, 10);
+  return withCur.slice(0, limit);
 }
 
 const PERIOD_LABEL: Record<StatsPeriod, string> = {
@@ -159,10 +160,11 @@ const PERIOD_LABEL: Record<StatsPeriod, string> = {
 export function buildIndividualTop10Message(
   map: DateDrawsMapStats,
   diasDiferencia: number,
-  period: StatsPeriod
+  period: StatsPeriod,
+  limit = 10
 ): string {
   const { individual: stats } = computeStatsCombined(map, period);
-  const top10 = getTop10HottestIndividual(stats);
+  const top10 = getTop10HottestIndividual(stats, limit);
   const W_NUM = 6;
   const W_MAX = 10;
   const W_ACT = 10;
@@ -181,7 +183,7 @@ export function buildIndividualTop10Message(
   const header =
     "Número".padEnd(W_NUM) + "Máx.hist".padStart(W_MAX) + "Máx.actual".padStart(W_ACT) + "Cercanía".padStart(W_HOT);
   const lines: string[] = [
-    `📈 *Top 10 más Hot* — ${PERIOD_LABEL[period]} (2 últimos dígitos P3)\n`,
+    `📈 *Top ${limit} más Hot* — ${PERIOD_LABEL[period]} (2 últimos dígitos P3)\n`,
     "```",
     header,
     sep,
