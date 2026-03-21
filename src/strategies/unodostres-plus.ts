@@ -256,13 +256,14 @@ function formatMessage(
 function buildPlusContextKeyboard(menuId: string): InlineKeyboard {
   const pre = `${STRATEGY_CONTEXT_CALLBACK_PREFIX}${menuId}_`;
   return new InlineKeyboard()
-    .text("P3 ☀️ Medio", `${pre}p3_m`)
-    .text("P3 🌙 Noche", `${pre}p3_e`)
-    .text("P3 🌗 Ambos", `${pre}p3_a`)
+    // P3 (Fijo): tiene la opción exclusiva de Ambos (M+E)
+    .text("P3 ☀️ Mediodía", `${pre}p3_m`)
+    .text("P3 🌙 Noche",    `${pre}p3_e`)
+    .text("P3 🌗 Ambos",   `${pre}p3_a`)
     .row()
-    .text("P4 ☀️ Medio", `${pre}p4_m`)
-    .text("P4 🌙 Noche", `${pre}p4_e`)
-    .text("P4 🌗 Ambos", `${pre}p4_a`)
+    // P4 (Corrido): solo Mediodía o Noche
+    .text("P4 ☀️ Mediodía", `${pre}p4_m`)
+    .text("P4 🌙 Noche",    `${pre}p4_e`)
     .row()
     .text("◀️ Volver", "volver");
 }
@@ -271,7 +272,9 @@ function getPlusContextMessage(menuLabel: string, description?: string): string 
   const desc = description ? `_${description}_\n\n` : "";
   return (
     `✨ *${menuLabel}*\n\n${desc}` +
-    `Selecciona una base de datos y un periodo. A continuación el sistema te solicitará escribir la cantidad de resultados deseados.`
+    `Selecciona la base de conocimiento y el período de análisis.\n` +
+    `_P3 incluye la opción exclusiva 🌗 Ambos para analizar Mediodía \+ Noche como una única secuencia._\n\n` +
+    `A continuación el sistema te solicitará la cantidad de candidatos deseados.`
   );
 }
 
@@ -285,7 +288,7 @@ export const unodostresPlus: StrategyDefinition = {
   buildContextKeyboard: buildPlusContextKeyboard,
 
   async run(context: StrategyContext, map: DateDrawsMap): Promise<string> {
-    const limit  = typeof context.params?.limit === "number" ? context.params.limit : 20; // Default 20 igual que original
+    const limit  = typeof context.params?.limit === "number" ? context.params.limit : 20;
     const ambos  = !!context.params?.ambos;
     const result = computeFibStats(map, context.period, ambos, context.mapSource);
     return formatMessage(result, context.mapSource, context.period, ambos, limit);

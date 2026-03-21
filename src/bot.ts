@@ -823,7 +823,7 @@ bot.command("start", async (ctx) => {
     const { buildAnnouncementsBanner } = await import("./announcements.js");
     announcementBanner = buildAnnouncementsBanner(annItems);
   }
-  
+
   const [p3, p4] = await Promise.all([getP3Map(), getP4Map()]);
   const { getHoyResult } = await import("./hoy-results.js");
   const recentDrawsText = buildRecentDrawsDisplay(p3, p4, getTodayFloridaMMDDYY(), getYesterdayFloridaMMDDYY(), getHoyResult());
@@ -2774,7 +2774,7 @@ bot.on("message:text", async (ctx) => {
       await ctx.reply("Operación cancelada.", { reply_markup: buildMainKb(userId) });
       return;
     }
-    
+
     const limit = parseInt(text, 10);
     if (isNaN(limit) || limit <= 0 || limit > 100) {
       await ctx.reply("❌ Por favor escribe un número válido entre 1 y 100.");
@@ -2783,11 +2783,11 @@ bot.on("message:text", async (ctx) => {
 
     waitingPlusLimit.delete(userId);
     session.context.params = { ...session.context.params, limit };
-    
+
     // Ejecutar asíncronamente con un wrapper ctx falso que responde en el mismo chat
     const fakeCtx = {
       from: { id: userId },
-      answerCallbackQuery: async () => {}, // Noop para un msg
+      answerCallbackQuery: async () => { }, // Noop para un msg
       editMessageText: async (msgText: string, opts?: object) => {
         await ctx.reply(msgText, opts as any);
       },
@@ -2795,7 +2795,7 @@ bot.on("message:text", async (ctx) => {
         await ctx.reply(msgText, opts as any);
       }
     };
-    
+
     await runStrategyAndShowResult(fakeCtx, session.menuId, session.context);
     return;
   }
