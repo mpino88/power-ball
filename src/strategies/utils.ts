@@ -3,29 +3,58 @@
  * y ordenamiento cronológico de claves del mapa de conocimientos.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { DateDrawsMap, StrategyContext, StrategyMapSource, StrategyPeriod } from "./types.js";
 
 /**
  * ──────────────────────────────────────────────────────────────────────────────
- * CONFIGURACIÓN GLOBAL DE ESTRATEGIAS — sorteosParaAnalisis
+ * CONFIGURACIÓN POR USUARIO — sorteosParaAnalisis
  * ──────────────────────────────────────────────────────────────────────────────
- * Controla cuántos candidatos retorna `getCandidates()` y cuántas filas
- * muestra la tabla de resultados en TODAS las estrategias.
- * Modificable en runtime desde el menú "Resultados por estrategia".
- * Rango válido: 5–30. Default: 15.
+ * Cada usuario tiene su propio valor de TopN (5–30, default 15).
+ * Las estrategias llaman getStrategiesTopN() sin conocer al usuario —
+ * AsyncLocalStorage les entrega automáticamente el valor del usuario activo.
+ * Antes de ejecutar cualquier estrategia, envolver con runWithUserTopN(userId, fn).
  * ──────────────────────────────────────────────────────────────────────────────
  */
 export const DEFAULT_STRATEGIES_TOP_N = 15;
-let _strategiesTopN: number = DEFAULT_STRATEGIES_TOP_N;
 
-/** Retorna el número actual de candidatos / filas por estrategia. */
+/** Mapa userId → topN configurado por ese usuario. */
+const _userTopNMap = new Map<number, number>();
+
+/** AsyncLocalStorage que inyecta el topN del usuario activo en el call stack. */
+const _topNStorage = new AsyncLocalStorage<number>();
+
+/**
+ * Retorna el topN vigente para la ejecución actual.
+ * Si se está dentro de runWithUserTopN, devuelve el valor del usuario.
+ * Si no (ej. arranque, contextos sin usuario), devuelve el default.
+ */
 export function getStrategiesTopN(): number {
-  return _strategiesTopN;
+  return _topNStorage.getStore() ?? DEFAULT_STRATEGIES_TOP_N;
 }
 
-/** Actualiza el número de candidatos / filas. Rango válido: 5–30. */
+/** Retorna el topN configurado por un usuario específico. */
+export function getUserTopN(userId: number): number {
+  return _userTopNMap.get(userId) ?? DEFAULT_STRATEGIES_TOP_N;
+}
+
+/** Persiste el topN elegido por un usuario. Rango válido: 5–30. */
+export function setUserTopN(userId: number, n: number): void {
+  if (n >= 5 && n <= 30) _userTopNMap.set(userId, n);
+}
+
+/**
+ * Ejecuta `fn` dentro de un contexto AsyncLocalStorage con el topN del usuario.
+ * Las estrategias llamadas dentro de `fn` recibirán el topN correcto vía getStrategiesTopN().
+ */
+export function runWithUserTopN<T>(userId: number, fn: () => Promise<T>): Promise<T> {
+  return _topNStorage.run(getUserTopN(userId), fn);
+}
+
+// ── Alias de compatibilidad (mantiene firma vieja, opera sobre el default) ─────
+/** @deprecated Usar setUserTopN(userId, n). Solo usado como fallback interno. */
 export function setStrategiesTopN(n: number): void {
-  if (n >= 5 && n <= 30) _strategiesTopN = n;
+  // no-op: la configuración ahora es por usuario
 }
 
 /** Convierte clave "MM/DD/YY" a Date. Retorna null si el formato es inválido. */
