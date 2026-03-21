@@ -518,7 +518,19 @@ Score final: `0.1 + α * W(díasDesdÚltima) + β * (apariciones / maxAparicione
 
 ---
 
-### 8.18 Consenso Multi-Estrategia (`consensus_multi`)
+### 8.18 Resonancia Fibonacci PLUS (`unodostres_plus`)
+
+**Método**: Variante exacta del algoritmo de resonancia Fibonacci (1-2-3), con mejoras de UI/UX y límite dinámico.
+
+**Diferencias con la estrategia original**:
+- El menú contextual permite especificar si retornar un `Top 10`, `Top 20` o `Top 30` de candidatos.
+- El formato de respuesta oculta el `Score` y `FibScore` para evitar disonancia cognitiva, presentando una interfaz visual extremadamente limpia.
+- Agrupa de forma explícita los candidatos según la fase en que se encuentra el ciclo: 🔴 CICLO MAYOR, 🟡 EXPANSIÓN, 🟢 CORTO PLAZO.
+- Identical al motor base en cuanto al score final por lo que respeta exactamente los mismos ganadores.
+
+---
+
+### 8.19 Consenso Multi-Estrategia (`consensus_multi`)
 
 **Método**: Agregación por votación binaria.
 

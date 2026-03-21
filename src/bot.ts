@@ -710,6 +710,14 @@ const BUILT_IN_STRATEGIES: Array<{ id: string; label: string; description: strin
     createdBy: 728711697,
   },
   {
+    id: "unodostres_plus",
+    label: "UNODOSTRES+ (Finobacci Plus)",
+    description:
+      "Garantiza Resonancia Fibonacci mejorada y simplificada visualmente. Detecta números en su pico cíclico. Permite Top 10, 20 o 30. Muestra candidatos en fases de alerta (Mayor, Expansión, Corto Plazo). P3/P4 · Día/Noche",
+    createdBy: 728711697,
+  },
+
+  {
     id: "consensus_multi",
     label: "Consenso Multi-Estrategia",
     description:
