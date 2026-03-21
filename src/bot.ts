@@ -369,6 +369,21 @@ const STRATEGY_RUN_TIMEOUT_MS = 90_000;
 /** Contexto por defecto al abrir una estrategia desde el menú (P3 Mediodía). */
 const DEFAULT_STRATEGY_CONTEXT: StrategyContext = { mapSource: "p3", period: "m" };
 
+/**
+ * Convierte un Set de IDs de contexto BBT ("p3_m", "p3_e", "p3_a", "p4_m", "p4_e")
+ * a StrategyContext[]. El caso especial "p3_a" / "p4_a" produce un contexto con
+ * period="m" + params.ambos=true, que activa el modo Ambos en estrategias que lo soporten.
+ */
+function bbtContextsFromSet(selected: Set<string>): StrategyContext[] {
+  return [...selected].map(cid => {
+    const parts = cid.split("_");
+    const ms = parts[0] as "p3" | "p4";
+    const p  = parts[1]!;
+    if (p === "a") return { mapSource: ms, period: "m" as const, params: { ambos: true } };
+    return { mapSource: ms, period: p as "m" | "e" };
+  });
+}
+
 /** Ejecuta el motor de comparación y muestra el resultado al owner. */
 async function runAndShowCmpResult(
   ctx: { reply: (text: string, opts?: object) => Promise<unknown> },
@@ -2194,10 +2209,7 @@ bot.on("callback_query:data", async (ctx) => {
             session.selectedIds.add(stratId);
           }
           await ctx.answerCallbackQuery();
-          const contextsArray: StrategyContext[] = [...session.selectedContexts].map(cid => {
-            const [ms, p] = cid.split("_");
-            return { mapSource: ms as "p3" | "p4", period: p as "m" | "e" };
-          });
+          const contextsArray = bbtContextsFromSet(session.selectedContexts);
           const msg = buildBBTStrategyMessage(
             session.selectedIds,
             contextsArray,
@@ -2256,10 +2268,7 @@ bot.on("callback_query:data", async (ctx) => {
         await ctx.answerCallbackQuery({ text: "Iniciando BallBackTest…" });
         bbtSessionMap.delete(userId);
 
-        const contexts: StrategyContext[] = [...session.selectedContexts].map(cid => {
-          const [ms, p] = cid.split("_");
-          return { mapSource: ms as "p3" | "p4", period: p as "m" | "e" };
-        });
+        const contexts = bbtContextsFromSet(session.selectedContexts);
 
         const hasP3 = contexts.some(c => c.mapSource === "p3");
         const hasP4 = contexts.some(c => c.mapSource === "p4");
@@ -2278,7 +2287,11 @@ bot.on("callback_query:data", async (ctx) => {
         }
 
         const capped = session.estimatedDates ?? 0;
-        const ctxHeader = contexts.map(c => `${c.mapSource.toUpperCase()}${c.period.toUpperCase()}`).join("+");
+        const ctxHeader = contexts.map(c =>
+          c.params?.ambos
+            ? `${c.mapSource.toUpperCase()}A`
+            : `${c.mapSource.toUpperCase()}${c.period.toUpperCase()}`
+        ).join("+");
         const nStrats = Math.min(strategyIds.length, BBT_MAX_STRATEGIES);
         const numCombos = (1 << nStrats) - 1;
 
@@ -3169,10 +3182,7 @@ bot.on("message:text", async (ctx) => {
       session.step = "strategies";
       waitingBBTDate.delete(userId);
 
-      const contextsArray: StrategyContext[] = [...session.selectedContexts].map(cid => {
-        const [ms, p] = cid.split("_");
-        return { mapSource: ms as "p3" | "p4", period: p as "m" | "e" };
-      });
+      const contextsArray = bbtContextsFromSet(session.selectedContexts);
 
       const selectableIds = getAccessibleStrategyIds(userId);
       const msg = buildBBTStrategyMessage(
@@ -3221,14 +3231,14 @@ bot.on("message:text", async (ctx) => {
       fullMap = (await getP4Map()) as DateDrawsMap;
     }
 
-    const firstCtxId = [...session.selectedContexts][0]!;
-    const [ms, p] = firstCtxId.split("_");
-    const firstCtx = { mapSource: ms as "p3" | "p4", period: p as "m" | "e" };
+    const firstCtx = bbtContextsFromSet(session.selectedContexts)[0]
+      ?? { mapSource: "p3" as const, period: "m" as const };
 
     const estimated = countDatesInRange(fullMap, session.startDate!, session.endDate!, firstCtx);
     session.estimatedDates = estimated;
 
-    const ctxHeader = [...session.selectedContexts].map(c => c.toUpperCase().replace("_", "")).join("+");
+    const ctxHeader = [...session.selectedContexts]
+      .map(c => c === "p3_a" ? "P3A" : c.toUpperCase().replace("_", "")).join("+");
     const numCombos = (1 << Math.min(session.selectedIds.size, BBT_MAX_STRATEGIES)) - 1;
 
     await ctx.reply(
