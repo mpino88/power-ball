@@ -20,7 +20,7 @@
 
 import type { StrategyContext, StrategyDefinition, DateDrawsMap } from "./types.js";
 import { buildDefaultContextKeyboard, getDefaultContextMessage } from "./context-menu.js";
-import { mmddyyToDate, twoDigitNumbers, truncateMsg, validDateKeys, getDateRangeStr } from "./utils.js";
+import { mmddyyToDate, twoDigitNumbers, truncateMsg, validDateKeys, getDateRangeStr, getStrategiesTopN } from "./utils.js";
 
 interface Markov2Result {
   /** matrix[(a,b)] → Map<c, count>: dado que a salió en N-1 y b en N, cuántas veces salió c en N+1 */
@@ -170,7 +170,7 @@ function formatMessage(
       if (b[1] !== a[1]) return b[1] - a[1];
       return (weightMap.get(b[0]) ?? 0) - (weightMap.get(a[0]) ?? 0);
     })
-    .slice(0, 12);
+    .slice(0, getStrategiesTopN());
 
   const totalPairs = prevNums.length * lastNums.length;
 
@@ -214,7 +214,7 @@ export const markovOrder2: StrategyDefinition = {
     }
     return [...combined.entries()]
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 20)
+      .slice(0, getStrategiesTopN())
       .map(([num]) => num);
   },
 };

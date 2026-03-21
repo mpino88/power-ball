@@ -13,7 +13,7 @@
 import type { StrategyContext, StrategyDefinition, DateDrawsMap } from "./types.js";
 import { buildDefaultContextKeyboard, getDefaultContextMessage } from "./context-menu.js";
 import { computeStatsCombined, getTop10HottestIndividual, buildIndividualTop10Message } from "../stats-p3.js";
-import { getDateRangeStr } from "./utils.js";
+import { getDateRangeStr, getStrategiesTopN } from "./utils.js";
 
 const DEFAULT_DIAS_DIFERENCIA = 5;
 
@@ -34,7 +34,7 @@ export const estIndividuales: StrategyDefinition = {
     }
     const period = context.period === "m" ? "M" : "E";
     const rangeStr = getDateRangeStr(map, context.period, context.mapSource);
-    const msg = buildIndividualTop10Message(map, DEFAULT_DIAS_DIFERENCIA, period);
+    const msg = buildIndividualTop10Message(map, DEFAULT_DIAS_DIFERENCIA, period, getStrategiesTopN());
     return `${msg}\n_Período: ${rangeStr}_`;
   },
 
@@ -42,6 +42,6 @@ export const estIndividuales: StrategyDefinition = {
     if (context.mapSource !== "p3") return [];
     const period = context.period === "m" ? "M" : "E";
     const { individual: stats } = computeStatsCombined(map, period);
-    return getTop10HottestIndividual(stats).map((r) => r.num);
+    return getTop10HottestIndividual(stats, getStrategiesTopN()).map((r) => r.num);
   },
 };

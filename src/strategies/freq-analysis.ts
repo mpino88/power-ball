@@ -16,6 +16,7 @@ import {
   truncateMsg,
   validDateKeys,
   getDateRangeStr,
+  getStrategiesTopN,
 } from "./utils.js";
 
 interface NumStat {
@@ -89,9 +90,10 @@ function formatMessage(
   const periodLabel = period === "m" ? "☀️ Mediodía" : "🌙 Noche";
   const mapLabel = mapSource === "p3" ? "P3 (Fijos)" : "P4 (Corridos)";
 
+  const topN = getStrategiesTopN();
   const byFreq = [...stats].sort((a, b) => b.count - a.count);
-  const top20 = byFreq.slice(0, 20);
-  const bottom10 = [...stats].sort((a, b) => a.count - b.count).slice(0, 10);
+  const topHot = byFreq.slice(0, topN);
+  const topCold = [...stats].sort((a, b) => a.count - b.count).slice(0, topN);
 
   const pct = (c: number) =>
     totalOccurrences > 0 ? ((c / totalOccurrences) * 100).toFixed(2) : "0.00";
@@ -100,17 +102,17 @@ function formatMessage(
     `📊 *Análisis de Frecuencia* — ${mapLabel} · ${periodLabel}`,
     `Sorteos: ${totalDraws} · Período: ${rangeStr} · Apariciones totales: ${totalOccurrences}`,
     "",
-    "📖 _Qué mide:_ cuáles son los números que más repiten y los que menos salen en la historia\\.",
-    "_Count_ = apariciones · _Prob%_ = probabilidad histórica · _Días sin_ = días desde última salida",
-    "_TOP 20 calientes_ = más frecuentes · _TOP 10 fríos_ = candidatos por larga ausencia",
+    `📖 _Qué mide:_ cuáles son los números que más repiten y los que menos salen en la historia\\.`,
+    "_Count_ = apariciones \u00b7 _Prob%_ = probabilidad histórica \u00b7 _Días sin_ = días desde última salida",
+    `_TOP ${topN} calientes_ = más frecuentes \u00b7 _TOP ${topN} fríos_ = candidatos por larga ausencia`,
     "",
     "```",
-    "TOP 20 MÁS FRECUENTES",
+    `TOP ${topN} MÁS FRECUENTES`,
     " #  Num  Count  Prob%   Días sin",
-    "───────────────────────────────────",
+    "─────────────────────────────────────",
   ];
 
-  top20.forEach((s, i) => {
+  topHot.forEach((s, i) => {
     const n = String(s.num).padStart(2, "0");
     const c = String(s.count).padStart(4);
     const p = pct(s.count).padStart(5);
@@ -119,11 +121,11 @@ function formatMessage(
   });
 
   lines.push("");
-  lines.push("TOP 10 MÁS FRÍOS (menos salidores)");
+  lines.push(`TOP ${topN} MÁS FRÍOS (menos salidores)`);
   lines.push(" #  Num  Count  Prob%   Días sin");
-  lines.push("───────────────────────────────────");
+  lines.push("─────────────────────────────────────");
 
-  bottom10.forEach((s, i) => {
+  topCold.forEach((s, i) => {
     const n = String(s.num).padStart(2, "0");
     const c = String(s.count).padStart(4);
     const p = pct(s.count).padStart(5);
@@ -154,7 +156,7 @@ export const freqAnalysis: StrategyDefinition = {
     return stats
       .filter((s) => s.count > 0)
       .sort((a, b) => b.count - a.count)
-      .slice(0, 20)
+      .slice(0, getStrategiesTopN())
       .map((s) => s.num);
   },
 };

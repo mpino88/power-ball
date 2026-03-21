@@ -34,6 +34,7 @@ import {
   validDateKeys,
   getDateRangeStr,
   mmddyyToDate,
+  getStrategiesTopN,
 } from "./utils.js";
 
 // ── Parámetros del modelo ────────────────────────────────────────────────────
@@ -289,7 +290,7 @@ export const unodostres: StrategyDefinition = {
     return stats
       .filter((s) => s.appearances > 0 && s.fibScore > 0.01)
       .sort((a, b) => b.finalScore - a.finalScore)
-      .slice(0, 20)
+      .slice(0, getStrategiesTopN())
       .map((s) => s.num);
   },
 };

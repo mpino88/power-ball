@@ -30,6 +30,7 @@ import {
   truncateMsg,
   validDateKeys,
   getDateRangeStr,
+  getStrategiesTopN,
 } from "./utils.js";
 
 const MIN_APPEARANCES = 5;
@@ -225,7 +226,7 @@ export const cycleDetector: StrategyDefinition = {
     return stats
       .filter((s) => s.hasCycle && s.phase >= 0.8)
       .sort((a, b) => b.phase - a.phase)
-      .slice(0, 20)
+      .slice(0, getStrategiesTopN())
       .map((s) => s.num);
   },
 };

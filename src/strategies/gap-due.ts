@@ -23,6 +23,7 @@ import {
   validDateKeys,
   DAY_NAMES,
   getDateRangeStr,
+  getStrategiesTopN,
 } from "./utils.js";
 
 interface GapStat {
@@ -139,10 +140,11 @@ function formatMessage(
   }
 
   // Only numbers with enough appearances for reliable statistics
+  const topN = getStrategiesTopN();
   const sorted = [...stats]
     .filter((s) => s.appearances >= 3 && s.dueFactor > 0)
     .sort((a, b) => b.dueFactor - a.dueFactor)
-    .slice(0, 20);
+    .slice(0, topN);
 
   const icon = (f: number) =>
     f >= 2.0 ? "🔴" : f >= 1.5 ? "🟠" : f >= 1.0 ? "🟡" : "🟢";
@@ -156,7 +158,7 @@ function formatMessage(
     "🔴 ≥2x (Súper atrasado) · 🟠 ≥1\\.5x (Muy atrasado) · 🟡 ≥1x (Atrasado)",
     "",
     "```",
-    "TOP 20 NÚMEROS MÁS DEBIDOS",
+    `TOP ${topN} NÚMEROS MÁS DEBIDOS`,
     "Num  Últ.Vez   DíasSin  Prom   Factor",
     "──────────────────────────────────────",
   ];
@@ -196,7 +198,7 @@ export const gapDue: StrategyDefinition = {
     return stats
       .filter((s) => s.appearances >= 3 && s.dueFactor >= 1.0)
       .sort((a, b) => b.dueFactor - a.dueFactor)
-      .slice(0, 20)
+      .slice(0, getStrategiesTopN())
       .map((s) => s.num);
   },
 };
