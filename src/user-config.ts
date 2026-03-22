@@ -1434,13 +1434,14 @@ export function isOwner(userId: number): boolean {
 }
 
 const TESTING_SHEET_INDEX = 4;
+const TESTING_HEADERS = ["userId", "cutoff_date"] as const;
 
 /**
- * Guarda (o elimina) la fecha de corte en la celda A2 de la pestaña "Testing".
- * Crea la pestaña si no existe aún.
- * Pasa null para borrar la celda (sin corte = base completa).
+ * Guarda (o elimina) la fecha de corte en la pestaña "Testing" para un userId específico.
+ * La pestaña tiene cabeceras ["userId","cutoff_date"] con una fila por admin.
+ * Pasa null para eliminar la entrada del userId (sin corte = base completa).
  */
-export async function saveTestingCutoffDate(date: string | null): Promise<void> {
+export async function saveTestingCutoffDate(date: string | null, userId: number): Promise<void> {
   const sheetId = getSheetId();
   if (!sheetId) return;
   const auth = getSheetAuth();
@@ -1452,19 +1453,33 @@ export async function saveTestingCutoffDate(date: string | null): Promise<void> 
     if (!sheet) {
       sheet = await doc.addSheet({
         title: "Testing",
-        gridProperties: { rowCount: 10, columnCount: 2 },
+        headerValues: [...TESTING_HEADERS],
       });
-      await sheet.loadCells("A1");
-      const header = sheet.getCellByA1("A1");
-      header.value = "Fecha de corte (MM/DD/YY)";
-      await sheet.saveUpdatedCells();
-      console.log("[user-config] Testing: pestaña 'Testing' creada (5ª pestaña).");
+      console.log("[user-config] Testing: pestaña 'Testing' creada con cabeceras por usuario (5ª pestaña).");
+    } else {
+      try {
+        await sheet.loadHeaderRow(1);
+      } catch {
+        await sheet.setHeaderRow([...TESTING_HEADERS], 1);
+      }
     }
-    await sheet.loadCells("A2");
-    const cell = sheet.getCellByA1("A2");
-    cell.value = date ?? "";
-    await sheet.saveUpdatedCells();
-    console.log(`[user-config] Testing: fecha ${date ? `actualizada → ${date}` : "eliminada"}.`);
+    const rows = await sheet.getRows();
+    const existing = rows.find((r) => String(r.get("userId")).trim() === String(userId));
+    if (date === null) {
+      if (existing) {
+        await existing.delete();
+        console.log(`[user-config] Testing: fecha eliminada para userId=${userId}.`);
+      }
+    } else {
+      if (existing) {
+        existing.set("cutoff_date", date);
+        await existing.save();
+        console.log(`[user-config] Testing: fecha actualizada → ${date} para userId=${userId}.`);
+      } else {
+        await sheet.addRow({ userId: String(userId), cutoff_date: date });
+        console.log(`[user-config] Testing: fecha creada → ${date} para userId=${userId}.`);
+      }
+    }
   } catch (e) {
     console.error("[user-config] Error al guardar fecha de testing en Sheet:", (e as Error)?.message ?? e);
     throw e;
@@ -1472,13 +1487,11 @@ export async function saveTestingCutoffDate(date: string | null): Promise<void> 
 }
 
 /**
- * Lee la fecha de corte desde la pestaña "Testing" (5ª pestaña, índice 4) del Sheet.
- * La celda A2 puede contener una fecha en formato MM/DD/YY o estar vacía.
- * - Si está vacía o la pestaña no existe → retorna null (se usa la base completa).
- * - Si tiene una fecha válida → retorna el string "MM/DD/YY" para filtrar el mapa.
- * Solo aplica cuando el backend es Google Sheet.
+ * Lee la fecha de corte de un userId específico desde la pestaña "Testing" (5ª pestaña).
+ * - Si el usuario no tiene fila o la pestaña no existe → retorna null (base completa).
+ * - Si tiene una fecha válida MM/DD/YY → la retorna para filtrar el mapa.
  */
-export async function loadTestingCutoffDate(): Promise<string | null> {
+export async function loadTestingCutoffDate(userId: number): Promise<string | null> {
   const sheetId = getSheetId();
   if (!sheetId) return null;
   const auth = getSheetAuth();
@@ -1488,13 +1501,18 @@ export async function loadTestingCutoffDate(): Promise<string | null> {
     await doc.loadInfo();
     const sheet = doc.sheetsByIndex[TESTING_SHEET_INDEX];
     if (!sheet) return null;
-    await sheet.loadCells("A2");
-    const cell = sheet.getCellByA1("A2");
-    const raw = String(cell.value ?? "").trim();
+    try {
+      await sheet.loadHeaderRow(1);
+    } catch {
+      return null;
+    }
+    const rows = await sheet.getRows();
+    const row = rows.find((r) => String(r.get("userId")).trim() === String(userId));
+    if (!row) return null;
+    const raw = String(row.get("cutoff_date") ?? "").trim();
     if (!raw) return null;
-    // Validar formato MM/DD/YY
     if (/^\d{1,2}\/\d{1,2}\/\d{2}$/.test(raw)) return raw;
-    console.warn("[user-config] Testing: valor en A2 no es MM/DD/YY válido:", raw);
+    console.warn(`[user-config] Testing: cutoff_date inválido para userId=${userId}:`, raw);
     return null;
   } catch (e) {
     console.error("[user-config] Error al leer fecha de testing desde Sheet:", (e as Error)?.message ?? e);

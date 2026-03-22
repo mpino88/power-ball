@@ -307,27 +307,27 @@ const waitingProgressiveDate = new Map<number, "start" | "end">();
 const waitingPlusLimit = new Map<number, { menuId: string; context: StrategyContext }>();
 
 /**
- * Caché de la fecha de corte de testing (5 min).
- * Lee la celda A2 de la pestaña "Testing" (índice 4) del Sheet.
- * null = sin corte (usar base completa).
+ * Caché de la fecha de corte de testing — por userId (5 min TTL).
+ * Cada admin tiene su propia entrada independiente.
  */
 const TESTING_CUTOFF_TTL_MS = 5 * 60 * 1000;
-let cachedTestingCutoff: { at: number; date: string | null } | null = null;
+const cachedTestingCutoff = new Map<number, { at: number; date: string | null }>();
 
-async function getTestingCutoff(): Promise<string | null> {
+async function getTestingCutoff(userId: number): Promise<string | null> {
   const now = Date.now();
-  if (cachedTestingCutoff && now - cachedTestingCutoff.at < TESTING_CUTOFF_TTL_MS) {
-    return cachedTestingCutoff.date;
+  const cached = cachedTestingCutoff.get(userId);
+  if (cached && now - cached.at < TESTING_CUTOFF_TTL_MS) {
+    return cached.date;
   }
-  const date = await loadTestingCutoffDate();
-  cachedTestingCutoff = { at: now, date };
-  if (date) console.log(`[testing] Fecha de corte activa: ${date}`);
+  const date = await loadTestingCutoffDate(userId);
+  cachedTestingCutoff.set(userId, { at: now, date });
+  if (date) console.log(`[testing] Fecha de corte activa para userId=${userId}: ${date}`);
   return date;
 }
 
-/** Invalida la caché de cutoff para que la próxima lectura vaya al Sheet. */
-function invalidateTestingCutoffCache(): void {
-  cachedTestingCutoff = null;
+/** Invalida la caché de cutoff de un userId para que la próxima lectura vaya al Sheet. */
+function invalidateTestingCutoffCache(userId: number): void {
+  cachedTestingCutoff.delete(userId);
 }
 
 /** Usuarios (solo el dueño) esperando introducir una fecha de testing. */
@@ -347,19 +347,19 @@ const waitingAnnouncementInput = new Map<number, "create" | string>();
 
 /**
  * Versiones de getP3Map/getP4Map con filtro de fecha de corte para estrategias.
- * El filtro solo aplica al dueño del bot; cualquier otro usuario recibe el mapa completo.
+ * El filtro solo aplica al admin que activó el modo testing; cualquier otro recibe el mapa completo.
  */
 async function getStrategyP3Map(userId?: number): Promise<DateDrawsMap> {
   const map = await getP3Map();
   if (!isOwner(userId ?? 0)) return map;
-  const cutoff = await getTestingCutoff();
+  const cutoff = await getTestingCutoff(userId ?? 0);
   return cutoff ? filterMapByCutoff(map, cutoff) : map;
 }
 
 async function getStrategyP4Map(userId?: number): Promise<DateDrawsMap> {
   const map = await getP4Map();
   if (!isOwner(userId ?? 0)) return map as DateDrawsMap;
-  const cutoff = await getTestingCutoff();
+  const cutoff = await getTestingCutoff(userId ?? 0);
   return cutoff ? filterMapByCutoff(map as DateDrawsMap, cutoff) : (map as DateDrawsMap);
 }
 
@@ -584,7 +584,7 @@ async function runStrategyAndShowResult(
 
     await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: resultKb });
     if (userId && isOwner(userId) && ctx.reply && !isPreview) {
-      const cutoff = await getTestingCutoff();
+      const cutoff = await getTestingCutoff(userId);
       if (cutoff) {
         try {
           const isP3 = context.mapSource === "p3";
@@ -1031,7 +1031,7 @@ bot.on("callback_query:data", async (ctx) => {
     const userId = ctx.from.id;
 
     if (data === "testing_open") {
-      const current = await loadTestingCutoffDate();
+      const current = await loadTestingCutoffDate(userId);
       try {
         await ctx.editMessageText(buildTestingMessage(current), {
           parse_mode: "Markdown",
@@ -1064,8 +1064,8 @@ bot.on("callback_query:data", async (ctx) => {
 
     if (data === "testing_eliminar") {
       try {
-        await saveTestingCutoffDate(null);
-        invalidateTestingCutoffCache();
+        await saveTestingCutoffDate(null, userId);
+        invalidateTestingCutoffCache(userId);
         await ctx.editMessageText(
           buildTestingMessage(null),
           { parse_mode: "Markdown", reply_markup: buildTestingKeyboard(null) }
@@ -1081,9 +1081,10 @@ bot.on("callback_query:data", async (ctx) => {
   }
 
   if (data === "testing_cancel" && ctx.from && isOwner(ctx.from.id)) {
-    waitingTestingDate.delete(ctx.from.id);
+    const userId = ctx.from.id;
+    waitingTestingDate.delete(userId);
     await ctx.answerCallbackQuery({ text: "Cancelado" });
-    const current = await loadTestingCutoffDate();
+    const current = await loadTestingCutoffDate(userId);
     try {
       await ctx.editMessageText(buildTestingMessage(current), {
         parse_mode: "Markdown",
@@ -1776,7 +1777,7 @@ bot.on("callback_query:data", async (ctx) => {
       progressiveSessionMap.delete(userId);
       waitingProgressiveDate.delete(userId);
       await ctx.answerCallbackQuery({ text: "Cancelado" });
-      const current = await loadTestingCutoffDate();
+      const current = await loadTestingCutoffDate(userId);
       try {
         await ctx.editMessageText(buildTestingMessage(current), {
           parse_mode: "Markdown",
@@ -2114,7 +2115,7 @@ bot.on("callback_query:data", async (ctx) => {
       waitingBBTDate.delete(userId);
       waitingBBTTopN.delete(userId);
       await ctx.answerCallbackQuery({ text: "Cancelado" });
-      const current = await loadTestingCutoffDate();
+      const current = await loadTestingCutoffDate(userId);
       try {
         await ctx.editMessageText(buildTestingMessage(current), {
           parse_mode: "Markdown",
@@ -2409,7 +2410,7 @@ bot.on("callback_query:data", async (ctx) => {
       bbtCmpSessionMap.delete(userId);
       waitingBBTCmpLimit.delete(userId);
       await ctx.answerCallbackQuery({ text: "Cancelado" });
-      const current = await loadTestingCutoffDate();
+      const current = await loadTestingCutoffDate(userId);
       try {
         await ctx.editMessageText(buildTestingMessage(current), {
           parse_mode: "Markdown",
@@ -3294,8 +3295,8 @@ bot.on("message:text", async (ctx) => {
       return;
     }
     try {
-      await saveTestingCutoffDate(text);
-      invalidateTestingCutoffCache();
+      await saveTestingCutoffDate(text, userId);
+      invalidateTestingCutoffCache(userId);
       await ctx.reply(buildTestingMessage(text), {
         parse_mode: "Markdown",
         reply_markup: buildTestingKeyboard(text),
@@ -3485,7 +3486,7 @@ bot.on("message:text", async (ctx) => {
       await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: consensusKb });
       // Verificación testing: solo para dueños con fecha de corte activa
       if (isOwner(userId)) {
-        const cutoff = await getTestingCutoff();
+        const cutoff = await getTestingCutoff(userId);
         if (cutoff) {
           try {
             const fullMap = isP3 ? await getP3Map() : (await getP4Map()) as DateDrawsMap;
