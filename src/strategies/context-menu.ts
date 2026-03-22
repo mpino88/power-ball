@@ -5,7 +5,11 @@
 
 import { InlineKeyboard } from "grammy";
 import { STRATEGY_CONTEXT_CALLBACK_PREFIX } from "./types.js";
-import { escapeMd } from "../security/callbacks.js";
+
+/** Elimina caracteres que rompen el formato en parse_mode Markdown (v1): *, _, `, [ */
+function sanitizeLabelMdV1(label: string): string {
+  return label.replace(/[*_`\[]/g, "");
+}
 
 export function buildDefaultContextKeyboard(menuId: string): InlineKeyboard {
   const pre = `${STRATEGY_CONTEXT_CALLBACK_PREFIX}${menuId}_`;
@@ -20,7 +24,7 @@ export function buildDefaultContextKeyboard(menuId: string): InlineKeyboard {
 }
 
 export function getDefaultContextMessage(menuLabel: string, description?: string): string {
-  const safeLabel = escapeMd(menuLabel);
+  const safeLabel = sanitizeLabelMdV1(menuLabel);
   const baseMsg =
     `📌 *${safeLabel}*\n\n` +
     "Elige la *base de conocimientos* y el *período*:\n\n" +
