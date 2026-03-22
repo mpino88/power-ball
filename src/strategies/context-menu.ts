@@ -5,6 +5,7 @@
 
 import { InlineKeyboard } from "grammy";
 import { STRATEGY_CONTEXT_CALLBACK_PREFIX } from "./types.js";
+import { escapeMd } from "../security/callbacks.js";
 
 export function buildDefaultContextKeyboard(menuId: string): InlineKeyboard {
   const pre = `${STRATEGY_CONTEXT_CALLBACK_PREFIX}${menuId}_`;
@@ -19,13 +20,14 @@ export function buildDefaultContextKeyboard(menuId: string): InlineKeyboard {
 }
 
 export function getDefaultContextMessage(menuLabel: string, description?: string): string {
-  const baseMsg = 
-    `📌 *${menuLabel}*\n\n` +
+  const safeLabel = escapeMd(menuLabel);
+  const baseMsg =
+    `📌 *${safeLabel}*\n\n` +
     "Elige la *base de conocimientos* y el *período*:\n\n" +
     "• *P3 (Fijos)* — mapa de fechas Pick 3\n" +
     "• *P4 (Corridos)* — mapa de fechas Pick 4\n" +
     "• ☀️ *Mediodía* (Día) · 🌙 *Noche*";
 
   if (!description) return baseMsg;
-  return `📌 *${menuLabel}*\n\n_${description}_\n\nElige la *base de conocimientos* y el *período*:\n\n• *P3 (Fijos)* — mapa de fechas Pick 3\n• *P4 (Corridos)* — mapa de fechas Pick 4\n• ☀️ *Mediodía* (Día) · 🌙 *Noche*`;
+  return `📌 *${safeLabel}*\n\n_${description}_\n\nElige la *base de conocimientos* y el *período*:\n\n• *P3 (Fijos)* — mapa de fechas Pick 3\n• *P4 (Corridos)* — mapa de fechas Pick 4\n• ☀️ *Mediodía* (Día) · 🌙 *Noche*`;
 }
