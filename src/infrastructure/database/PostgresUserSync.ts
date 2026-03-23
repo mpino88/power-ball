@@ -114,6 +114,18 @@ export async function persistUsersToPG(config: UsersConfig): Promise<void> {
       );
     }
 
+    // Garantizar que TODOS los usuarios de config.allowed existan en la tabla users
+    // (algunos están en allowed + menus pero no en userInfo, causando FK violation)
+    for (const uid of config.allowed) {
+      if (!config.userInfo[uid.toString()] && !config.requestedPlans[uid.toString()]) {
+        await client.query(
+          `INSERT INTO users (id, plan_status, role) VALUES ($1, 'approved', 'user')
+           ON CONFLICT (id) DO NOTHING`,
+          [uid]
+        );
+      }
+    }
+
     // Sincronización diff-based de menús: solo borra los eliminados, añade los nuevos.
     // NO hace DELETE global para proteger contra escrituras concurrentes.
     const currentMenusRes = await client.query("SELECT user_id, menu_id FROM user_menus");
