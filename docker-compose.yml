@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: ballbot_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ballbot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-securepassword123}
+      POSTGRES_DB: ${POSTGRES_DB:-ballbot_db}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Schema consolidado — Inyección transparente (aplica para Linux/VPS)
+      - ./src/infrastructure/database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    networks:
+      - ballbot_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ballbot} -d ${POSTGRES_DB:-ballbot_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: ballbot_caddy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - ballbot_net
+    depends_on:
+      - bot
+
+  bot:
+    build: .
+    container_name: ballbot_core
+    restart: always
+    expose:
+      - "3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgres://${POSTGRES_USER:-ballbot}:${POSTGRES_PASSWORD:-securepassword123}@db:5432/${POSTGRES_DB:-ballbot_db}
+      - DATABASE_SSL=false
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - BOT_OWNER_ID=${BOT_OWNER_ID}
+      - WEBHOOK_URL=https://bot.ballbot.tel/webhook
+      - SECRET_TOKEN=${SECRET_TOKEN}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    networks:
+      - ballbot_net
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
+
+networks:
+  ballbot_net:
+    driver: bridge

@@ -826,6 +826,16 @@ export async function handleSecurityCallback(
       const isPlanChange = requested?.isPlanChange ?? false;
       const approveResult = await approvePlanRequest(userId, planMenuIds);
       if (approveResult.ok) {
+        import("../referrals.js").then(async m => {
+          const referrerId = await m.rewardReferrer(userId);
+          if (referrerId) {
+             const { extendPlanByOneMonth } = await import("../user-config.js");
+             await extendPlanByOneMonth(referrerId);
+             try {
+                await ctx.api.sendMessage(referrerId, "🎉 *¡Recompensa de Referido!*\n\n¡Un amigo se ha unido usando tu enlace y adquirió un plan!\n\nComo premio, te hemos agragado **1 MES GRATIS** 🎁 a tu suscripción activa. ¡Disfrútalo!", { parse_mode: "Markdown" });
+             } catch(e) {}
+          }
+        }).catch(console.error);
         const menuInfo = planMenuIds.length > 0 ? ` Menús del plan: ${planMenuIds.join(", ")}.` : "";
         const tLabel = requested?.temporality
           ? ` (${TEMPORALITIES.find((t) => t.id === requested.temporality)?.label ?? requested.temporality})`

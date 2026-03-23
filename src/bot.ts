@@ -1453,6 +1453,33 @@ bot.on("callback_query:data", async (ctx) => {
     return;
   }
 
+  if (data === "mi_link_open") {
+    await ctx.answerCallbackQuery();
+    const uid = ctx.from?.id;
+    if (!uid) return;
+    
+    if (!process.env.DATABASE_URL) {
+      await ctx.reply("🔗 *Sistema de Referidos*\n\n_El sistema se está actualizando y estará disponible pronto._", { parse_mode: "Markdown", reply_markup: buildMainKb(uid) });
+      return;
+    }
+
+    const botInfo = await ctx.api.getMe();
+    const link = `https://t.me/${botInfo.username}?start=ref_${uid}`;
+    
+    const msg = `🔗 *Tu Enlace de Referido VIP*\n\n` +
+                `Comparte este enlace con tus amigos:\n\`${link}\`\n\n` +
+                `🎁 *Recompensa:* Si un amigo se registra usando tu enlace y luego adquiere un plan, **tú recibirás 1 MES GRATIS de Plan Pro** de forma automática.\n\n` +
+                `_¡Mientras más recomiendas, más juegas gratis!_`;
+                
+    try {
+      await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("◀️ Volver", "volver") });
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
+  }
+
+
   if (ctx.from && isAllowed(ctx.from.id) && (data === "estrategias_manage" || data === "estrategias_list" || data === "estrategias_tienda" || data.startsWith("estrategias_request_") || data.startsWith("estrategias_confirm_request_") || data === "estrategias_visibility" || data.startsWith("estrategias_visibility_toggle_") || data === "estrategias_create" || data === "estrategias_delete" || data.startsWith("estrategias_delete_"))) {
     const estrategiasOut = await handleEstrategiasUserCallback(ctx, data, {
       getExtraMenuIds,
@@ -3789,6 +3816,13 @@ async function getP3Map(): Promise<DateDrawsMap> {
   const txt = await pdfToText(data);
   cachedP3Map = parseP3FullText(txt);
   lastP3Fetch = Date.now();
+  
+  if (process.env.DATABASE_URL) {
+    import("./infrastructure/database/PostgresDrawRepository.js")
+      .then(m => m.saveDrawsToDB("p3", cachedP3Map!))
+      .catch(e => console.error("Error guardando P3 en Postgres:", e));
+  }
+  
   return cachedP3Map;
 }
 
@@ -3803,10 +3837,22 @@ async function getP4Map(): Promise<DateDrawsMapP4> {
   const txt = await pdfToText(data);
   cachedP4Map = parseP4FullText(txt);
   lastP4Fetch = Date.now();
+  
+  if (process.env.DATABASE_URL) {
+    import("./infrastructure/database/PostgresDrawRepository.js")
+      .then(m => m.saveDrawsToDB("p4", cachedP4Map!))
+      .catch(e => console.error("Error guardando P4 en Postgres:", e));
+  }
+  
   return cachedP4Map;
 }
 
 async function main(): Promise<void> {
+  // Inicia crons de actualización PostgreSQL si DATABASE_URL está presente
+  import("./infrastructure/cron/CronRunner.js")
+    .then(c => c.initCronJobs())
+    .catch(e => console.error("Error iniciando crons PG:", e));
+
   if (!BOT_TOKEN) {
     console.error("Configura TELEGRAM_BOT_TOKEN en el entorno.");
     process.exit(1);
@@ -3958,6 +4004,16 @@ async function main(): Promise<void> {
         return;
       }
       if (req.method === "POST" && req.url === webhookPath) {
+        // Validar SECRET_TOKEN si está configurado — rechaza tráfico no autorizado de Telegram
+        const secretToken = process.env.SECRET_TOKEN;
+        if (secretToken) {
+          const incomingToken = req.headers["x-telegram-bot-api-secret-token"];
+          if (incomingToken !== secretToken) {
+            res.writeHead(403, { "Content-Type": "text/plain" });
+            res.end("Forbidden");
+            return;
+          }
+        }
         const chunks: Buffer[] = [];
         req.on("data", (chunk: Buffer) => chunks.push(chunk));
         req.on("end", () => {
