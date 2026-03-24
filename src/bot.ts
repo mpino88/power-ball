@@ -3996,7 +3996,9 @@ async function main(): Promise<void> {
   if (WEBHOOK_URL) {
     const webhookPath = "/webhook";
     const fullUrl = `${WEBHOOK_URL.replace(/\/$/, "")}${webhookPath}`;
-    await bot.api.setWebhook(fullUrl);
+    await bot.api.setWebhook(fullUrl, {
+      secret_token: process.env.SECRET_TOKEN || undefined,
+    });
     const server = createServer((req: IncomingMessage, res: ServerResponse) => {
       if (req.method === "GET" && (req.url === "/" || req.url === "/health")) {
         res.writeHead(200, { "Content-Type": "text/plain" });
