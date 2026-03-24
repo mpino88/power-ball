@@ -3855,11 +3855,6 @@ async function getP4Map(): Promise<DateDrawsMapP4> {
 }
 
 async function main(): Promise<void> {
-  // Inicia crons de actualización PostgreSQL si DATABASE_URL está presente
-  import("./infrastructure/cron/CronRunner.js")
-    .then(c => c.initCronJobs())
-    .catch(e => console.error("Error iniciando crons PG:", e));
-
   if (!BOT_TOKEN) {
     console.error("Configura TELEGRAM_BOT_TOKEN en el entorno.");
     process.exit(1);
@@ -3868,6 +3863,62 @@ async function main(): Promise<void> {
     console.error("En este entorno debes definir WEBHOOK_URL (ej: https://tu-app.onrender.com).");
     process.exit(1);
   }
+
+  // ── CRITICAL: Levantar HTTP server PRIMERO para que Render health check pase ──
+  // Render mata la instancia si no responde a /health en ~60 seg.
+  // El bot tarda 30+ seg en inicializar (PDFs, seeds, Sheet).
+  // Solución: levantar server inmediatamente, registrar webhook DESPUÉS del setup.
+  let server: ReturnType<typeof createServer> | null = null;
+  if (WEBHOOK_URL) {
+    const webhookPath = "/webhook";
+    server = createServer((req: IncomingMessage, res: ServerResponse) => {
+      if (req.method === "GET" && (req.url === "/" || req.url === "/health")) {
+        res.writeHead(200, { "Content-Type": "text/plain" });
+        res.end("OK");
+        return;
+      }
+      if (req.method === "POST" && req.url === webhookPath) {
+        const secretToken = process.env.SECRET_TOKEN;
+        if (secretToken) {
+          const incomingToken = req.headers["x-telegram-bot-api-secret-token"];
+          if (incomingToken !== secretToken) {
+            res.writeHead(403, { "Content-Type": "text/plain" });
+            res.end("Forbidden");
+            return;
+          }
+        }
+        const chunks: Buffer[] = [];
+        req.on("data", (chunk: Buffer) => chunks.push(chunk));
+        req.on("end", () => {
+          let update: Update;
+          try {
+            update = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Update;
+          } catch {
+            res.writeHead(400, { "Content-Type": "text/plain" });
+            res.end("Bad Request");
+            return;
+          }
+          res.writeHead(200);
+          res.end();
+          bot.handleUpdate(update).catch((e) => console.error("Webhook handleUpdate error:", e));
+        });
+        req.on("error", () => {
+          res.writeHead(500);
+          res.end();
+        });
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    server.listen(PORT);
+    console.log(`[server] HTTP server escuchando en puerto ${PORT} (health check activo)`);
+  }
+
+  // Inicia crons de actualización PostgreSQL si DATABASE_URL está presente
+  import("./infrastructure/cron/CronRunner.js")
+    .then(c => c.initCronJobs())
+    .catch(e => console.error("Error iniciando crons PG:", e));
 
   registerExtraMenus();
   setSheetMenuLabelResolver(getExtraMenuLabel);
@@ -4006,48 +4057,8 @@ async function main(): Promise<void> {
     await bot.api.setWebhook(fullUrl, {
       secret_token: process.env.SECRET_TOKEN || undefined,
     });
-    const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-      if (req.method === "GET" && (req.url === "/" || req.url === "/health")) {
-        res.writeHead(200, { "Content-Type": "text/plain" });
-        res.end("OK");
-        return;
-      }
-      if (req.method === "POST" && req.url === webhookPath) {
-        // Validar SECRET_TOKEN si está configurado — rechaza tráfico no autorizado de Telegram
-        const secretToken = process.env.SECRET_TOKEN;
-        if (secretToken) {
-          const incomingToken = req.headers["x-telegram-bot-api-secret-token"];
-          if (incomingToken !== secretToken) {
-            res.writeHead(403, { "Content-Type": "text/plain" });
-            res.end("Forbidden");
-            return;
-          }
-        }
-        const chunks: Buffer[] = [];
-        req.on("data", (chunk: Buffer) => chunks.push(chunk));
-        req.on("end", () => {
-          let update: Update;
-          try {
-            update = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Update;
-          } catch {
-            res.writeHead(400, { "Content-Type": "text/plain" });
-            res.end("Bad Request");
-            return;
-          }
-          res.writeHead(200);
-          res.end();
-          bot.handleUpdate(update).catch((e) => console.error("Webhook handleUpdate error:", e));
-        });
-        req.on("error", () => {
-          res.writeHead(500);
-          res.end();
-        });
-        return;
-      }
-      res.writeHead(404);
-      res.end();
-    });
-    server.listen(PORT);
+    console.log(`[webhook] Registrado: ${fullUrl}`);
+    // Server HTTP ya está escuchando desde el inicio de main()
   } else {
     await bot.start();
   }
