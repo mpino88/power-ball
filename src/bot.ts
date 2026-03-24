@@ -3864,17 +3864,26 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // ── DEBUGGING: Capturar errores críticos y servirlos en /health ──
+  // Como no podemos ver los logs de Render ahora mismo, esto nos dirá qué falló al instante.
+  (global as any)._lastBotError = "NINGUNO";
+  process.on('uncaughtException', (err) => {
+    (global as any)._lastBotError = err.stack || err.message;
+    console.error("UNCAUGHT EXCEPTION:", (global as any)._lastBotError);
+  });
+  process.on('unhandledRejection', (reason) => {
+    (global as any)._lastBotError = String(reason);
+    console.error("UNHANDLED REJECTION:", (global as any)._lastBotError);
+  });
+
   // ── CRITICAL: Levantar HTTP server PRIMERO para que Render health check pase ──
-  // Render mata la instancia si no responde a /health en ~60 seg.
-  // El bot tarda 30+ seg en inicializar (PDFs, seeds, Sheet).
-  // Solución: levantar server inmediatamente, registrar webhook DESPUÉS del setup.
   let server: ReturnType<typeof createServer> | null = null;
   if (WEBHOOK_URL) {
     const webhookPath = "/webhook";
     server = createServer((req: IncomingMessage, res: ServerResponse) => {
       if (req.method === "GET" && (req.url === "/" || req.url === "/health")) {
         res.writeHead(200, { "Content-Type": "text/plain" });
-        res.end("OK");
+        res.end("Status: OK. LastError: " + ((global as any)._lastBotError || "None"));
         return;
       }
       if (req.method === "POST" && req.url === webhookPath) {
