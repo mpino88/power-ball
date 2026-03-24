@@ -28,6 +28,7 @@ export interface UserInfo {
   plan_expiry?: string;
   /** true si el usuario ya activó un plan Trial (1d). Solo puede activarse una vez por ID. */
   trial_used?: boolean;
+  role?: string;
 }
 
 /** Usuarios que solicitaron un plan pero aún no están aprobados (no están en allowed). */
@@ -41,7 +42,7 @@ export interface PlanRequest {
   expiry?: string;
 }
 
-interface UsersConfig {
+export interface UsersConfig {
   allowed: number[];
   menus: Record<string, string[]>;
   userInfo: Record<string, UserInfo>;
@@ -450,8 +451,19 @@ function saveToFile(): void {
 }
 
 async function persist(): Promise<PersistResult> {
-  const backend = getStorageBackend();
   const count = config.allowed.length;
+  if (process.env.DATABASE_URL) {
+    try {
+      const pg = await import("./infrastructure/database/PostgresUserSync.js");
+      await pg.persistUsersToPG(config);
+      return { backend: "postgres" as any, ok: true, count };
+    } catch (e) {
+      console.error("[user-config] Error PG persist:", e);
+      return { backend: "postgres" as any, ok: false, count, error: String(e) };
+    }
+  }
+
+  const backend = getStorageBackend();
   console.log("[user-config] persist: backend=" + backend + ", usuarios=" + count);
   if (backend === "sheet") {
     try {
@@ -476,6 +488,13 @@ async function persist(): Promise<PersistResult> {
 
 /** Carga la config desde Sheet o archivo. Llamar al arranque del bot. */
 export async function initUserConfig(): Promise<void> {
+  if (process.env.DATABASE_URL) {
+    console.log("[user-config] PostgreSQL Backend Activado.");
+    const pg = await import("./infrastructure/database/PostgresUserSync.js");
+    config = await pg.loadUsersFromPG();
+    return;
+  }
+
   const sheetId = getSheetId();
   const hasAuth = getSheetAuth() !== null;
   if (sheetId && !hasAuth) {
@@ -731,6 +750,20 @@ export async function savePlansToSheet(items: PlanRow[]): Promise<void> {
 
 /** Recarga la config desde el Sheet (o archivo) y reemplaza la en memoria. Útil para ver datos actualizados (p. ej. solicitudes pendientes). */
 export async function reloadConfigFromStorage(): Promise<void> {
+  if (process.env.DATABASE_URL) {
+    try {
+      const pg = await import("./infrastructure/database/PostgresUserSync.js");
+      const newData = await pg.loadUsersFromPG();
+      config.allowed = [...newData.allowed];
+      config.menus = { ...newData.menus };
+      config.userInfo = { ...newData.userInfo };
+      config.requestedPlans = { ...newData.requestedPlans };
+      return;
+    } catch (e) {
+      console.error("[user-config] Error PG Reload", e);
+    }
+  }
+
   if (useGoogleSheet()) {
     try {
       const loaded = await loadFromSheet();
@@ -1925,4 +1958,38 @@ export async function loadLeadsFromSheet(): Promise<LeadRow[]> {
 export async function getLeadCount(): Promise<number> {
   const leads = await loadLeadsFromSheet();
   return leads.length;
+}
+
+/** Sistema de Referidos: Renueva el plan sumando 1 mes para recompensar. */
+export async function extendPlanByOneMonth(userId: number): Promise<void> {
+  const key = String(userId);
+  const info = config.userInfo[key];
+  if (!info) return;
+
+  if (!info.plan_expiry) {
+    info.plan_expiry = computeExpiryStr("1mes"); 
+  } else {
+    try {
+      const parts = info.plan_expiry.split("/");
+      if (parts.length === 3) {
+        const m = Number(parts[0]);
+        const d = Number(parts[1]);
+        const y = Number(`20${parts[2]}`);
+        
+        const currentDate = new Date(y, m - 1, d);
+        currentDate.setMonth(currentDate.getMonth() + 1);
+        
+        const endM = String(currentDate.getMonth() + 1).padStart(2, "0");
+        const endD = String(currentDate.getDate()).padStart(2, "0");
+        const endY = String(currentDate.getFullYear()).slice(-2);
+        info.plan_expiry = `${endM}/${endD}/${endY}`;
+      } else {
+        info.plan_expiry = computeExpiryStr("1mes"); // Fallback
+      }
+    } catch (e) {
+      info.plan_expiry = computeExpiryStr("1mes");
+    }
+  }
+  
+  await persist();
 }

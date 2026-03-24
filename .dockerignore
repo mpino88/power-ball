@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.env
+.env.*
+*.log
+data/
+.git/
+.idea/
+.cursor/
+*.md
+audit-forense-total.ts
+test-*.ts
+fix_bot.js
+render.yaml
+scripts/

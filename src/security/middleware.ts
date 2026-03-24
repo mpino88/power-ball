@@ -255,6 +255,17 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
     }
 
     // ── Usuario NO autorizado ──────────────────────────────────────────────────
+    
+    // Si viene de un link de referido, registrar antes de mostrar el onboarding
+    const textOriginal = (ctx.message as { text?: string }).text?.trim() ?? "";
+    if (textOriginal.startsWith("/start ref_")) {
+      const referrerId = parseInt(textOriginal.replace("/start ref_", ""), 10);
+      if (!isNaN(referrerId) && referrerId !== uid) {
+         import("../referrals.js").then(m => m.registerReferral(referrerId, uid)).catch(console.error);
+         console.log(`[Referrals] Usuario nuevo ${uid} invitado por ${referrerId}`);
+      }
+    }
+
     const data = ctx.callbackQuery?.data;
     if (data?.startsWith("request_plan_")) {
       const rest = data.slice("request_plan_".length);

@@ -105,7 +105,7 @@ export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboard
     kb.row().text("🤝 Consenso Multi-Estrategia", EXTRA_MENU_CALLBACK_PREFIX + CONSENSUS_MENU_ID);
   }
   kb.row().text("🃏 Charada Cubana", "charada_open");
-  kb.row().text("🛒 Tienda", "estrategias_tienda");
+  kb.row().text("🛒 Tienda", "estrategias_tienda").text("🔗 Mi Link", "mi_link_open");
   if (ownerId === null || !deps.isOwner(uid)) {
     kb.row().text("❓ Ayuda", "help").text("💬 Sugerencia", "sugerencia_open");
     if (ownerId !== null && !deps.isOwner(uid)) {
