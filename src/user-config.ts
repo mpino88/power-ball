@@ -26,7 +26,7 @@ export interface UserInfo {
   plan_temporality?: string;
   /** Fecha de caducidad del plan activo en formato MM/DD/YY. */
   plan_expiry?: string;
-  /** true si el usuario ya activó un plan Trial (1d). Solo puede activarse una vez por ID. */
+  /** true si el usuario ya activó un plan Trial (7d). Solo puede activarse una vez por ID. */
   trial_used?: boolean;
 }
 
@@ -913,7 +913,7 @@ function parseMMDDYY(s: string): Date | null {
   return new Date(year, month, day);
 }
 
-/** Devuelve true si el usuario ya usó el trial (1d) alguna vez.
+/** Devuelve true si el usuario ya usó el trial (7d) alguna vez.
  * Consulta tanto el config en memoria como el historial en la hoja de Leads.
  */
 export async function hasUsedTrial(userId: number): Promise<boolean> {
@@ -924,7 +924,7 @@ export async function hasUsedTrial(userId: number): Promise<boolean> {
   const leads = await loadLeadsFromSheet();
   const alreadyHadTrial = leads.some(l => 
     String(l.userId) === String(userId) && 
-    (l.temporality === "1d" || String(l.plan).toLowerCase().includes("trial"))
+    (l.temporality === "7d" || l.temporality === "1d" || String(l.plan).toLowerCase().includes("trial"))
   );
 
   return alreadyHadTrial;
@@ -1152,7 +1152,7 @@ export async function assignPlanToUser(
     plan_status: "approved",
     plan_temporality: temporality || undefined,
     plan_expiry: temporality ? computeExpiryStr(temporality) : undefined,
-    trial_used: temporality === "1d" ? true : (config.userInfo[key]?.trial_used ?? undefined),
+    trial_used: temporality === "7d" ? true : (config.userInfo[key]?.trial_used ?? undefined),
   };
   return persist();
 }

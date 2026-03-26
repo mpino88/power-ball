@@ -11,7 +11,7 @@ const FILE_PATH = path.join(DATA_DIR, "plans.json");
 
 /** Opciones de temporalidad disponibles. */
 export const TEMPORALITIES = [
-  { id: "1d", label: "2 Días" },
+  { id: "7d", label: "7 Días" },
   { id: "1m", label: "1 Mes" },
   { id: "3m", label: "3 Meses" },
   { id: "6m", label: "6 Meses" },
@@ -19,10 +19,10 @@ export const TEMPORALITIES = [
   { id: "1a", label: "1 Año" },
 ] as const;
 
-/** Temporalidades visibles para planes regulares (excluye 1d). */
-export const REGULAR_TEMPORALITIES = TEMPORALITIES.filter((t) => t.id !== "1d");
-/** Temporalidades visibles para planes de prueba / auto-aprobados (solo 1d). */
-export const TRIAL_TEMPORALITIES = TEMPORALITIES.filter((t) => t.id === "1d");
+/** Temporalidades visibles para planes regulares (excluye 7d). */
+export const REGULAR_TEMPORALITIES = TEMPORALITIES.filter((t) => t.id !== "7d");
+/** Temporalidades visibles para planes de prueba / auto-aprobados (solo 7d). */
+export const TRIAL_TEMPORALITIES = TEMPORALITIES.filter((t) => t.id === "7d");
 
 export type Temporality = (typeof TEMPORALITIES)[number]["id"];
 
@@ -30,7 +30,7 @@ export type Temporality = (typeof TEMPORALITIES)[number]["id"];
 export function computeExpiryDate(from: Date, temporality: Temporality | string): Date {
   const d = new Date(from);
   switch (temporality) {
-    case "1d": d.setDate(d.getDate() + 1); break;
+    case "7d": d.setDate(d.getDate() + 7); break;
     case "1m": d.setMonth(d.getMonth() + 1); break;
     case "3m": d.setMonth(d.getMonth() + 3); break;
     case "6m": d.setMonth(d.getMonth() + 6); break;
@@ -214,7 +214,7 @@ const DEFAULT_PLANS: Plan[] = [
     id: "trial",
     title: "Trial",
     description:
-      "Explora gratis todo el potencial de Ball Bot por 2 días y transforma tu forma de jugar.",
+      "Explora gratis todo el potencial de Ball Bot por 7 días y transforma tu forma de jugar.",
     price: "",
     menuIds: ["est_grupos"],
     autoApprove: true,

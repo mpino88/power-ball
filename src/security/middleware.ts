@@ -53,14 +53,14 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
 
   /** Construye los botones de temporalidad de un plan.
    * - Planes autoApprove: un solo botón "✅ Activar gratis".
-   * - Planes normales: botón de trial (1d, auto-aprobado) + temporalidades regulares de 2 en 2. */
+   * - Planes normales: botón de trial (7d, auto-aprobado) + temporalidades regulares de 2 en 2. */
   function addPlanTemporalityButtons(kb: InlineKeyboard, planId: string, planTitle: string, plan: ReturnType<typeof getPlans>[number], prefix: string): void {
     if (plan.autoApprove) {
-      kb.text(`✅ Activar gratis — 2 Días`, `${prefix}${planId}_1d`).row();
+      kb.text(`✅ Activar gratis — 7 Días`, `${prefix}${planId}_7d`).row();
       return;
     }
-    // Botón de trial (1d) — siempre auto-aprobado
-    kb.text(`✅ Trial gratis — 2 Días`, `${prefix}${planId}_1d`).row();
+    // Botón de trial (7d) — siempre auto-aprobado
+    kb.text(`✅ Trial gratis — 7 Días`, `${prefix}${planId}_7d`).row();
     // Temporalidades regulares de 2 en 2
     const temps = REGULAR_TEMPORALITIES;
     for (let i = 0; i < temps.length; i++) {
@@ -111,7 +111,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
           const plan = getPlans().find((p) => p.id === planId);
           if (plan && TEMPORALITIES.some((t) => t.id === temporality)) {
             if (ctx.callbackQuery) await ctx.answerCallbackQuery?.().catch(() => { });
-            if (plan.autoApprove || temporality === "1d") {
+            if (plan.autoApprove || temporality === "7d") {
               if (await hasUsedTrial(uid)) {
                 if (ctx.callbackQuery) await ctx.answerCallbackQuery?.({ text: "Ya usaste tu trial gratuito." }).catch(() => { });
                 await ctx.reply(
@@ -123,7 +123,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
               // Trial/autoApprove: pedir teléfono antes de activar
               pendingRenewal.set(uid, { planId, planName: plan.title, temporality });
               await ctx.reply(
-                `🔄 *Renovar plan: ${plan.title}* (Trial — 2 Días)\n\n` +
+                `🔄 *Renovar plan: ${plan.title}* (Trial — 7 Días)\n\n` +
                 "Para activar tu acceso necesitamos tu número de contacto.\n\n" +
                 "Toca el botón de abajo — Telegram te pedirá tu consentimiento antes de compartirlo.",
                 { parse_mode: "Markdown", reply_markup: contactRequestKb(`${plan.title} (Trial)`) }
@@ -160,7 +160,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
             "—";
           pendingRenewal.delete(uid);
           const plan = getPlans().find((p) => p.id === renewal.planId);
-          const isTrial = plan?.autoApprove || renewal.temporality === "1d";
+          const isTrial = plan?.autoApprove || renewal.temporality === "7d";
           try {
             // Guardar lead siempre
             saveLead(uid, name, phone, renewal.planName, renewal.temporality, isTrial ? "trial_active" : "renewal_requested").catch(() => { });
@@ -168,7 +168,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
               // Trial/autoApprove: activar inmediatamente después de capturar teléfono
               await assignPlanToUser(uid, renewal.planName, plan?.menuIds ?? [], renewal.temporality, name, phone);
               await ctx.reply(
-                `✅ *Plan ${renewal.planName} activado*\n\nTu acceso de prueba está listo por *2 días*.`,
+                `✅ *Plan ${renewal.planName} activado*\n\nTu acceso de prueba está listo por *7 días*.`,
                 { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } }
               );
               // Enviar menú principal en mensaje aparte
@@ -228,9 +228,9 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
         link = `tg://user?id=${ownerId}`;
       }
 
-      const wasTrial = getPlanTemporality(uid) === "1d";
+      const wasTrial = getPlanTemporality(uid) === "7d";
       const expiryMsg = wasTrial
-        ? "⏳ *Tu acceso de prueba (Trial 2 Días) ha expirado*\n\n" +
+        ? "⏳ *Tu acceso de prueba (Trial 7 Días) ha expirado*\n\n" +
         "El periodo gratuito ha terminado. Para seguir disfrutando de todas las funciones, elige uno de nuestros planes:\n\n" +
         "_Selecciona el plan y la duración que prefieras:_"
         : "⏰ *Tu plan ha caducado*\n\n" +
@@ -265,7 +265,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
         const plan = getPlans().find((p) => p.id === planId);
         if (plan && TEMPORALITIES.some((t) => t.id === temporality)) {
           if (ctx.callbackQuery) await ctx.answerCallbackQuery?.().catch(() => { });
-          if (plan.autoApprove || temporality === "1d") {
+          if (plan.autoApprove || temporality === "7d") {
             if (await hasUsedTrial(uid)) {
               if (ctx.callbackQuery) await ctx.answerCallbackQuery?.({ text: "Ya usaste tu trial gratuito." }).catch(() => { });
               await ctx.reply(
@@ -311,7 +311,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
           "—";
         pendingPlanRequest.delete(uid);
         const plan = getPlans().find((p) => p.id === pending.planId);
-        const isTrial = plan?.autoApprove || pending.temporality === "1d";
+        const isTrial = plan?.autoApprove || pending.temporality === "7d";
         try {
           // Guardar lead siempre
           saveLead(uid, name, phone, pending.planName, pending.temporality, isTrial ? "trial_active" : "plan_requested").catch(() => { });
@@ -319,7 +319,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
             // Trial/autoApprove: activar inmediatamente después de capturar teléfono
             await assignPlanToUser(uid, pending.planName, plan?.menuIds ?? [], pending.temporality, name, phone);
             await ctx.reply(
-              `✅ *¡Plan ${pending.planName} activado!*\n\nTienes *2 días* de acceso gratuito para explorar todas las funciones. ¡Disfrútalo!`,
+              `✅ *¡Plan ${pending.planName} activado!*\n\nTienes *7 días* de acceso gratuito para explorar todas las funciones. ¡Disfrútalo!`,
               { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } }
             );
             // Enviar menú principal en mensaje aparte
