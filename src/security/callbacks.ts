@@ -898,7 +898,7 @@ export async function handleSecurityCallback(
           return true;
         }
         const temp = getPlanTemporality(uid);
-        if (temp === "1d" || temp === "1 h") {
+        if (temp === "7d" || temp === "1 h") {
           l.status = "trial_active";
           return true;
         }

@@ -1546,7 +1546,7 @@ bot.on("callback_query:data", async (ctx) => {
     const keyboard = new InlineKeyboard();
     for (const p of plans) {
       keyboard.text(`📋 ${p.title}`, `noop_cambiar`).row();
-      const temps = TEMPORALITIES.filter((t) => t.id !== "1d");
+      const temps = TEMPORALITIES.filter((t) => t.id !== "7d");
       for (let i = 0; i < temps.length; i++) {
         const t = temps[i]!;
         const price = getPriceForTemporality(p, t.id);
@@ -3972,7 +3972,7 @@ async function main(): Promise<void> {
       const defaults = new Map([
         ["basico", "Resultados diarios + Estadísticas esenciales (frecuencias, alzas y atrasos) para jugar inteligentemente."],
         ["pro", "Plan Básico + Top 10 Hot, rachas, ciclos y análisis avanzado para maximizar tus aciertos. Ya puedes comercializar tus estrategias en la tienda"],
-        ["trial", "Explora gratis todo el potencial de Ball Bot por 2 días y transforma tu forma de jugar."]
+        ["trial", "Explora gratis todo el potencial de Ball Bot por 7 días y transforma tu forma de jugar."]
       ]);
 
       for (const row of planRows) {
