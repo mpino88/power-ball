@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
+import type { DateDrawsMap } from "./domain/models/Strategy.js";
 
 const HOY_FILE = path.join(process.cwd(), "data", "hoy-results.json");
 
@@ -64,5 +65,64 @@ export function saveHoyResult(data: Partial<HoyResult>) {
   } catch (e) {
     console.error(`❌ [APEX] Error guardando hoy-results.json:`, e);
   }
+}
+
+// ─── Cross-period Blind Spot: merge hoy-results into strategy maps ───────────
+//
+// PROBLEM:
+//   Strategies using params.ambos=true (or any cross-period analysis) need BOTH
+//   today's midday and evening in the map. The in-memory PDF cache (getP3Map) uses
+//   LEUT (Last Expected Update Time) to decide when to refresh, but there is a race:
+//
+//   Example — 9:45 PM (evening draw just happened):
+//     • PDF cache was last loaded at 2:15 PM (after midday) → LEUT = 8:20 PM → STALE
+//     • auto-draw webhook fires → forceInvalidateCache() + fresh PDF fetch → OK for tonight
+//     • BUT: between 8:20 PM and when the webhook fires (~9:52 PM), any strategy execution
+//       would trigger a PDF refresh that gets the PDF BEFORE tonight's draw is posted,
+//       missing tonight's result. The strategy sees: midday ✅ | evening from yesterday 🕰️
+//
+//   Additionally, if the bot was restarted mid-day, the cache is cold and midday might
+//   not be in the PDF yet when the cache was first warmed (before 2:05 PM).
+//
+// SOLUTION:
+//   Before passing a map to any strategy, inject whatever is in hoy-results.json for
+//   TODAY. This ensures the manually/auto-pushed result is always the primary source
+//   of truth for the current day, closing the gap between PDF update and bot restart.
+//
+//   Notes:
+//   • Only injects entries with a date matching `today` — no stale data contamination.
+//   • Does NOT overwrite existing map entries if hoy-results has no value for that slot
+//     (empty string means "no result" and is intentionally skipped).
+//   • Never applies during testing mode (caller passes `cutoff !== null`); the cutoff
+//     already represents a historical simulation date.
+
+/**
+ * Returns a copy of `map` augmented with today's P3 results from hoy-results.json.
+ * Safe to call even when hoy-results is empty or outdated (no-op in those cases).
+ */
+export function mergeHoyIntoP3Map(map: DateDrawsMap, hoy: HoyResult, today: string): DateDrawsMap {
+  const mVal = hoy.p3_m_date === today && hoy.p3_m && hoy.p3_m.length >= 3 ? hoy.p3_m : null;
+  const eVal = hoy.p3_e_date === today && hoy.p3_e && hoy.p3_e.length >= 3 ? hoy.p3_e : null;
+  if (!mVal && !eVal) return map;
+
+  const todayEntry = { ...(map[today] ?? {}) };
+  if (mVal) todayEntry.m = mVal.split("").map(Number);
+  if (eVal) todayEntry.e = eVal.split("").map(Number);
+  return { ...map, [today]: todayEntry };
+}
+
+/**
+ * Returns a copy of `map` augmented with today's P4 results from hoy-results.json.
+ * Safe to call even when hoy-results is empty or outdated (no-op in those cases).
+ */
+export function mergeHoyIntoP4Map(map: DateDrawsMap, hoy: HoyResult, today: string): DateDrawsMap {
+  const mVal = hoy.p4_m_date === today && hoy.p4_m && hoy.p4_m.length >= 4 ? hoy.p4_m : null;
+  const eVal = hoy.p4_e_date === today && hoy.p4_e && hoy.p4_e.length >= 4 ? hoy.p4_e : null;
+  if (!mVal && !eVal) return map;
+
+  const todayEntry = { ...(map[today] ?? {}) };
+  if (mVal) todayEntry.m = mVal.split("").map(Number);
+  if (eVal) todayEntry.e = eVal.split("").map(Number);
+  return { ...map, [today]: todayEntry };
 }
 
