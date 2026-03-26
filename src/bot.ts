@@ -293,6 +293,7 @@ const waitingBBTCmpLimit = new Set<number>();
  */
 function getAccessibleStrategyIds(userId: number): string[] {
   const all = getConsensusSelectableIds();
+  if (isOwner(userId)) return all;
   const userMenus = new Set(getExtraMenus(userId));
   return all.filter((id) => userMenus.has(id));
 }
