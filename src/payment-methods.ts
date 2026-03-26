@@ -60,6 +60,11 @@ function deletePm(id: string): boolean {
 
 /** Carga formas de pago desde la 9ª pestaña del Sheet y rellena el caché. */
 export async function loadPaymentMethodsFromSheet(): Promise<PaymentMethod[]> {
+  if (process.env.DATABASE_URL) {
+    const pg = await import("./infrastructure/database/PostgresPaymentMethodRepository.js");
+    pmCache = await pg.loadPaymentMethodsFromPG();
+    return pmCache;
+  }
   const sheetId = getSheetId();
   if (!sheetId || getStorageBackend() !== "sheet") return pmCache;
   const auth = getSheetAuth();
@@ -99,6 +104,10 @@ export async function loadPaymentMethodsFromSheet(): Promise<PaymentMethod[]> {
 }
 
 async function savePms(): Promise<void> {
+  if (process.env.DATABASE_URL) {
+    const pg = await import("./infrastructure/database/PostgresPaymentMethodRepository.js");
+    return pg.savePaymentMethodsToPG(pmCache);
+  }
   const sheetId = getSheetId();
   if (!sheetId || getStorageBackend() !== "sheet") return;
   const auth = getSheetAuth();

@@ -110,3 +110,34 @@ CREATE TABLE IF NOT EXISTS testing_config (
   key   VARCHAR(50)  PRIMARY KEY,
   value VARCHAR(255) NOT NULL
 );
+
+-- ── Fase 3: Leads & Strategy Requests ────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS leads (
+  id           SERIAL       PRIMARY KEY,
+  user_id      BIGINT       NOT NULL,
+  nombre       VARCHAR(255) DEFAULT '',
+  telefono     VARCHAR(50)  DEFAULT '',
+  plan         VARCHAR(100) DEFAULT '',
+  temporality  VARCHAR(20)  DEFAULT '',
+  fecha        VARCHAR(50)  DEFAULT '',
+  status       VARCHAR(30)  DEFAULT 'trial_active',
+  created_at   TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_leads_user ON leads (user_id);
+
+CREATE TABLE IF NOT EXISTS strategy_requests (
+  id           SERIAL       PRIMARY KEY,
+  user_id      BIGINT       NOT NULL,
+  menu_id      VARCHAR(100) NOT NULL,
+  requested_at BIGINT       NOT NULL,
+  UNIQUE(user_id, menu_id)
+);
+CREATE INDEX IF NOT EXISTS idx_strategy_requests_user ON strategy_requests (user_id);
+
+-- ── Patch: suggestions — añadir campos extra si no existen ───────────────────
+-- (Ejecutar solo una vez; IF NOT EXISTS es idempotente en PG 9.6+)
+ALTER TABLE suggestions ADD COLUMN IF NOT EXISTS nombre   VARCHAR(255) DEFAULT '';
+ALTER TABLE suggestions ADD COLUMN IF NOT EXISTS telefono VARCHAR(50)  DEFAULT '';
+ALTER TABLE suggestions ADD COLUMN IF NOT EXISTS fecha    VARCHAR(50)  DEFAULT '';
