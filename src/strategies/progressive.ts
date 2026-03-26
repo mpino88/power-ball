@@ -38,7 +38,7 @@ import { CONSENSUS_GROUPS } from "./consensus-multi.js";
 export const PROGRESSIVE_TOP_N = 10;
 export const PROGRESSIVE_MAX_DATES = 2500;
 export const PROGRESSIVE_WARN_THRESHOLD = 400;
-export const PROGRESSIVE_MAX_STRATEGIES = 15;
+export const PROGRESSIVE_MAX_STRATEGIES = 17;
 
 const TOP_COMBOS_DISPLAY = 10;
 /** Ventana de "tendencia reciente" en sorteos. */
