@@ -537,6 +537,10 @@ const STRATEGIES_HEADERS = ["id", "titulo", "descripcion", "createdBy", "price",
 
 /** Carga estrategias desde la 2ª pestaña de la hoja de cálculo. Si no hay Sheet o la pestaña no existe, la crea y devuelve []. */
 export async function loadStrategiesFromSheet(): Promise<StrategyRow[]> {
+  if (process.env.DATABASE_URL) {
+    const pg = await import("./infrastructure/database/PostgresStrategyRepository.js");
+    return pg.loadStrategiesFromPG();
+  }
   const sheetId = getSheetId();
   if (!sheetId) return [];
   const auth = getSheetAuth();
@@ -599,6 +603,10 @@ export async function loadStrategiesFromSheet(): Promise<StrategyRow[]> {
 
 /** Guarda estrategias en la 2ª pestaña (id, titulo, descripcion, createdBy, price, status). status=public|private; por defecto private al crear. */
 export async function saveStrategiesToSheet(items: StrategyRow[]): Promise<void> {
+  if (process.env.DATABASE_URL) {
+    const pg = await import("./infrastructure/database/PostgresStrategyRepository.js");
+    return pg.saveStrategiesToPG(items);
+  }
   const sheetId = getSheetId();
   if (!sheetId) return;
   const auth = getSheetAuth();
@@ -653,6 +661,10 @@ const PLANS_HEADERS = ["id", "title", "description", "price", "menuIds", "price_
 
 /** Carga planes desde la 3ª pestaña. Si no existe, la crea y devuelve []. */
 export async function loadPlansFromSheet(): Promise<PlanRow[]> {
+  if (process.env.DATABASE_URL) {
+    const pg = await import("./infrastructure/database/PostgresPlanRepository.js");
+    return pg.loadPlansFromPG();
+  }
   const sheetId = getSheetId();
   if (!sheetId) return [];
   const auth = getSheetAuth();
@@ -710,6 +722,10 @@ export async function loadPlansFromSheet(): Promise<PlanRow[]> {
 
 /** Guarda planes en la 3ª pestaña (id, title, description, price, menuIds). */
 export async function savePlansToSheet(items: PlanRow[]): Promise<void> {
+  if (process.env.DATABASE_URL) {
+    const pg = await import("./infrastructure/database/PostgresPlanRepository.js");
+    return pg.savePlansToPG(items);
+  }
   const sheetId = getSheetId();
   if (!sheetId) return;
   const auth = getSheetAuth();
@@ -1428,14 +1444,22 @@ export async function saveStrategyRequestsToSheet(requests: StrategyRequest[]): 
   }
 }
 
-/** Carga solicitudes (desde Sheet si aplica, si no desde archivo). */
+/** Carga solicitudes (desde PG si aplica, si no desde Sheet/archivo). */
 export async function getStrategyRequests(): Promise<StrategyRequest[]> {
+  if (process.env.DATABASE_URL) {
+    const pg = await import("./infrastructure/database/PostgresStrategyRequestRepository.js");
+    return pg.loadStrategyRequestsFromPG();
+  }
   if (useGoogleSheet()) return loadStrategyRequestsFromSheet();
   return loadStrategyRequestsSync();
 }
 
 /** Añade una solicitud de estrategia (evita duplicados userId+menuId). */
 export async function addStrategyRequest(userId: number, menuId: string): Promise<boolean> {
+  if (process.env.DATABASE_URL) {
+    const pg = await import("./infrastructure/database/PostgresStrategyRequestRepository.js");
+    return pg.addStrategyRequestToPG(userId, menuId);
+  }
   const list = useGoogleSheet() ? await loadStrategyRequestsFromSheet() : loadStrategyRequestsSync();
   if (list.some((r) => r.userId === userId && r.menuId === menuId)) return false;
   list.push({ userId, menuId, requestedAt: Date.now() });
@@ -1446,6 +1470,10 @@ export async function addStrategyRequest(userId: number, menuId: string): Promis
 
 /** Elimina una solicitud (al aprobar o rechazar). */
 export async function removeStrategyRequest(userId: number, menuId: string): Promise<boolean> {
+  if (process.env.DATABASE_URL) {
+    const pg = await import("./infrastructure/database/PostgresStrategyRequestRepository.js");
+    return pg.removeStrategyRequestFromPG(userId, menuId);
+  }
   const list = useGoogleSheet() ? await loadStrategyRequestsFromSheet() : loadStrategyRequestsSync();
   const next = list.filter((r) => !(r.userId === userId && r.menuId === menuId));
   if (next.length >= list.length) return false;
@@ -1475,6 +1503,10 @@ const TESTING_HEADERS = ["userId", "cutoff_date"] as const;
  * Pasa null para eliminar la entrada del userId (sin corte = base completa).
  */
 export async function saveTestingCutoffDate(date: string | null, userId: number): Promise<void> {
+  if (process.env.DATABASE_URL) {
+    const pg = await import("./infrastructure/database/PostgresTestingConfigRepository.js");
+    return pg.saveTestingCutoffDatePG(date, userId);
+  }
   const sheetId = getSheetId();
   if (!sheetId) return;
   const auth = getSheetAuth();
@@ -1525,6 +1557,10 @@ export async function saveTestingCutoffDate(date: string | null, userId: number)
  * - Si tiene una fecha válida MM/DD/YY → la retorna para filtrar el mapa.
  */
 export async function loadTestingCutoffDate(userId: number): Promise<string | null> {
+  if (process.env.DATABASE_URL) {
+    const pg = await import("./infrastructure/database/PostgresTestingConfigRepository.js");
+    return pg.loadTestingCutoffDatePG(userId);
+  }
   const sheetId = getSheetId();
   if (!sheetId) return null;
   const auth = getSheetAuth();
@@ -1574,6 +1610,10 @@ export const SUGERENCIA_SHEET_INDEX = 5;
  * Si la pestaña no existe, la crea y devuelve [].
  */
 export async function loadSugerenciaFromSheet(): Promise<SugerenciaRow[]> {
+  if (process.env.DATABASE_URL) {
+    const pg = await import("./infrastructure/database/PostgresSugerenciaRepository.js");
+    return pg.loadSugerenciasFromPG();
+  }
   const sheetId = getSheetId();
   if (!sheetId) return [];
   const auth = getSheetAuth();
@@ -1626,6 +1666,10 @@ export async function loadSugerenciaFromSheet(): Promise<SugerenciaRow[]> {
  * Crea la pestaña si no existe.
  */
 export async function appendSugerenciaToSheet(row: SugerenciaRow): Promise<void> {
+  if (process.env.DATABASE_URL) {
+    const pg = await import("./infrastructure/database/PostgresSugerenciaRepository.js");
+    return pg.appendSugerenciaToPG(row);
+  }
   const sheetId = getSheetId();
   if (!sheetId) return;
   const auth = getSheetAuth();
@@ -1663,6 +1707,10 @@ export async function appendSugerenciaToSheet(row: SugerenciaRow): Promise<void>
 
 /** Devuelve todas las sugerencias de un usuario específico, ordenados por fecha (más reciente primero). */
 export async function getSugerenciaForUser(userId: number): Promise<SugerenciaRow[]> {
+  if (process.env.DATABASE_URL) {
+    const pg = await import("./infrastructure/database/PostgresSugerenciaRepository.js");
+    return pg.getSugerenciaForUserPG(userId);
+  }
   const all = await loadSugerenciaFromSheet();
   return all.filter((r) => r.userId === userId).reverse();
 }
@@ -1697,6 +1745,15 @@ export function invalidateAnnouncementsCache(): void {
  * Crea la pestaña si no existe.
  */
 export async function loadAnnouncementsFromSheet(forceRefresh = false): Promise<AnnouncementRow[]> {
+  if (process.env.DATABASE_URL) {
+    if (!forceRefresh && announcementsCache && Date.now() - announcementsCache.at < ANNOUNCEMENTS_CACHE_TTL_MS) {
+      return announcementsCache.items;
+    }
+    const pg = await import("./infrastructure/database/PostgresAnnouncementRepository.js");
+    const items = await pg.loadAnnouncementsFromPG();
+    announcementsCache = { at: Date.now(), items };
+    return items;
+  }
   if (!forceRefresh && announcementsCache && Date.now() - announcementsCache.at < ANNOUNCEMENTS_CACHE_TTL_MS) {
     return announcementsCache.items;
   }
@@ -1746,6 +1803,12 @@ export async function loadAnnouncementsFromSheet(forceRefresh = false): Promise<
 
 /** Persiste la lista completa de anuncios en la 7ª pestaña (reemplaza todo). Crea la pestaña si no existe. */
 export async function saveAnnouncementsToSheet(items: AnnouncementRow[]): Promise<void> {
+  if (process.env.DATABASE_URL) {
+    const pg = await import("./infrastructure/database/PostgresAnnouncementRepository.js");
+    await pg.saveAnnouncementsToPG(items);
+    announcementsCache = { at: Date.now(), items };
+    return;
+  }
   const sheetId = getSheetId();
   if (!sheetId) return;
   const auth = getSheetAuth();
@@ -1776,6 +1839,12 @@ export async function saveAnnouncementsToSheet(items: AnnouncementRow[]): Promis
 
 /** Añade un nuevo anuncio. Devuelve la lista actualizada. */
 export async function addAnnouncement(texto: string, fecha: string): Promise<AnnouncementRow[]> {
+  if (process.env.DATABASE_URL) {
+    const pg = await import("./infrastructure/database/PostgresAnnouncementRepository.js");
+    const items = await pg.addAnnouncementToPG(texto, fecha);
+    announcementsCache = { at: Date.now(), items };
+    return items;
+  }
   const items = await loadAnnouncementsFromSheet(true);
   const newItem: AnnouncementRow = { id: String(Date.now()), texto, fecha };
   const updated = [...items, newItem];
@@ -1785,6 +1854,12 @@ export async function addAnnouncement(texto: string, fecha: string): Promise<Ann
 
 /** Edita el texto de un anuncio por id. Devuelve la lista actualizada o null si no se encontró. */
 export async function editAnnouncement(id: string, newTexto: string): Promise<AnnouncementRow[] | null> {
+  if (process.env.DATABASE_URL) {
+    const pg = await import("./infrastructure/database/PostgresAnnouncementRepository.js");
+    const items = await pg.editAnnouncementInPG(id, newTexto);
+    if (items) announcementsCache = { at: Date.now(), items };
+    return items;
+  }
   const items = await loadAnnouncementsFromSheet(true);
   const idx = items.findIndex((r) => r.id === id);
   if (idx < 0) return null;
@@ -1795,6 +1870,12 @@ export async function editAnnouncement(id: string, newTexto: string): Promise<An
 
 /** Elimina un anuncio por id. Devuelve la lista actualizada o null si no se encontró. */
 export async function deleteAnnouncement(id: string): Promise<AnnouncementRow[] | null> {
+  if (process.env.DATABASE_URL) {
+    const pg = await import("./infrastructure/database/PostgresAnnouncementRepository.js");
+    const items = await pg.deleteAnnouncementFromPG(id);
+    if (items) announcementsCache = { at: Date.now(), items };
+    return items;
+  }
   const items = await loadAnnouncementsFromSheet(true);
   const next = items.filter((r) => r.id !== id);
   if (next.length === items.length) return null;
@@ -1850,6 +1931,10 @@ export async function saveLead(
   temporality: string,
   status = "trial_active"
 ): Promise<void> {
+  if (process.env.DATABASE_URL) {
+    const pg = await import("./infrastructure/database/PostgresLeadRepository.js");
+    return pg.saveLeadToPG(userId, name, phone, plan, temporality, status);
+  }
   const sheetId = getSheetId();
   if (!sheetId) {
     console.log("[leads] Sheet no configurado; lead no guardado para userId=", userId);
@@ -1906,6 +1991,10 @@ export async function saveLead(
 
 /** Carga todos los leads desde la 8ª pestaña. Crea la pestaña si no existe. */
 export async function loadLeadsFromSheet(): Promise<LeadRow[]> {
+  if (process.env.DATABASE_URL) {
+    const pg = await import("./infrastructure/database/PostgresLeadRepository.js");
+    return pg.loadLeadsFromPG();
+  }
   const sheetId = getSheetId();
   if (!sheetId) return [];
   const auth = getSheetAuth();
@@ -1956,6 +2045,11 @@ export async function loadLeadsFromSheet(): Promise<LeadRow[]> {
 
 /** Cuenta total de leads registrados. */
 export async function getLeadCount(): Promise<number> {
+  if (process.env.DATABASE_URL) {
+    const pg = await import("./infrastructure/database/PostgresLeadRepository.js");
+    const leads = await pg.loadLeadsFromPG();
+    return leads.length;
+  }
   const leads = await loadLeadsFromSheet();
   return leads.length;
 }

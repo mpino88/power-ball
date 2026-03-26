@@ -6,6 +6,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
+import { createAutoDrawHandler, type AutoDrawRequest } from "./auto-draw.js";
 import { Bot, InputFile, InlineKeyboard } from "grammy";
 import type { Update } from "grammy/types";
 import {
@@ -347,21 +348,32 @@ const waitingSugerenciaText = new Map<number, true>();
 const waitingAnnouncementInput = new Map<number, "create" | string>();
 
 /**
- * Versiones de getP3Map/getP4Map con filtro de fecha de corte para estrategias.
- * El filtro solo aplica al admin que activó el modo testing; cualquier otro recibe el mapa completo.
+ * Versiones de getP3Map/getP4Map con:
+ *  1. Merge de hoy-results.json → cierra el punto ciego cross-period:
+ *     cuando una estrategia "ambos" (mediodía+noche) se ejecuta por la noche,
+ *     el resultado del mediodía de hoy ya está disponible via hoy-results aunque
+ *     el PDF aún no haya sido refrescado o el caché esté desactualizado.
+ *  2. Filtro de fecha de corte para modo testing (solo owners).
+ *
+ * NOTE: el merge NO aplica en testing mode (cutoff activo) — la simulación
+ * histórica no debe contaminarse con datos en vivo de hoy.
  */
 async function getStrategyP3Map(userId?: number): Promise<DateDrawsMap> {
   const map = await getP3Map();
-  if (!isOwner(userId ?? 0)) return map;
-  const cutoff = await getTestingCutoff(userId ?? 0);
-  return cutoff ? filterMapByCutoff(map, cutoff) : map;
+  const cutoff = isOwner(userId ?? 0) ? await getTestingCutoff(userId ?? 0) : null;
+  if (cutoff) return filterMapByCutoff(map, cutoff);
+  // Merge today's hoy-results so cross-period strategies always have the latest data
+  const { getHoyResult: getHoy, getTodayEST: todayEST, mergeHoyIntoP3Map } = await import("./hoy-results.js");
+  return mergeHoyIntoP3Map(map, getHoy(), todayEST());
 }
 
 async function getStrategyP4Map(userId?: number): Promise<DateDrawsMap> {
-  const map = await getP4Map();
-  if (!isOwner(userId ?? 0)) return map as DateDrawsMap;
-  const cutoff = await getTestingCutoff(userId ?? 0);
-  return cutoff ? filterMapByCutoff(map as DateDrawsMap, cutoff) : (map as DateDrawsMap);
+  const map = await getP4Map() as DateDrawsMap;
+  const cutoff = isOwner(userId ?? 0) ? await getTestingCutoff(userId ?? 0) : null;
+  if (cutoff) return filterMapByCutoff(map, cutoff);
+  // Merge today's hoy-results so cross-period strategies always have the latest data
+  const { getHoyResult: getHoy, getTodayEST: todayEST, mergeHoyIntoP4Map } = await import("./hoy-results.js");
+  return mergeHoyIntoP4Map(map, getHoy(), todayEST());
 }
 
 /** Timeout (ms) para ejecutar una estrategia; evita "Calculando…" infinito si getP3Map/run tardan. */
@@ -3855,6 +3867,12 @@ async function getP4Map(): Promise<DateDrawsMapP4> {
   return cachedP4Map;
 }
 
+/** Invalidates PDF caches so the next getP3Map/getP4Map call re-fetches from floridalottery.com */
+function forceInvalidateCache() {
+  lastP3Fetch = 0;
+  lastP4Fetch = 0;
+}
+
 async function main(): Promise<void> {
   if (!BOT_TOKEN) {
     console.error("Configura TELEGRAM_BOT_TOKEN en el entorno.");
@@ -3877,14 +3895,66 @@ async function main(): Promise<void> {
     console.error("UNHANDLED REJECTION:", (global as any)._lastBotError);
   });
 
+  // ── Auto-draw handler (bound to live bot deps) ────────────────────────────
+  const handleAutoDraw = createAutoDrawHandler({
+    getP3Map,
+    getP4Map,
+    botApi: bot.api,
+    forceInvalidateCache,
+    getExtraMenuLabel,
+    buildMainKeyboard: buildMainKb,
+    getHotThresholdDays: () => hotThresholdDays,
+  });
+
   // ── CRITICAL: Levantar HTTP server PRIMERO para que Render health check pase ──
   let server: ReturnType<typeof createServer> | null = null;
   if (WEBHOOK_URL) {
     const webhookPath = "/webhook";
+    const autoDrawSecret = process.env.AUTO_DRAW_SECRET || "";
     server = createServer((req: IncomingMessage, res: ServerResponse) => {
       if (req.method === "GET" && (req.url === "/" || req.url === "/health")) {
         res.writeHead(200, { "Content-Type": "text/plain" });
         res.end("Status: OK. LastError: " + ((global as any)._lastBotError || "None"));
+        return;
+      }
+      // ── /api/auto-draw — lottery-monitor webhook ─────────────────────────
+      if (req.method === "POST" && req.url === "/api/auto-draw") {
+        const chunks: Buffer[] = [];
+        req.on("data", (chunk: Buffer) => chunks.push(chunk));
+        req.on("end", () => {
+          let body: AutoDrawRequest;
+          try {
+            body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as AutoDrawRequest;
+          } catch {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Invalid JSON" }));
+            return;
+          }
+          // Verify shared secret
+          if (autoDrawSecret && body.secret !== autoDrawSecret) {
+            res.writeHead(403, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Forbidden" }));
+            return;
+          }
+          const period = body.period;
+          if (period !== "m" && period !== "e") {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "period must be 'm' or 'e'" }));
+            return;
+          }
+          handleAutoDraw(body)
+            .then((result) => {
+              console.log(`[AUTO-DRAW] ✅ found=${result.found} P3=${result.p3 ?? "-"} P4=${result.p4 ?? "-"} users=${result.usersNotified ?? 0}`);
+              res.writeHead(200, { "Content-Type": "application/json" });
+              res.end(JSON.stringify(result));
+            })
+            .catch((e) => {
+              console.error("[AUTO-DRAW] ❌ Unhandled error:", e);
+              res.writeHead(500, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ found: false, message: String(e) }));
+            });
+        });
+        req.on("error", () => { res.writeHead(500); res.end(); });
         return;
       }
       if (req.method === "POST" && req.url === webhookPath) {
@@ -3925,15 +3995,19 @@ async function main(): Promise<void> {
     console.log(`[server] HTTP server escuchando en puerto ${PORT} (health check activo)`);
   }
 
-  // Inicia crons de actualización PostgreSQL si DATABASE_URL está presente
+  // Inicia crons — DB sync (si DATABASE_URL) + backup window polls (siempre)
   import("./infrastructure/cron/CronRunner.js")
-    .then(c => c.initCronJobs())
-    .catch(e => console.error("Error iniciando crons PG:", e));
+    .then(c => c.initCronJobs(async (period) => {
+      await handleAutoDraw({ period });
+    }))
+    .catch(e => console.error("Error iniciando crons:", e));
 
   registerExtraMenus();
   setSheetMenuLabelResolver(getExtraMenuLabel);
   await initUserConfig();
-  if (getStorageBackend() === "sheet") {
+  // PG-first: cuando DATABASE_URL está presente entra en el mismo flujo que Sheet
+  // (las funciones *FromSheet ya tienen guard PG interno)
+  if (process.env.DATABASE_URL || getStorageBackend() === "sheet") {
     let rows = await loadStrategiesFromSheet();
     const migrated = rows.some((r) => r.id === "estrategia_test");
     if (migrated) {
@@ -4044,7 +4118,7 @@ async function main(): Promise<void> {
 
   loadStrategyPreviews();
 
-  if (getStorageBackend() !== "sheet") {
+  if (!process.env.DATABASE_URL && getStorageBackend() !== "sheet") {
     initPlans();
   }
 

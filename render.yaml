@@ -24,3 +24,11 @@ services:
       - key: REQUEST_ACCESS_LINK
         sync: false
       # Enlace al chat/grupo para solicitar acceso (ej: t.me/mi_grupo). Sin esto no se muestra botón.
+      # ── PostgreSQL (Internal URL — solo funciona dentro de Render) ─────────────
+      # Valor: postgresql://ballbot:<PASSWORD>@dpg-d70k07ruibrs73cj5300-a/ballbot_db
+      # IMPORTANTE: Usar Internal URL (sin .oregon-postgres.render.com) para latencia <1ms y sin SSL
+      - key: DATABASE_URL
+        sync: false
+      # false = sin SSL en red interna de Render. true = solo para External URL (local/dev)
+      - key: DATABASE_SSL
+        value: "false"
