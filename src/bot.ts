@@ -4002,6 +4002,13 @@ async function main(): Promise<void> {
               [date]: { [period]: numsArr }
             });
 
+            const { saveHoyResult, getTodayEST } = await import("./hoy-results.js");
+            if (date === getTodayEST()) {
+              const gameKey = `${game}_${period}` as keyof import("./hoy-results.js").HoyResult;
+              saveHoyResult({ [gameKey]: numbers.replace(/,/g, "") });
+              console.log(`[HIT WEBHOOK] Sorteo integrado en 'Hoy' (hoy-results.json) [${gameKey}]`);
+            }
+
             const { findWinningStrategies } = await import("./neuro-hit-engine.js");
             const { getExtraMenuLabel } = await import("./menu-registry.js");
             const { escapeMd } = await import("./security/callbacks.js");
