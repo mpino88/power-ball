@@ -321,6 +321,10 @@ function loadFromFile(): UsersConfig {
 }
 
 async function saveToSheet(): Promise<void> {
+  if (process.env.DATABASE_URL) {
+    const pg = await import("./infrastructure/database/PostgresUserSync.js");
+    return pg.persistUsersToPG(config);
+  }
   const sheetId = getSheetId();
   if (!sheetId) {
     throw new Error("GOOGLE_SHEET_ID no definido o vacío.");
