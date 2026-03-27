@@ -187,7 +187,25 @@ import {
 import { getPaymentMethods, loadPaymentMethodsFromSheet } from "./payment-methods.js";
 
 const isDev = process.env.NODE_ENV === "development";
+
+// Option fallback to load .env if present (e.g. for local production test or manual upload)
+try {
+  const fs = require("node:fs");
+  if (fs.existsSync(".env")) {
+    process.loadEnvFile(".env");
+  }
+} catch (e) {
+  // Ignore errors
+}
+
 const BOT_TOKEN = (isDev ? process.env.TELEGRAM_BOT_TOKEN_DEV : process.env.TELEGRAM_BOT_TOKEN) || process.env.TELEGRAM_BOT_TOKEN || "";
+
+if (!BOT_TOKEN) {
+  console.error("❌ ERROR CRÍTICO: No se encontró TELEGRAM_BOT_TOKEN (o TELEGRAM_BOT_TOKEN_DEV) en el entorno.");
+  console.error("👉 Ve a tu panel de configuración (ej. Render) o archivo .env y añade la variable TELEGRAM_BOT_TOKEN.");
+  process.exit(1);
+}
+
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const WEBHOOK_URL = isDev ? "" : (process.env.WEBHOOK_URL ?? "");
 const FLORIDA_TZ = "America/New_York";
@@ -3874,10 +3892,6 @@ function forceInvalidateCache() {
 }
 
 async function main(): Promise<void> {
-  if (!BOT_TOKEN) {
-    console.error("Configura TELEGRAM_BOT_TOKEN en el entorno.");
-    process.exit(1);
-  }
   if (process.env.PORT && !WEBHOOK_URL) {
     console.error("En este entorno debes definir WEBHOOK_URL (ej: https://tu-app.onrender.com).");
     process.exit(1);

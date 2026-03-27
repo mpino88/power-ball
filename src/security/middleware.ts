@@ -203,7 +203,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
           return;
         }
 
-        const text = (ctx.message as { text?: string }).text?.trim() ?? "";
+        const text = ctx.message?.text?.trim() ?? "";
         if (text === "❌ Cancelar") {
           pendingRenewal.delete(uid);
           await ctx.reply("Renovación cancelada.", { reply_markup: { remove_keyboard: true } });
@@ -257,7 +257,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
     // ── Usuario NO autorizado ──────────────────────────────────────────────────
     
     // Si viene de un link de referido, registrar antes de mostrar el onboarding
-    const textOriginal = (ctx.message as { text?: string }).text?.trim() ?? "";
+    const textOriginal = ctx.message?.text?.trim() ?? "";
     if (textOriginal.startsWith("/start ref_")) {
       const referrerId = parseInt(textOriginal.replace("/start ref_", ""), 10);
       if (!isNaN(referrerId) && referrerId !== uid) {
@@ -383,7 +383,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
         return;
       }
 
-      const text = (ctx.message as { text?: string }).text?.trim() ?? "";
+      const text = ctx.message?.text?.trim() ?? "";
       if (text === "❌ Cancelar") {
         pendingPlanRequest.delete(uid);
         await ctx.reply("Solicitud cancelada.", { reply_markup: { remove_keyboard: true } });
