@@ -155,7 +155,7 @@ export interface SecurityCallbackDeps {
   getExtraMenuIds: () => string[];
   getExtraMenuLabel: (menuId: string) => string | undefined;
   /** Si se proporciona, "Listar planes" recarga desde el Sheet antes de mostrar. */
-  getStorageBackend?: () => "sheet" | "file";
+  getStorageBackend?: () => "sheet" | "file" | "postgres";
   loadPlansFromSheet?: () => Promise<{ id: string; title: string; description: string; price: string; menuIds: string; price_1m: string; price_3m: string; price_6m: string; price_9m: string; price_1a: string; autoApprove: string }[]>;
   initPlansFromSheet?: (rows: { id: string; title: string; description: string; price: string; menuIds: string; price_1m: string; price_3m: string; price_6m: string; price_9m: string; price_1a: string; autoApprove: string }[]) => void;
   getP3Map: () => Promise<any>;
