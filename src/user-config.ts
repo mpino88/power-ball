@@ -96,7 +96,8 @@ function getSheetId(): string | null {
 }
 
 /** Para logs: indica si estamos usando Sheet o archivo. */
-export function getStorageBackend(): "sheet" | "file" {
+export function getStorageBackend(): "sheet" | "file" | "postgres" {
+  if (process.env.DATABASE_URL) return "postgres";
   return useGoogleSheet() ? "sheet" : "file";
 }
 
@@ -138,7 +139,7 @@ function getSheetClientEmail(): string | null {
 
 /** Resultado de persist(): para mostrar en la respuesta al agregar acceso. */
 export interface PersistResult {
-  backend: "sheet" | "file";
+  backend: "sheet" | "file" | "postgres";
   ok: boolean;
   count: number;
   error?: string;
