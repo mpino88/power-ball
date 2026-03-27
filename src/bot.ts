@@ -3976,15 +3976,80 @@ async function main(): Promise<void> {
       if (req.url === "/hit") {
         const chunks: Buffer[] = [];
         req.on("data", (chunk: Buffer) => chunks.push(chunk));
-        req.on("end", () => {
+        req.on("end", async () => {
           try {
             const body = Buffer.concat(chunks).toString("utf8");
-            console.log(`[HIT WEBHOOK] [${req.method}] Received data:`, body || "<empty body>");
+            const payload = JSON.parse(body);
+            console.log(`[HIT WEBHOOK] [${req.method}] Received data:`, payload);
+
+            const secretToken = process.env.AUTO_DRAW_SECRET || "BLISS_FORENSIC_SECURE_TOKEN_2026";
+            if (payload.secret !== secretToken) {
+              res.writeHead(403, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ status: "error", message: "Forbidden" }));
+              return;
+            }
+
+            const { date, game, period, numbers } = payload;
+            if (!date || !game || !period || !numbers) {
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ status: "error", message: "Missing required fields" }));
+              return;
+            }
+
+            const { saveDrawsToDB } = await import("./infrastructure/database/PostgresDrawRepository.js");
+            const numsArr = numbers.split(",").map(Number);
+            await saveDrawsToDB(game, {
+              [date]: { [period]: numsArr }
+            });
+
+            const { findWinningStrategies } = await import("./neuro-hit-engine.js");
+            const { getExtraMenuLabel } = await import("./menu-registry.js");
+            const { escapeMd } = await import("./security/callbacks.js");
+
+            const periodLabel = period === "m" ? "☀️ Mediodía" : "🌙 Noche";
+            const formatVal = (v: string) => v.split("").join("-");
+            const formatHits = (hits: { id: string; label: string }[]) => {
+              if (hits.length === 0) {
+                return `\n\n⚡ *Algoritmos Validados:* _Recalibrando análisis predictivo..._`;
+              }
+              const uniqueLabels = [...new Set(hits.map((h) => escapeMd(getExtraMenuLabel(h.label) || h.label)))];
+              return `\n\n⚡ *Algoritmos Validados:*\n` + uniqueLabels.map((l) => ` ➥ ${l}`).join("\n");
+            };
+
+            let hitsP3: any[] = [];
+            let hitsP4: any[] = [];
+            try {
+              const winningHits = await findWinningStrategies({ getP3Map, getP4Map }, hotThresholdDays);
+              hitsP3 = winningHits[period === "m" ? "p3_m" : "p3_e"] ?? [];
+              hitsP4 = winningHits[period === "m" ? "p4_m" : "p4_e"] ?? [];
+            } catch (e) {
+              console.warn(`[HIT WEBHOOK] ⚠️ findWinningStrategies failed:`, e);
+            }
+
+            let notification = `🤖 *Sorteo Detectado: ${periodLabel}*\n📅 *Fecha:* ${date}\n\n`;
+            if (game === "p3") {
+              notification += `🎯 Pick 3 (Fijo): *${formatVal(numbers.replace(/,/g, ""))}*${formatHits(hitsP3)}\n\n`;
+            } else {
+              notification += `🎲 Pick 4 (Corrido): *${formatVal(numbers.replace(/,/g, ""))}*${formatHits(hitsP4)}\n`;
+            }
+            notification += "\nConsulta todos los detalles en ☀️🌙 Últimos Sorteos 🏆";
+
+            const safeDate = date.replace(/\//g, "-");
+            const safeNums = numbers.replace(/,/g, "");
+            const adminKb = new InlineKeyboard().text("📢 Publicar", `hit_pub_${game}_${period}_${safeDate}_${safeNums}`);
+
+            for (const oid of getOwnerIds()) {
+              bot.api.sendMessage(oid, notification, { parse_mode: "Markdown", reply_markup: adminKb }).catch(() => { });
+            }
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ status: "ok", message: "Hit processed and admins notified" }));
+
           } catch (e) {
-            console.error("[HIT WEBHOOK] Error reading payload:", e);
+            console.error("[HIT WEBHOOK] Error processing payload:", e);
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ status: "error", message: "Internal Error" }));
           }
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ status: "ok", message: "Hit received" }));
         });
         req.on("error", (err) => {
           console.error("[HIT WEBHOOK] Request error:", err);
