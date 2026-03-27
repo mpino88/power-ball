@@ -32,7 +32,7 @@ import {
   getStrategyRequests,
   removeStrategyRequest,
   approveStrategyRequest,
-  loadLeadsFromSheet,
+  loadLeadsFromDB,
   getPlanTemporality,
   isPlanExpired,
 } from "../user-config.js";
@@ -40,7 +40,7 @@ import {
   getPaymentMethods,
   getPaymentMethodById,
   deleteAndSavePaymentMethod,
-  loadPaymentMethodsFromSheet,
+  loadPaymentMethodsFromDB,
 } from "../payment-methods.js";
 import {
   getExtraMenuIds,
@@ -156,8 +156,8 @@ export interface SecurityCallbackDeps {
   getExtraMenuLabel: (menuId: string) => string | undefined;
   /** Si se proporciona, "Listar planes" recarga desde la DB antes de mostrar. */
   getStorageBackend?: () => "postgres" | "file";
-  loadPlansFromSheet?: () => Promise<{ id: string; title: string; description: string; price: string; menuIds: string; price_1m: string; price_3m: string; price_6m: string; price_9m: string; price_1a: string; autoApprove: string }[]>;
-  initPlansFromSheet?: (rows: { id: string; title: string; description: string; price: string; menuIds: string; price_1m: string; price_3m: string; price_6m: string; price_9m: string; price_1a: string; autoApprove: string }[]) => void;
+  loadPlansFromDB?: () => Promise<{ id: string; title: string; description: string; price: string; menuIds: string; price_1m: string; price_3m: string; price_6m: string; price_9m: string; price_1a: string; autoApprove: string }[]>;
+  initPlansFromDB?: (rows: { id: string; title: string; description: string; price: string; menuIds: string; price_1m: string; price_3m: string; price_6m: string; price_9m: string; price_1a: string; autoApprove: string }[]) => void;
   getP3Map: () => Promise<any>;
   getP4Map: () => Promise<any>;
   getTodayFloridaMMDDYY: () => string;
@@ -625,9 +625,9 @@ export async function handleSecurityCallback(
     result = "💰 *Gestionar planes*\n\nOperación cancelada.";
     keyboard = buildManagePlansKeyboard();
   } else if (data === "admin_plans_list") {
-    if (deps.loadPlansFromSheet && deps.initPlansFromSheet) {
-      const rows = await deps.loadPlansFromSheet();
-      deps.initPlansFromSheet(rows);
+    if (deps.loadPlansFromDB && deps.initPlansFromDB) {
+      const rows = await deps.loadPlansFromDB();
+      deps.initPlansFromDB(rows);
     }
     const list = getPlans();
     const lines = list.map((p) => {
@@ -877,7 +877,7 @@ export async function handleSecurityCallback(
       keyboard = new InlineKeyboard().text("💻 Ver Solicitudes Pendientes", "admin_plans_requests").row().text("◀️ Gestionar Planes", "admin_plans_manage");
     }
   } else if (data === "admin_leads" || data === "admin_leads_refresh") {
-    const todosLosLeads = await loadLeadsFromSheet();
+    const todosLosLeads = await loadLeadsFromDB();
     const pendientes = getRequestedPlanUsers();
 
     // Filtramos leads para NO mostrar a los que ya son clientes convertidos activos
@@ -940,7 +940,7 @@ export async function handleSecurityCallback(
         .text("◀️ Volver a Administrar", "security_open");
     }
   } else if (data === "admin_pm_open" || data === "admin_pm_refresh") {
-    await loadPaymentMethodsFromSheet();
+    await loadPaymentMethodsFromDB();
     const pms = getPaymentMethods();
     const pmLines = pms.map((p, i) =>
       `${i + 1}. *${escapeMd(p.description)}*\n   💳 ${escapeMd(p.account)} · 🌐 ${escapeMd(p.currency)}`

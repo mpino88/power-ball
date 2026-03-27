@@ -101,17 +101,17 @@ export interface PlanSheetRow {
   autoApprove: string;
 }
 
-/** Cuando está definido, save() persiste en la 3ª pestaña del Sheet en lugar del archivo JSON. */
-let planSheetPersist: ((items: PlanSheetRow[]) => Promise<void>) | null = null;
+/** Cuando está definido, save() persiste en PG en lugar del archivo JSON. */
+let planDbPersist: ((items: PlanSheetRow[]) => Promise<void>) | null = null;
 
-export function setPlanSheetPersist(
+export function setPlanDbPersist(
   fn: ((items: PlanSheetRow[]) => Promise<void>) | null
 ): void {
-  planSheetPersist = fn;
+  planDbPersist = fn;
 }
 
-/** Inicializa desde filas de la hoja (3ª pestaña). */
-export function initPlansFromSheet(rows: PlanSheetRow[]): void {
+/** Inicializa desde BD. */
+export function initPlansFromDB(rows: PlanSheetRow[]): void {
   plans = rows.map((r) => ({
     id: r.id,
     title: r.title,
@@ -156,7 +156,7 @@ function load(): Plan[] {
 }
 
 function save(): void {
-  if (planSheetPersist) {
+  if (planDbPersist) {
     const items: PlanSheetRow[] = plans.map((p) => ({
       id: p.id,
       title: p.title,
@@ -170,7 +170,7 @@ function save(): void {
       price_1a: p.price_1a ?? "",
       autoApprove: p.autoApprove ? "true" : "",
     }));
-    void planSheetPersist(items);
+    void planDbPersist(items);
     return;
   }
   try {

@@ -9,14 +9,8 @@
  * ────────────────────────────────────────────────────────────────────────────
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
-import path from "node:path";
 import { getPlanByTitle, computeExpiryDate, formatDateMMDDYY } from "./plans.js";
 import { isCustomMenu, adjustSubscriberCount, getMenuCreatedBy } from "./custom-menus.js";
-
-const CONFIG_DIR = path.join(process.cwd(), "data");
-const CONFIG_PATH = path.join(CONFIG_DIR, "bot-users.json");
-const STRATEGY_REQUESTS_PATH = path.join(CONFIG_DIR, "strategy-requests.json");
 
 export interface UserInfo {
   name?: string;
@@ -62,103 +56,47 @@ export function setSheetMenuLabelResolver(fn: (menuId: string) => string | undef
   sheetMenuLabelResolver = fn;
 }
 
-/** Para logs: indica si estamos usando PG o archivo. */
-export function getStorageBackend(): "postgres" | "file" {
-  if (process.env.DATABASE_URL) return "postgres";
-  return "file";
+export function getStorageBackend(): "postgres" {
+  return "postgres";
 }
 
 /** Resultado de persist(): para mostrar en la respuesta al agregar acceso. */
 export interface PersistResult {
-  backend: "postgres" | "file";
+  backend: "postgres";
   ok: boolean;
   count: number;
   error?: string;
-}
-
-// ─── File fallback (para desarrollo sin DATABASE_URL) ────────────────────────
-
-function loadFromFile(): UsersConfig {
-  try {
-    if (existsSync(CONFIG_PATH)) {
-      const raw = readFileSync(CONFIG_PATH, "utf8");
-      const data = JSON.parse(raw) as Partial<UsersConfig>;
-      const requestedRaw = data.requestedPlans && typeof data.requestedPlans === "object" ? data.requestedPlans : {};
-      const requestedPlans: Record<string, PlanRequest> = {};
-      for (const [uid, req] of Object.entries(requestedRaw)) {
-        if (req && typeof req === "object" && typeof (req as PlanRequest).plan === "string") {
-          requestedPlans[uid] = {
-            plan: (req as PlanRequest).plan,
-            name: (req as PlanRequest).name,
-            phone: (req as PlanRequest).phone,
-          };
-        }
-      }
-      return {
-        allowed: Array.isArray(data.allowed) ? data.allowed : [],
-        menus: data.menus && typeof data.menus === "object" ? data.menus : {},
-        userInfo: data.userInfo && typeof data.userInfo === "object" ? data.userInfo : {},
-        requestedPlans,
-      };
-    }
-  } catch (e) {
-    console.error("Error loading user config:", e);
-  }
-  return { ...defaultConfig };
-}
-
-function saveToFile(): void {
-  try {
-    if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
-    writeFileSync(
-      CONFIG_PATH,
-      JSON.stringify(
-        { allowed: config.allowed, menus: config.menus, userInfo: config.userInfo, requestedPlans: config.requestedPlans },
-        null,
-        2
-      ),
-      "utf8"
-    );
-  } catch (e) {
-    console.error("Error saving user config:", e);
-  }
 }
 
 // ─── Persist ─────────────────────────────────────────────────────────────────
 
 async function persist(): Promise<PersistResult> {
   const count = config.allowed.length;
-  if (process.env.DATABASE_URL) {
-    try {
-      const pg = await import("./infrastructure/database/PostgresUserSync.js");
-      await pg.persistUsersToPG(config);
-      return { backend: "postgres", ok: true, count };
-    } catch (e) {
-      console.error("[user-config] Error PG persist:", e);
-      return { backend: "postgres", ok: false, count, error: String(e) };
-    }
+  if (!process.env.DATABASE_URL) {
+    console.error("❌ CRÍTICO: DATABASE_URL no definida. Imposible persistir configuración.");
+    return { backend: "postgres", ok: false, count, error: "Missing DATABASE_URL" };
   }
   try {
-    saveToFile();
-    return { backend: "file", ok: true, count };
+    const pg = await import("./infrastructure/database/PostgresUserSync.js");
+    await pg.persistUsersToPG(config);
+    return { backend: "postgres", ok: true, count };
   } catch (e) {
-    const err = e as Error;
-    return { backend: "file", ok: false, count, error: err?.message ?? String(e) };
+    console.error("[user-config] Error PG persist:", e);
+    return { backend: "postgres", ok: false, count, error: String(e) };
   }
 }
 
 // ─── Init ────────────────────────────────────────────────────────────────────
 
-/** Carga la config desde PG o archivo. Llamar al arranque del bot. */
+/** Carga la config desde PG. Llamar al arranque del bot. */
 export async function initUserConfig(): Promise<void> {
-  if (process.env.DATABASE_URL) {
-    console.log("[user-config] PostgreSQL Backend Activado.");
-    const pg = await import("./infrastructure/database/PostgresUserSync.js");
-    config = await pg.loadUsersFromPG();
-    return;
+  if (!process.env.DATABASE_URL) {
+    console.error("❌ CRÍTICO: DATABASE_URL no definida. El bot requiere PostgreSQL para funcionar.");
+    process.exit(1);
   }
-  console.log("[user-config] Usando archivo:", CONFIG_PATH);
-  config = loadFromFile();
+  console.log("[user-config] PostgreSQL Backend Activado.");
+  const pg = await import("./infrastructure/database/PostgresUserSync.js");
+  config = await pg.loadUsersFromPG();
 }
 
 // ─── Strategies ──────────────────────────────────────────────────────────────
@@ -181,11 +119,9 @@ export async function loadStrategiesFromSheet(): Promise<StrategyRow[]> {
   return [];
 }
 
-export async function saveStrategiesToSheet(items: StrategyRow[]): Promise<void> {
-  if (process.env.DATABASE_URL) {
-    const pg = await import("./infrastructure/database/PostgresStrategyRepository.js");
-    return pg.saveStrategiesToPG(items);
-  }
+export async function saveStrategiesToDB(items: StrategyRow[]): Promise<void> {
+  const pg = await import("./infrastructure/database/PostgresStrategyRepository.js");
+  return pg.saveStrategiesToPG(items);
 }
 
 // ─── Plans ───────────────────────────────────────────────────────────────────
@@ -205,41 +141,35 @@ export interface PlanRow {
   autoApprove: string;
 }
 
-export async function loadPlansFromSheet(): Promise<PlanRow[]> {
-  if (process.env.DATABASE_URL) {
-    const pg = await import("./infrastructure/database/PostgresPlanRepository.js");
-    return pg.loadPlansFromPG();
-  }
-  return [];
+export async function loadPlansFromDB(): Promise<PlanRow[]> {
+  const pg = await import("./infrastructure/database/PostgresPlanRepository.js");
+  return pg.loadPlansFromPG();
 }
 
-export async function savePlansToSheet(items: PlanRow[]): Promise<void> {
-  if (process.env.DATABASE_URL) {
-    const pg = await import("./infrastructure/database/PostgresPlanRepository.js");
-    return pg.savePlansToPG(items);
-  }
+export async function savePlansToDB(items: PlanRow[]): Promise<void> {
+  const pg = await import("./infrastructure/database/PostgresPlanRepository.js");
+  return pg.savePlansToPG(items);
 }
 
 // ─── Reload / Refresh ────────────────────────────────────────────────────────
 
-/** Recarga la config desde PG (o archivo) y reemplaza la en memoria. */
+/** Recarga la config desde PG y reemplaza la en memoria. */
 export async function reloadConfigFromStorage(): Promise<void> {
-  if (process.env.DATABASE_URL) {
-    try {
-      const pg = await import("./infrastructure/database/PostgresUserSync.js");
-      const newData = await pg.loadUsersFromPG();
-      config.allowed = [...newData.allowed];
-      config.menus = { ...newData.menus };
-      config.userInfo = { ...newData.userInfo };
-      config.requestedPlans = { ...newData.requestedPlans };
-      return;
-    } catch (e) {
-      console.error("[user-config] Error PG Reload", e);
-    }
+  if (!process.env.DATABASE_URL) {
+    console.error("❌ CRÍTICO: DATABASE_URL no definida. Imposible recargar configuración.");
+    return;
   }
-  config = loadFromFile();
-  lastReloadAt = Date.now();
-  console.log("[user-config] reloadConfigFromStorage: recargado desde archivo;", Object.keys(config.requestedPlans).length, "solicitudes pendientes.");
+  try {
+    const pg = await import("./infrastructure/database/PostgresUserSync.js");
+    const newData = await pg.loadUsersFromPG();
+    config.allowed = [...newData.allowed];
+    config.menus = { ...newData.menus };
+    config.userInfo = { ...newData.userInfo };
+    config.requestedPlans = { ...newData.requestedPlans };
+    lastReloadAt = Date.now();
+  } catch (e) {
+    console.error("[user-config] Error PG Reload", e);
+  }
 }
 
 /** TTL del caché en memoria: máximo 3 minutos entre recargas automáticas. */
@@ -719,61 +649,21 @@ export interface StrategyRequest {
   requestedAt: number;
 }
 
-function loadStrategyRequestsSync(): StrategyRequest[] {
-  try {
-    if (existsSync(STRATEGY_REQUESTS_PATH)) {
-      const raw = readFileSync(STRATEGY_REQUESTS_PATH, "utf8");
-      const data = JSON.parse(raw) as { requests?: StrategyRequest[] };
-      return Array.isArray(data.requests) ? data.requests : [];
-    }
-  } catch (e) {
-    console.error("[user-config] Error al cargar solicitudes de estrategias:", e);
-  }
-  return [];
-}
-
-function saveStrategyRequestsSync(requests: StrategyRequest[]): void {
-  try {
-    if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
-    writeFileSync(STRATEGY_REQUESTS_PATH, JSON.stringify({ requests }, null, 2), "utf8");
-  } catch (e) {
-    console.error("[user-config] Error al guardar solicitudes de estrategias:", e);
-  }
-}
-
-/** Carga solicitudes (desde PG si aplica, si no desde archivo). */
-export async function getStrategyRequests(): Promise<StrategyRequest[]> {
-  if (process.env.DATABASE_URL) {
-    const pg = await import("./infrastructure/database/PostgresStrategyRequestRepository.js");
-    return pg.loadStrategyRequestsFromPG();
-  }
-  return loadStrategyRequestsSync();
+export async function loadStrategyRequestsFromDB(): Promise<StrategyRequest[]> {
+  const pg = await import("./infrastructure/database/PostgresStrategyRequestRepository.js");
+  return pg.loadStrategyRequestsFromPG();
 }
 
 /** Añade una solicitud de estrategia (evita duplicados userId+menuId). */
 export async function addStrategyRequest(userId: number, menuId: string): Promise<boolean> {
-  if (process.env.DATABASE_URL) {
-    const pg = await import("./infrastructure/database/PostgresStrategyRequestRepository.js");
-    return pg.addStrategyRequestToPG(userId, menuId);
-  }
-  const list = loadStrategyRequestsSync();
-  if (list.some((r) => r.userId === userId && r.menuId === menuId)) return false;
-  list.push({ userId, menuId, requestedAt: Date.now() });
-  saveStrategyRequestsSync(list);
-  return true;
+  const pg = await import("./infrastructure/database/PostgresStrategyRequestRepository.js");
+  return pg.addStrategyRequestToPG(userId, menuId);
 }
 
 /** Elimina una solicitud (al aprobar o rechazar). */
 export async function removeStrategyRequest(userId: number, menuId: string): Promise<boolean> {
-  if (process.env.DATABASE_URL) {
-    const pg = await import("./infrastructure/database/PostgresStrategyRequestRepository.js");
-    return pg.removeStrategyRequestFromPG(userId, menuId);
-  }
-  const list = loadStrategyRequestsSync();
-  const next = list.filter((r) => !(r.userId === userId && r.menuId === menuId));
-  if (next.length >= list.length) return false;
-  saveStrategyRequestsSync(next);
-  return true;
+  const pg = await import("./infrastructure/database/PostgresStrategyRequestRepository.js");
+  return pg.removeStrategyRequestFromPG(userId, menuId);
 }
 
 /** Aprobación: asigna el menú al usuario y quita la solicitud. */
@@ -791,20 +681,13 @@ export function isOwner(userId: number): boolean {
 // ─── Testing Config ──────────────────────────────────────────────────────────
 
 export async function saveTestingCutoffDate(date: string | null, userId: number): Promise<void> {
-  if (process.env.DATABASE_URL) {
-    const pg = await import("./infrastructure/database/PostgresTestingConfigRepository.js");
-    return pg.saveTestingCutoffDatePG(date, userId);
-  }
-  // File fallback: no-op en este contexto
-  console.log("[user-config] Testing: sin DATABASE_URL, corte ignorado.");
+  const pg = await import("./infrastructure/database/PostgresTestingConfigRepository.js");
+  return pg.saveTestingCutoffDatePG(date, userId);
 }
 
 export async function loadTestingCutoffDate(userId: number): Promise<string | null> {
-  if (process.env.DATABASE_URL) {
-    const pg = await import("./infrastructure/database/PostgresTestingConfigRepository.js");
-    return pg.loadTestingCutoffDatePG(userId);
-  }
-  return null;
+  const pg = await import("./infrastructure/database/PostgresTestingConfigRepository.js");
+  return pg.loadTestingCutoffDatePG(userId);
 }
 
 // ─── Sugerencias ─────────────────────────────────────────────────────────────
@@ -820,29 +703,20 @@ export interface SugerenciaRow {
 
 export const SUGERENCIA_SHEET_INDEX = 5;
 
-export async function loadSugerenciaFromSheet(): Promise<SugerenciaRow[]> {
-  if (process.env.DATABASE_URL) {
-    const pg = await import("./infrastructure/database/PostgresSugerenciaRepository.js");
-    return pg.loadSugerenciasFromPG();
-  }
-  return [];
+export async function loadSugerenciasFromDB(): Promise<SugerenciaRow[]> {
+  const pg = await import("./infrastructure/database/PostgresSugerenciaRepository.js");
+  return pg.loadSugerenciasFromPG();
 }
 
-export async function appendSugerenciaToSheet(row: SugerenciaRow): Promise<void> {
-  if (process.env.DATABASE_URL) {
-    const pg = await import("./infrastructure/database/PostgresSugerenciaRepository.js");
-    return pg.appendSugerenciaToPG(row);
-  }
-  console.log("[sugerencia] Sin DATABASE_URL, sugerencia no guardada.");
+export async function appendSugerenciaToDB(row: SugerenciaRow): Promise<void> {
+  const pg = await import("./infrastructure/database/PostgresSugerenciaRepository.js");
+  return pg.appendSugerenciaToPG(row);
 }
 
 /** Devuelve todas las sugerencias de un usuario específico. */
 export async function getSugerenciaForUser(userId: number): Promise<SugerenciaRow[]> {
-  if (process.env.DATABASE_URL) {
-    const pg = await import("./infrastructure/database/PostgresSugerenciaRepository.js");
-    return pg.getSugerenciaForUserPG(userId);
-  }
-  return [];
+  const pg = await import("./infrastructure/database/PostgresSugerenciaRepository.js");
+  return pg.getSugerenciaForUserPG(userId);
 }
 
 // ─── Announcements ───────────────────────────────────────────────────────────
@@ -866,64 +740,49 @@ export function invalidateAnnouncementsCache(): void {
   announcementsCache = null;
 }
 
-export async function loadAnnouncementsFromSheet(forceRefresh = false): Promise<AnnouncementRow[]> {
-  if (process.env.DATABASE_URL) {
-    if (!forceRefresh && announcementsCache && Date.now() - announcementsCache.at < ANNOUNCEMENTS_CACHE_TTL_MS) {
-      return announcementsCache.items;
-    }
-    const pg = await import("./infrastructure/database/PostgresAnnouncementRepository.js");
-    const items = await pg.loadAnnouncementsFromPG();
-    announcementsCache = { at: Date.now(), items };
-    return items;
+export async function loadAnnouncementsFromDB(forceRefresh = false): Promise<AnnouncementRow[]> {
+  if (!forceRefresh && announcementsCache && Date.now() - announcementsCache.at < ANNOUNCEMENTS_CACHE_TTL_MS) {
+    return announcementsCache.items;
   }
-  return [];
+  const pg = await import("./infrastructure/database/PostgresAnnouncementRepository.js");
+  const items = await pg.loadAnnouncementsFromPG();
+  announcementsCache = { at: Date.now(), items };
+  return items;
 }
 
-export async function saveAnnouncementsToSheet(items: AnnouncementRow[]): Promise<void> {
-  if (process.env.DATABASE_URL) {
-    const pg = await import("./infrastructure/database/PostgresAnnouncementRepository.js");
-    await pg.saveAnnouncementsToPG(items);
-    announcementsCache = { at: Date.now(), items };
-    return;
-  }
+export async function saveAnnouncementsToDB(items: AnnouncementRow[]): Promise<void> {
+  const pg = await import("./infrastructure/database/PostgresAnnouncementRepository.js");
+  await pg.saveAnnouncementsToPG(items);
+  announcementsCache = { at: Date.now(), items };
 }
 
 /** Añade un nuevo anuncio. Devuelve la lista actualizada. */
 export async function addAnnouncement(texto: string, fecha: string): Promise<AnnouncementRow[]> {
-  if (process.env.DATABASE_URL) {
-    const pg = await import("./infrastructure/database/PostgresAnnouncementRepository.js");
-    const items = await pg.addAnnouncementToPG(texto, fecha);
-    announcementsCache = { at: Date.now(), items };
-    return items;
-  }
-  return [];
+  const pg = await import("./infrastructure/database/PostgresAnnouncementRepository.js");
+  const items = await pg.addAnnouncementToPG(texto, fecha);
+  announcementsCache = { at: Date.now(), items };
+  return items;
 }
 
 /** Edita el texto de un anuncio por id. */
 export async function editAnnouncement(id: string, newTexto: string): Promise<AnnouncementRow[] | null> {
-  if (process.env.DATABASE_URL) {
-    const pg = await import("./infrastructure/database/PostgresAnnouncementRepository.js");
-    const items = await pg.editAnnouncementInPG(id, newTexto);
-    if (items) announcementsCache = { at: Date.now(), items };
-    return items;
-  }
-  return null;
+  const pg = await import("./infrastructure/database/PostgresAnnouncementRepository.js");
+  const items = await pg.editAnnouncementInPG(id, newTexto);
+  if (items) announcementsCache = { at: Date.now(), items };
+  return items;
 }
 
 /** Elimina un anuncio por id. */
 export async function deleteAnnouncement(id: string): Promise<AnnouncementRow[] | null> {
-  if (process.env.DATABASE_URL) {
-    const pg = await import("./infrastructure/database/PostgresAnnouncementRepository.js");
-    const items = await pg.deleteAnnouncementFromPG(id);
-    if (items) announcementsCache = { at: Date.now(), items };
-    return items;
-  }
-  return null;
+  const pg = await import("./infrastructure/database/PostgresAnnouncementRepository.js");
+  const items = await pg.deleteAnnouncementFromPG(id);
+  if (items) announcementsCache = { at: Date.now(), items };
+  return items;
 }
 
 /** Elimina todos los anuncios de una vez. */
 export async function clearAllAnnouncements(): Promise<void> {
-  await saveAnnouncementsToSheet([]);
+  await saveAnnouncementsToDB([]);
 }
 
 // ─── Leads ───────────────────────────────────────────────────────────────────
@@ -952,30 +811,21 @@ export async function saveLead(
   temporality: string,
   status = "trial_active"
 ): Promise<void> {
-  if (process.env.DATABASE_URL) {
-    const pg = await import("./infrastructure/database/PostgresLeadRepository.js");
-    return pg.saveLeadToPG(userId, name, phone, plan, temporality, status);
-  }
-  console.log("[leads] Sin DATABASE_URL; lead no guardado para userId=", userId);
+  const pg = await import("./infrastructure/database/PostgresLeadRepository.js");
+  return pg.saveLeadToPG(userId, name, phone, plan, temporality, status);
 }
 
 /** Carga todos los leads. */
-export async function loadLeadsFromSheet(): Promise<LeadRow[]> {
-  if (process.env.DATABASE_URL) {
-    const pg = await import("./infrastructure/database/PostgresLeadRepository.js");
-    return pg.loadLeadsFromPG();
-  }
-  return [];
+export async function loadLeadsFromDB(): Promise<LeadRow[]> {
+  const pg = await import("./infrastructure/database/PostgresLeadRepository.js");
+  return pg.loadLeadsFromPG();
 }
 
 /** Cuenta total de leads registrados. */
 export async function getLeadCount(): Promise<number> {
-  if (process.env.DATABASE_URL) {
-    const pg = await import("./infrastructure/database/PostgresLeadRepository.js");
-    const leads = await pg.loadLeadsFromPG();
-    return leads.length;
-  }
-  return 0;
+  const pg = await import("./infrastructure/database/PostgresLeadRepository.js");
+  const leads = await pg.loadLeadsFromPG();
+  return leads.length;
 }
 
 /** Sistema de Referidos: Renueva el plan sumando 1 mes para recompensar. */

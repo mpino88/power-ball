@@ -31,15 +31,15 @@ export interface CustomMenu {
 
 let customMenus: CustomMenu[] = [];
 
-/** Cuando está definido, save() persiste en la 2ª pestaña del Sheet en lugar del archivo JSON. */
-let strategySheetPersist: ((items: CustomMenu[]) => Promise<void>) | null = null;
+/** Cuando está definido, save() persiste en PostgreSQL en lugar del archivo JSON. */
+let strategyDbPersist: ((items: CustomMenu[]) => Promise<void>) | null = null;
 
-export function setStrategySheetPersist(fn: ((items: CustomMenu[]) => Promise<void>) | null): void {
-  strategySheetPersist = fn;
+export function setStrategyDbPersist(fn: ((items: CustomMenu[]) => Promise<void>) | null): void {
+  strategyDbPersist = fn;
 }
 
-/** Inicializa desde filas de la hoja (id, titulo, descripcion, createdBy, price, visibility, subscribers). No guarda en archivo. */
-export function initCustomMenusFromSheet(rows: {
+/** Inicializa desde PostgreSQL. No guarda en archivo. */
+export function initCustomMenusFromDB(rows: {
   id: string;
   titulo: string;
   descripcion?: string;
@@ -77,8 +77,8 @@ function load(): CustomMenu[] {
 }
 
 function save(): void {
-  if (strategySheetPersist) {
-    void strategySheetPersist([...customMenus]);
+  if (strategyDbPersist) {
+    void strategyDbPersist([...customMenus]);
     return;
   }
   try {

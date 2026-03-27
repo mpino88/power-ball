@@ -5,7 +5,7 @@
 
 import type { SugerenciaRow } from "./user-config.js";
 
-export { loadSugerenciaFromSheet, appendSugerenciaToSheet, getSugerenciaForUser } from "./user-config.js";
+export { loadSugerenciasFromDB, appendSugerenciaToDB, getSugerenciaForUser } from "./user-config.js";
 export type { SugerenciaRow } from "./user-config.js";
 
 export const SUGERENCIA_PAGE_SIZE = 5;

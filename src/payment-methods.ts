@@ -48,7 +48,7 @@ function deletePm(id: string): boolean {
 // ─── PG persistence ──────────────────────────────────────────────────────────
 
 /** Carga formas de pago desde PostgreSQL y rellena el caché. */
-export async function loadPaymentMethodsFromSheet(): Promise<PaymentMethod[]> {
+export async function loadPaymentMethodsFromDB(): Promise<PaymentMethod[]> {
   if (process.env.DATABASE_URL) {
     const pg = await import("./infrastructure/database/PostgresPaymentMethodRepository.js");
     pmCache = await pg.loadPaymentMethodsFromPG();

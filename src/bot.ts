@@ -32,19 +32,19 @@ import {
   setSheetMenuLabelResolver,
   toggleExtraMenu,
   getStorageBackend,
-  loadStrategiesFromSheet,
-  saveStrategiesToSheet,
-  loadPlansFromSheet,
-  savePlansToSheet,
+  loadStrategiesFromDB,
+  saveStrategiesToDB,
+  loadPlansFromDB,
+  savePlansToDB,
   normalizeUserMenusAfterLoad,
   loadTestingCutoffDate,
   saveTestingCutoffDate,
-  loadSugerenciaFromSheet,
-  appendSugerenciaToSheet,
+  loadSugerenciasFromDB,
+  appendSugerenciaToDB,
   getSugerenciaForUser,
   getUsername,
   getPhone,
-  loadAnnouncementsFromSheet,
+  loadAnnouncementsFromDB,
   addAnnouncement,
   editAnnouncement,
   deleteAnnouncement,
@@ -63,14 +63,14 @@ import {
 } from "./menu-registry.js";
 import {
   initCustomMenus,
-  initCustomMenusFromSheet,
-  setStrategySheetPersist,
+  initCustomMenusFromDB,
+  setStrategyDbPersist,
   getCustomMenus,
   getMenuCreatedBy,
   getMenuSubscribers,
   seedCustomMenus,
 } from "./custom-menus.js";
-import { initPlans, initPlansFromSheet, setPlanSheetPersist, getPlans, updatePlan, getPlanById, getPlanByTitle, TEMPORALITIES, getPriceForTemporality, formatPlanPrice } from "./plans.js";
+import { initPlans, initPlansFromDB, setPlanDbPersist, getPlans, updatePlan, getPlanById, getPlanByTitle, TEMPORALITIES, getPriceForTemporality, formatPlanPrice } from "./plans.js";
 import {
   buildGroupStatsMessage as buildGroupStatsMessageFromStats,
   buildIndividualTop10Message as buildIndividualTop10MessageFromStats,
@@ -184,7 +184,7 @@ import {
   parseAdivinanzaStratCallback,
   parseNumberList,
 } from "./adivinanza.js";
-import { getPaymentMethods, loadPaymentMethodsFromSheet } from "./payment-methods.js";
+import { getPaymentMethods, loadPaymentMethodsFromDB } from "./payment-methods.js";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -228,8 +228,8 @@ async function reloadPlansIfStale(): Promise<void> {
   if (now - lastPlanReload < PLAN_RELOAD_TTL_MS) return;
   lastPlanReload = now;
   try {
-    const rows = await loadPlansFromSheet();
-    if (rows.length > 0) initPlansFromSheet(rows);
+    const rows = await loadPlansFromDB();
+    if (rows.length > 0) initPlansFromDB(rows);
   } catch (e) {
     console.error("[plans] Error al recargar planes desde DB:", e);
   }
@@ -242,8 +242,8 @@ async function reloadPlansIfStale(): Promise<void> {
 async function reloadStrategiesIfStale(): Promise<void> {
   if (getStorageBackend() !== "postgres") return;
   try {
-    const rows = await loadStrategiesFromSheet();
-    if (rows.length > 0) initCustomMenusFromSheet(rows);
+    const rows = await loadStrategiesFromDB();
+    if (rows.length > 0) initCustomMenusFromDB(rows);
   } catch (e) {
     console.error("[strategies] Error al recargar estrategias desde DB:", e);
   }
@@ -949,7 +949,7 @@ bot.command("start", async (ctx) => {
   const startUserId = ctx.from?.id;
   let announcementBanner = "";
   if (startUserId && !isOwner(startUserId)) {
-    const annItems = await loadAnnouncementsFromSheet();
+    const annItems = await loadAnnouncementsFromDB();
     const { buildAnnouncementsBanner } = await import("./announcements.js");
     announcementBanner = buildAnnouncementsBanner(annItems);
   }
@@ -1039,8 +1039,8 @@ bot.on("callback_query:data", async (ctx) => {
       getExtraMenuIds,
       getExtraMenuLabel,
       getStorageBackend,
-      loadPlansFromSheet,
-      initPlansFromSheet,
+      loadPlansFromDB,
+      initPlansFromDB,
       getP3Map,
       getP4Map,
       getTodayFloridaMMDDYY,
@@ -1208,7 +1208,7 @@ bot.on("callback_query:data", async (ctx) => {
       ? (parseInt(data.replace("admin_sugerencia_p:", ""), 10) || 0)
       : 0;
     try {
-      const allSugerencias = await loadSugerenciaFromSheet();
+      const allSugerencias = await loadSugerenciasFromDB();
       const { groupSugerenciaByUser, buildAdminSugerenciaListMessage, SUGERENCIA_PAGE_SIZE } = await import("./sugerencia.js");
       const grouped = groupSugerenciaByUser(allSugerencias);
       const { text, totalPages } = buildAdminSugerenciaListMessage(grouped, page);
@@ -1257,7 +1257,7 @@ bot.on("callback_query:data", async (ctx) => {
     await ctx.answerCallbackQuery();
     try {
       const { buildAdminAnnouncementsKeyboard, buildAdminAnnouncementsText } = await import("./announcements.js");
-      const items = await loadAnnouncementsFromSheet(true);
+      const items = await loadAnnouncementsFromDB(true);
       await ctx.editMessageText(buildAdminAnnouncementsText(items), {
         parse_mode: "Markdown",
         reply_markup: buildAdminAnnouncementsKeyboard(items.length > 0),
@@ -1284,7 +1284,7 @@ bot.on("callback_query:data", async (ctx) => {
     await ctx.answerCallbackQuery();
     try {
       const { buildAnnouncementsEditListKeyboard } = await import("./announcements.js");
-      const items = await loadAnnouncementsFromSheet(true);
+      const items = await loadAnnouncementsFromDB(true);
       await ctx.editMessageText(
         items.length === 0
           ? "❌ No hay anuncios que editar."
@@ -1304,7 +1304,7 @@ bot.on("callback_query:data", async (ctx) => {
     const annId = data.replace("admin_ann_edit_pick:", "");
     waitingAnnouncementInput.set(ctx.from.id, `edit:${annId}`);
     try {
-      const items = await loadAnnouncementsFromSheet();
+      const items = await loadAnnouncementsFromDB();
       const ann = items.find((a) => a.id === annId);
       await ctx.editMessageText(
         `✏️ *Editar anuncio*\n\n_Texto actual:_\n${ann?.texto ?? "(no encontrado)"}\n\nEscribe el *nuevo texto*:`,
@@ -1319,7 +1319,7 @@ bot.on("callback_query:data", async (ctx) => {
     await ctx.answerCallbackQuery();
     try {
       const { buildAnnouncementsDeleteListKeyboard } = await import("./announcements.js");
-      const items = await loadAnnouncementsFromSheet(true);
+      const items = await loadAnnouncementsFromDB(true);
       await ctx.editMessageText(
         items.length === 0 ? "❌ No hay anuncios que eliminar." : "🗑 *Eliminar anuncio*\n\nElige el anuncio a eliminar:",
         {
@@ -1336,7 +1336,7 @@ bot.on("callback_query:data", async (ctx) => {
     await ctx.answerCallbackQuery();
     const annId = data.replace("admin_ann_delete_pick:", "");
     try {
-      const items = await loadAnnouncementsFromSheet();
+      const items = await loadAnnouncementsFromDB();
       const ann = items.find((a) => a.id === annId);
       await ctx.editMessageText(
         `🗑 ¿Eliminar este anuncio?\n\n_${ann?.texto ?? "(no encontrado)"}_`,
@@ -1358,7 +1358,7 @@ bot.on("callback_query:data", async (ctx) => {
     try {
       const { buildAdminAnnouncementsKeyboard, buildAdminAnnouncementsText } = await import("./announcements.js");
       const updated = await deleteAnnouncement(annId);
-      const items = updated ?? await loadAnnouncementsFromSheet(true);
+      const items = updated ?? await loadAnnouncementsFromDB(true);
       invalidateAnnouncementsCache();
       await ctx.editMessageText(
         (updated ? "✅ Anuncio eliminado.\n\n" : "❌ No se encontró el anuncio.\n\n") + buildAdminAnnouncementsText(items),
@@ -1635,7 +1635,7 @@ bot.on("callback_query:data", async (ctx) => {
       }
       // Mostrar formas de pago disponibles en un mensaje separado
       try {
-        await loadPaymentMethodsFromSheet();
+        await loadPaymentMethodsFromDB();
         const pms = getPaymentMethods();
         if (pms.length > 0) {
           const pmLines = pms.map((p, i) =>
@@ -1687,7 +1687,7 @@ bot.on("callback_query:data", async (ctx) => {
       let announcementBanner = "";
       const menuUserId = ctx.from?.id;
       if (menuUserId && !isOwner(menuUserId)) {
-        const annItems = await loadAnnouncementsFromSheet();
+        const annItems = await loadAnnouncementsFromDB();
         const { buildAnnouncementsBanner } = await import("./announcements.js");
         announcementBanner = buildAnnouncementsBanner(annItems);
       }
@@ -3375,7 +3375,7 @@ bot.on("message:text", async (ctx) => {
     const trimmed = text.slice(0, maxLen);
     try {
       const { nowSugerenciaDate } = await import("./sugerencia.js");
-      await appendSugerenciaToSheet({
+      await appendSugerenciaToDB({
         userId,
         nombre: getUsername(userId) ?? "",
         telefono: getPhone(userId) ?? "",
@@ -3434,7 +3434,7 @@ bot.on("message:text", async (ctx) => {
         const annId = mode.replace("edit:", "");
         const updated = await editAnnouncement(annId, trimmed);
         invalidateAnnouncementsCache();
-        const items = updated ?? await loadAnnouncementsFromSheet(true);
+        const items = updated ?? await loadAnnouncementsFromDB(true);
         await ctx.reply(
           (updated ? "✅ *Anuncio editado.*\n\n" : "❌ No se encontró el anuncio.\n\n") + buildAdminAnnouncementsText(items),
           { parse_mode: "Markdown", reply_markup: buildAdminAnnouncementsKeyboard(items.length > 0) }
@@ -4021,7 +4021,7 @@ async function main(): Promise<void> {
   await initUserConfig();
   // PG-first: carga estrategias y planes desde PostgreSQL
   {
-    let rows = await loadStrategiesFromSheet();
+    let rows = await loadStrategiesFromDB();
     const migrated = rows.some((r) => r.id === "estrategia_test");
     if (migrated) {
       rows = rows.map((r) =>
@@ -4036,11 +4036,11 @@ async function main(): Promise<void> {
           }
           : r
       );
-      await saveStrategiesToSheet(rows);
+      await saveStrategiesToDB(rows);
     }
-    initCustomMenusFromSheet(rows);
-    setStrategySheetPersist((menus) =>
-      saveStrategiesToSheet(
+    initCustomMenusFromDB(rows);
+    setStrategyDbPersist((menus) =>
+      saveStrategiesToDB(
         menus.map((m) => ({
           id: m.id,
           titulo: m.label,
@@ -4052,9 +4052,9 @@ async function main(): Promise<void> {
         }))
       )
     );
-    const planRows = await loadPlansFromSheet();
+    const planRows = await loadPlansFromDB();
     if (planRows.length > 0) {
-      setPlanSheetPersist((items) => savePlansToSheet(items));
+      setPlanDbPersist((items) => savePlansToDB(items));
       // Auto-update descripciones de planes por defecto
       let modified = false;
       const defaults = new Map([
@@ -4070,12 +4070,12 @@ async function main(): Promise<void> {
         }
       }
 
-      initPlansFromSheet(planRows);
+      initPlansFromDB(planRows);
 
       // Si los planes estaban duplicados (porque planRows tiene menos elementos que la hoja original
-      // gracias al Set deduplicador de loadPlansFromSheet) o si se modificó alguna descripción:
+      // gracias al Set deduplicador de loadPlansFromDB) o si se modificó alguna descripción:
       if (modified) {
-        await savePlansToSheet(planRows);
+        await savePlansToDB(planRows);
         console.log("[plans] Sincronizadas descripciones actualizadas (y desduplicadas) a PostgreSQL.");
       }
     } else {
@@ -4093,8 +4093,8 @@ async function main(): Promise<void> {
         price_1a: p.price_1a ?? "",
         autoApprove: p.autoApprove ? "true" : "",
       }));
-      await savePlansToSheet(plansToSave);
-      setPlanSheetPersist((items) => savePlansToSheet(items));
+      await savePlansToDB(plansToSave);
+      setPlanDbPersist((items) => savePlansToDB(items));
     }
   }
   // 1. Sembrar estrategias integradas (NUEVO ORDEN: antes del registro de handlers)

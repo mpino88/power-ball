@@ -8,7 +8,7 @@ import { InlineKeyboard, Keyboard } from "grammy";
 import type { getOwnerId as GetOwnerId, isAllowed as IsAllowed } from "../user-config.js";
 import { addPlanRequest, requestPlanRenewal, assignPlanToUser, getPlanTemporality, hasUsedTrial, isPlanExpired, refreshIfStale, saveLead, getOwnerIds } from "../user-config.js";
 import { getPlans, getPriceForTemporality, formatPlanPrice, REGULAR_TEMPORALITIES, TEMPORALITIES, TRIAL_TEMPORALITIES } from "../plans.js";
-import { getPaymentMethods, loadPaymentMethodsFromSheet } from "../payment-methods.js";
+import { getPaymentMethods, loadPaymentMethodsFromDB } from "../payment-methods.js";
 
 export type BuildMainKeyboard = (userId: number | undefined) => InlineKeyboard;
 
@@ -354,7 +354,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
             }
             const tLabel = TEMPORALITIES.find((t) => t.id === pending.temporality)?.label ?? pending.temporality;
 
-            await loadPaymentMethodsFromSheet();
+            await loadPaymentMethodsFromDB();
             const pms = getPaymentMethods();
             const pmLines = pms.map((p, i) =>
               `${i + 1}. *${p.description}*\n   💳 \`${p.account}\` · 🌐 ${p.currency}`
