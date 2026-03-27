@@ -3971,6 +3971,29 @@ async function main(): Promise<void> {
         req.on("error", () => { res.writeHead(500); res.end(); });
         return;
       }
+
+      // ── /hit — Custom Webhook ────────────────────────────
+      if (req.url === "/hit") {
+        const chunks: Buffer[] = [];
+        req.on("data", (chunk: Buffer) => chunks.push(chunk));
+        req.on("end", () => {
+          try {
+            const body = Buffer.concat(chunks).toString("utf8");
+            console.log(`[HIT WEBHOOK] [${req.method}] Received data:`, body || "<empty body>");
+          } catch (e) {
+            console.error("[HIT WEBHOOK] Error reading payload:", e);
+          }
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ status: "ok", message: "Hit received" }));
+        });
+        req.on("error", (err) => {
+          console.error("[HIT WEBHOOK] Request error:", err);
+          res.writeHead(500);
+          res.end();
+        });
+        return;
+      }
+
       if (req.method === "POST" && req.url === webhookPath) {
         const secretToken = process.env.SECRET_TOKEN;
         if (secretToken) {
