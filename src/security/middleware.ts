@@ -446,12 +446,13 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
     if (data === "ver_planes_open") {
       if (ctx.callbackQuery) await ctx.answerCallbackQuery?.().catch(() => { });
       const ctxEdit = ctx as {
-        editMessageCaption?: (caption: string, opts?: object) => Promise<unknown>;
+        editMessageCaption?: (opts: { caption?: string; parse_mode?: string; reply_markup?: unknown }) => Promise<unknown>;
       };
       if (ctxEdit.editMessageCaption) {
         const caption = msg.length > 1024 ? msg.slice(0, 1021) + "…" : msg;
         try {
-          await ctxEdit.editMessageCaption(caption, {
+          await ctxEdit.editMessageCaption({
+            caption,
             parse_mode: "Markdown",
             reply_markup: keyboard,
           });
