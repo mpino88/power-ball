@@ -4038,6 +4038,27 @@ async function main(): Promise<void> {
               console.log(`[HIT WEBHOOK] Sorteo integrado en 'Hoy' (hoy-results.json) [${gameKey}]`);
             }
 
+            // ── Check if BOTH p3 AND p4 are now saved so we can fire a single push ──
+            const { getDbPool } = await import("./infrastructure/database/PostgresConnection.js");
+            const pool = getDbPool();
+            const { rows: bothRows } = await pool.query(
+              `SELECT game, numbers FROM draws WHERE date = $1 AND period = $2 AND game IN ('p3', 'p4')`,
+              [date, period]
+            );
+
+            if (bothRows.length < 2) {
+              console.log(`[HIT WEBHOOK] ⏳ Esperando el otro juego para fecha ${date} periodo ${period}. Recibidos: ${bothRows.map((r: any) => r.game).join(", ")}`);
+              res.writeHead(200, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ status: "pending", message: "Saved. Waiting for the other draw to fire combined push." }));
+              return;
+            }
+
+            // We have both — build a combined notification
+            const p3Row = bothRows.find((r: any) => r.game === "p3");
+            const p4Row = bothRows.find((r: any) => r.game === "p4");
+            const p3Str = (p3Row?.numbers ?? "").replace(/,/g, "");
+            const p4Str = (p4Row?.numbers ?? "").replace(/,/g, "");
+
             const { findWinningStrategies } = await import("./neuro-hit-engine.js");
             const { getExtraMenuLabel } = await import("./menu-registry.js");
             const { escapeMd } = await import("./security/callbacks.js");
@@ -4045,9 +4066,7 @@ async function main(): Promise<void> {
             const periodLabel = period === "m" ? "☀️ Mediodía" : "🌙 Noche";
             const formatVal = (v: string) => v.split("").join("-");
             const formatHits = (hits: { id: string; label: string }[]) => {
-              if (hits.length === 0) {
-                return `\n\n⚡ *Algoritmos Validados:* _Recalibrando análisis predictivo..._`;
-              }
+              if (hits.length === 0) return `\n\n⚡ *Algoritmos Validados:* _Recalibrando análisis predictivo..._`;
               const uniqueLabels = [...new Set(hits.map((h) => escapeMd(getExtraMenuLabel(h.label) || h.label)))];
               return `\n\n⚡ *Algoritmos Validados:*\n` + uniqueLabels.map((l) => ` ➥ ${l}`).join("\n");
             };
@@ -4062,24 +4081,20 @@ async function main(): Promise<void> {
               console.warn(`[HIT WEBHOOK] ⚠️ findWinningStrategies failed:`, e);
             }
 
+            const safeDate = date.replace(/\//g, "-");
             let notification = `🤖 *Sorteo Detectado: ${periodLabel}*\n📅 *Fecha:* ${date}\n\n`;
-            if (game === "p3") {
-              notification += `🎯 Pick 3 (Fijo): *${formatVal(numbers.replace(/,/g, ""))}*${formatHits(hitsP3)}\n\n`;
-            } else {
-              notification += `🎲 Pick 4 (Corrido): *${formatVal(numbers.replace(/,/g, ""))}*${formatHits(hitsP4)}\n`;
-            }
+            if (p3Str) notification += `🎯 Pick 3 (Fijo): *${formatVal(p3Str)}*${formatHits(hitsP3)}\n\n`;
+            if (p4Str) notification += `🎲 Pick 4 (Corrido): *${formatVal(p4Str)}*${formatHits(hitsP4)}\n`;
             notification += "\nConsulta todos los detalles en ☀️🌙 Últimos Sorteos 🏆";
 
-            const safeDate = date.replace(/\//g, "-");
-            const safeNums = numbers.replace(/,/g, "");
-            const adminKb = new InlineKeyboard().text("📢 Publicar", `hit_pub_${game}_${period}_${safeDate}_${safeNums}`);
+            const adminKb = new InlineKeyboard().text("📢 Publicar", `hit_pub_all_${period}_${safeDate}`);
 
             for (const oid of getOwnerIds()) {
               bot.api.sendMessage(oid, notification, { parse_mode: "Markdown", reply_markup: adminKb }).catch(() => { });
             }
 
             res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ status: "ok", message: "Hit processed and admins notified" }));
+            res.end(JSON.stringify({ status: "ok", message: "Both draws received — combined push sent to admins." }));
 
           } catch (e) {
             console.error("[HIT WEBHOOK] Error processing payload:", e);
