@@ -1025,6 +1025,35 @@ bot.on("callback_query:data", async (ctx) => {
   const data = ctx.callbackQuery.data;
   let result: string;
   let keyboard: InlineKeyboard = buildMainKb(ctx.from?.id);
+
+  // ── hit webhook publicar ─────────────────────────────────────────────────
+  if (data.startsWith("hit_pub_")) {
+    await ctx.answerCallbackQuery();
+    const userId = ctx.from?.id;
+    if (userId && !isOwner(userId)) return;
+
+    if (!ctx.callbackQuery.message || !ctx.chat) return;
+
+    const msgId = ctx.callbackQuery.message.message_id;
+    await ctx.editMessageReplyMarkup({ reply_markup: undefined });
+    await ctx.api.sendMessage(userId!, "✅ *Sorteo publicado a todos los usuarios.*", { parse_mode: "Markdown", reply_markup: buildMainKb(userId) }).catch(() => {});
+
+    const allowed = getAllowedUsers();
+    let sentCount = 0;
+    for (const uid of allowed) {
+      if (uid === userId) continue;
+      try {
+        await ctx.api.copyMessage(uid, ctx.chat.id, msgId, {
+          reply_markup: buildMainKb(uid),
+        });
+        sentCount++;
+      } catch (e) {
+        // Ignorar
+      }
+    }
+    console.log(`[HIT WEBHOOK] Publicado a ${sentCount} usuarios por admin ${userId}.`);
+    return;
+  }
   const asyncData =
     /^(fijo|corrido|ambos)_(hoy|ayer|semana)$/.test(data) ||
     data === "stats_grupos_M" ||
