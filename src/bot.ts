@@ -409,7 +409,7 @@ function bbtContextsFromSet(selected: Set<string>): StrategyContext[] {
   return [...selected].map(cid => {
     const parts = cid.split("_");
     const ms = parts[0] as "p3" | "p4";
-    const p  = parts[1]!;
+    const p = parts[1]!;
     if (p === "a") return { mapSource: ms, period: "m" as const, params: { ambos: true } };
     return { mapSource: ms, period: p as "m" | "e" };
   });
@@ -1036,7 +1036,7 @@ bot.on("callback_query:data", async (ctx) => {
 
     const msgId = ctx.callbackQuery.message.message_id;
     await ctx.editMessageReplyMarkup({ reply_markup: undefined });
-    await ctx.api.sendMessage(userId!, "✅ *Sorteo publicado a todos los usuarios.*", { parse_mode: "Markdown", reply_markup: buildMainKb(userId) }).catch(() => {});
+    await ctx.api.sendMessage(userId!, "✅ *Sorteo publicado a todos los usuarios.*", { parse_mode: "Markdown", reply_markup: buildMainKb(userId) }).catch(() => { });
 
     const allowed = getAllowedUsers();
     let sentCount = 0;
@@ -1522,7 +1522,7 @@ bot.on("callback_query:data", async (ctx) => {
     await ctx.answerCallbackQuery();
     const uid = ctx.from?.id;
     if (!uid) return;
-    
+
     if (!process.env.DATABASE_URL) {
       await ctx.reply("🔗 *Sistema de Referidos*\n\n_El sistema se está actualizando y estará disponible pronto._", { parse_mode: "Markdown", reply_markup: buildMainKb(uid) });
       return;
@@ -1530,12 +1530,12 @@ bot.on("callback_query:data", async (ctx) => {
 
     const botInfo = await ctx.api.getMe();
     const link = `https://t.me/${botInfo.username}?start=ref_${uid}`;
-    
+
     const msg = `🔗 *Tu Enlace de Referido VIP*\n\n` +
-                `Comparte este enlace con tus amigos:\n\`${link}\`\n\n` +
-                `🎁 *Recompensa:* Si un amigo se registra usando tu enlace y luego adquiere un plan, **tú recibirás 1 MES GRATIS de Plan Pro** de forma automática.\n\n` +
-                `_¡Mientras más recomiendas, más juegas gratis!_`;
-                
+      `Comparte este enlace con tus amigos:\n\`${link}\`\n\n` +
+      `🎁 *Recompensa:* Si un amigo se registra usando tu enlace y luego adquiere un plan, **tú recibirás 1 MES GRATIS de Plan Pro** de forma automática.\n\n` +
+      `_¡Mientras más recomiendas, más juegas gratis!_`;
+
     try {
       await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("◀️ Volver", "volver") });
     } catch (e) {
@@ -3870,6 +3870,8 @@ let cachedP3Map: DateDrawsMap | null = null;
 let cachedP4Map: DateDrawsMapP4 | null = null;
 let lastP3Fetch = 0;
 let lastP4Fetch = 0;
+/** Tracks date|period pairs that already fired a combined push to admins (dedup guard). */
+const hitNotifiedPairs = new Set<string>();
 
 async function getP3Map(): Promise<DateDrawsMap> {
   const leut = getLastExpectedUpdateTime();
@@ -3883,13 +3885,13 @@ async function getP3Map(): Promise<DateDrawsMap> {
   const txt = await pdfToText(data);
   cachedP3Map = parseP3FullText(txt);
   lastP3Fetch = Date.now();
-  
+
   if (process.env.DATABASE_URL) {
     import("./infrastructure/database/PostgresDrawRepository.js")
       .then(m => m.saveDrawsToDB("p3", cachedP3Map!))
       .catch(e => console.error("Error guardando P3 en Postgres:", e));
   }
-  
+
   return cachedP3Map;
 }
 
@@ -3904,13 +3906,13 @@ async function getP4Map(): Promise<DateDrawsMapP4> {
   const txt = await pdfToText(data);
   cachedP4Map = parseP4FullText(txt);
   lastP4Fetch = Date.now();
-  
+
   if (process.env.DATABASE_URL) {
     import("./infrastructure/database/PostgresDrawRepository.js")
       .then(m => m.saveDrawsToDB("p4", cachedP4Map!))
       .catch(e => console.error("Error guardando P4 en Postgres:", e));
   }
-  
+
   return cachedP4Map;
 }
 
@@ -4002,6 +4004,8 @@ async function main(): Promise<void> {
       }
 
       // ── /hit — Custom Webhook ────────────────────────────
+      // Guard: track which date|period pairs have already fired the combined push
+      // to avoid sending it twice if the external monitor retries the same draw.
       if (req.url === "/hit") {
         const chunks: Buffer[] = [];
         req.on("data", (chunk: Buffer) => chunks.push(chunk));
@@ -4052,6 +4056,16 @@ async function main(): Promise<void> {
               res.end(JSON.stringify({ status: "pending", message: "Saved. Waiting for the other draw to fire combined push." }));
               return;
             }
+
+            // De-duplicate: skip if this date|period combo was already pushed
+            const pairKey = `${date}|${period}`;
+            if (hitNotifiedPairs.has(pairKey)) {
+              console.log(`[HIT WEBHOOK] ⚠️ Push ya enviado para ${pairKey} — ignorando duplicado.`);
+              res.writeHead(200, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ status: "already_sent", message: "Combined push was already fired for this draw." }));
+              return;
+            }
+            hitNotifiedPairs.add(pairKey);
 
             // We have both — build a combined notification
             const p3Row = bothRows.find((r: any) => r.game === "p3");
