@@ -8,7 +8,6 @@ import { InlineKeyboard } from "grammy";
 import {
   addAllowed,
   setUserInfo,
-  getSheetUnavailableReason,
   getAllowedUsers,
   type PersistResult,
 } from "../user-config.js";
@@ -224,17 +223,13 @@ export async function handleSecurityMessage(
         );
         return true;
       }
-      const backendLabel = resultSave.backend === "sheet" ? "Google Sheet" : "archivo (data/bot-users.json)";
+      const backendLabel = resultSave.backend === "postgres" ? "PostgreSQL" : "archivo (data/bot-users.json)";
       const addFailed = !resultAdd.ok;
       const saveFailed = !resultSave.ok;
       const anyFailed = addFailed || saveFailed;
       let logLine: string;
       if (!anyFailed) {
         logLine = `\n\n📁 _Guardado en: ${backendLabel} (${resultSave.count} usuarios)_`;
-        if (resultSave.backend === "file") {
-          const reason = getSheetUnavailableReason();
-          if (reason) logLine += `\n\n⚠️ _Para usar Google Sheet:_ ${reason}`;
-        }
       } else {
         const errors: string[] = [];
         if (addFailed && resultAdd.error) errors.push(`1º guardado: ${resultAdd.error}`);

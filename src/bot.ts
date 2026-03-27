@@ -199,13 +199,13 @@ const ONBOARDING_IMAGE_PATH = path.join(process.cwd(), "src", "assets", "onboard
 /** file_id cacheado de Telegram tras el primer envío (evita releer el disco). */
 let onboardingPhotoFileId: string | null = null;
 
-/** TTL (ms) para sincronizar precios de planes desde el Sheet (5 min). */
+/** TTL (ms) para sincronizar precios de planes desde la DB (5 min). */
 const PLAN_RELOAD_TTL_MS = 5 * 60 * 1000;
 let lastPlanReload = 0;
 
-/** Recarga los planes desde el Sheet si el caché tiene más de 5 minutos de antigüedad. */
+/** Recarga los planes desde PG si el caché tiene más de 5 minutos de antigüedad. */
 async function reloadPlansIfStale(): Promise<void> {
-  if (getStorageBackend() !== "sheet") return;
+  if (getStorageBackend() !== "postgres") return;
   const now = Date.now();
   if (now - lastPlanReload < PLAN_RELOAD_TTL_MS) return;
   lastPlanReload = now;
@@ -213,21 +213,21 @@ async function reloadPlansIfStale(): Promise<void> {
     const rows = await loadPlansFromSheet();
     if (rows.length > 0) initPlansFromSheet(rows);
   } catch (e) {
-    console.error("[plans] Error al recargar planes desde Sheet:", e);
+    console.error("[plans] Error al recargar planes desde DB:", e);
   }
 }
 
 /**
- * Recarga las estrategias desde el Sheet.
+ * Recarga las estrategias desde la DB.
  * Se llama cada vez que el usuario abre la Tienda para garantizar visibilidad actualizada.
  */
 async function reloadStrategiesIfStale(): Promise<void> {
-  if (getStorageBackend() !== "sheet") return;
+  if (getStorageBackend() !== "postgres") return;
   try {
     const rows = await loadStrategiesFromSheet();
     if (rows.length > 0) initCustomMenusFromSheet(rows);
   } catch (e) {
-    console.error("[strategies] Error al recargar estrategias desde Sheet:", e);
+    console.error("[strategies] Error al recargar estrategias desde DB:", e);
   }
 }
 
@@ -4005,9 +4005,8 @@ async function main(): Promise<void> {
   registerExtraMenus();
   setSheetMenuLabelResolver(getExtraMenuLabel);
   await initUserConfig();
-  // PG-first: cuando DATABASE_URL está presente entra en el mismo flujo que Sheet
-  // (las funciones *FromSheet ya tienen guard PG interno)
-  if (process.env.DATABASE_URL || getStorageBackend() === "sheet") {
+  // PG-first: carga estrategias y planes desde PostgreSQL
+  {
     let rows = await loadStrategiesFromSheet();
     const migrated = rows.some((r) => r.id === "estrategia_test");
     if (migrated) {
@@ -4063,7 +4062,7 @@ async function main(): Promise<void> {
       // gracias al Set deduplicador de loadPlansFromSheet) o si se modificó alguna descripción:
       if (modified) {
         await savePlansToSheet(planRows);
-        console.log("[plans] Sincronizadas descripciones actualizadas (y desduplicadas) a Google Sheets.");
+        console.log("[plans] Sincronizadas descripciones actualizadas (y desduplicadas) a PostgreSQL.");
       }
     } else {
       initPlans();
@@ -4083,8 +4082,6 @@ async function main(): Promise<void> {
       await savePlansToSheet(plansToSave);
       setPlanSheetPersist((items) => savePlansToSheet(items));
     }
-  } else {
-    initCustomMenus();
   }
   // 1. Sembrar estrategias integradas (NUEVO ORDEN: antes del registro de handlers)
   // Esto asegura que BUILT_IN_STRATEGIES existan en el catálogo antes de iterar
@@ -4118,7 +4115,7 @@ async function main(): Promise<void> {
 
   loadStrategyPreviews();
 
-  if (!process.env.DATABASE_URL && getStorageBackend() !== "sheet") {
+  if (!process.env.DATABASE_URL) {
     initPlans();
   }
 

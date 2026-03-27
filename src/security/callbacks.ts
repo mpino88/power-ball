@@ -154,8 +154,8 @@ export interface SecurityCallbackDeps {
   buildMainKeyboard: (userId: number | undefined) => InlineKeyboard;
   getExtraMenuIds: () => string[];
   getExtraMenuLabel: (menuId: string) => string | undefined;
-  /** Si se proporciona, "Listar planes" recarga desde el Sheet antes de mostrar. */
-  getStorageBackend?: () => "sheet" | "file" | "postgres";
+  /** Si se proporciona, "Listar planes" recarga desde la DB antes de mostrar. */
+  getStorageBackend?: () => "postgres" | "file";
   loadPlansFromSheet?: () => Promise<{ id: string; title: string; description: string; price: string; menuIds: string; price_1m: string; price_3m: string; price_6m: string; price_9m: string; price_1a: string; autoApprove: string }[]>;
   initPlansFromSheet?: (rows: { id: string; title: string; description: string; price: string; menuIds: string; price_1m: string; price_3m: string; price_6m: string; price_9m: string; price_1a: string; autoApprove: string }[]) => void;
   getP3Map: () => Promise<any>;
@@ -625,7 +625,7 @@ export async function handleSecurityCallback(
     result = "💰 *Gestionar planes*\n\nOperación cancelada.";
     keyboard = buildManagePlansKeyboard();
   } else if (data === "admin_plans_list") {
-    if (deps.getStorageBackend?.() === "sheet" && deps.loadPlansFromSheet && deps.initPlansFromSheet) {
+    if (deps.loadPlansFromSheet && deps.initPlansFromSheet) {
       const rows = await deps.loadPlansFromSheet();
       deps.initPlansFromSheet(rows);
     }
