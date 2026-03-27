@@ -111,12 +111,9 @@ export interface StrategyRow {
   subscribers?: number;
 }
 
-export async function loadStrategiesFromSheet(): Promise<StrategyRow[]> {
-  if (process.env.DATABASE_URL) {
-    const pg = await import("./infrastructure/database/PostgresStrategyRepository.js");
-    return pg.loadStrategiesFromPG();
-  }
-  return [];
+export async function loadStrategiesFromDB(): Promise<StrategyRow[]> {
+  const pg = await import("./infrastructure/database/PostgresStrategyRepository.js");
+  return pg.loadStrategiesFromPG();
 }
 
 export async function saveStrategiesToDB(items: StrategyRow[]): Promise<void> {
@@ -342,8 +339,8 @@ export async function hasUsedTrial(userId: number): Promise<boolean> {
   if (config.userInfo[String(userId)]?.trial_used === true) return true;
 
   // 2. Verificar en historial de Leads (persistente)
-  const leads = await loadLeadsFromSheet();
-  const alreadyHadTrial = leads.some(l =>
+  const leads = await loadLeadsFromDB();
+  const alreadyHadTrial = leads.some((l: any) =>
     String(l.userId) === String(userId) &&
     (l.temporality === "7d" || l.temporality === "1d" || String(l.plan).toLowerCase().includes("trial"))
   );

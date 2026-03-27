@@ -4022,9 +4022,9 @@ async function main(): Promise<void> {
   // PG-first: carga estrategias y planes desde PostgreSQL
   {
     let rows = await loadStrategiesFromDB();
-    const migrated = rows.some((r) => r.id === "estrategia_test");
+    const migrated = rows.some((r: any) => r.id === "estrategia_test");
     if (migrated) {
-      rows = rows.map((r) =>
+      rows = rows.map((r: any) =>
         r.id === "estrategia_test"
           ? {
             id: "max_per_week_day",

@@ -6,7 +6,7 @@
  */
 
 export {
-    loadAnnouncementsFromSheet,
+    loadAnnouncementsFromDB,
     addAnnouncement,
     editAnnouncement,
     deleteAnnouncement,

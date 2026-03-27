@@ -29,7 +29,7 @@ import {
   assignPlanToUser,
   reloadConfigFromStorage,
   addStrategyRequest,
-  getStrategyRequests,
+  loadStrategyRequestsFromDB,
   removeStrategyRequest,
   approveStrategyRequest,
   loadLeadsFromDB,
@@ -328,8 +328,8 @@ export async function handleSecurityCallback(
     keyboard.text("◀️ Volver a Administrar", "security_open");
   } else if (/^admin_menus_\d+$/.test(data)) {
     const uid = parseInt(data.replace("admin_menus_", ""), 10);
-    const requests = await getStrategyRequests();
-    const userRequestedIds = requests.filter((r) => r.userId === uid).map((r) => r.menuId);
+    const requests = await loadStrategyRequestsFromDB();
+    const userRequestedIds = requests.filter((r: any) => r.userId === uid).map((r: any) => r.menuId);
     keyboard = buildUserMenusKeyboard(uid, getExtraMenuIds, getExtraMenuLabel, userRequestedIds);
     const extra = getExtraMenus(uid);
     const ids = getExtraMenuIds();
@@ -351,8 +351,8 @@ export async function handleSecurityCallback(
     } else {
       const extra = getExtraMenus(uid);
       if (!extra.includes(menuId)) await toggleExtraMenu(uid, menuId);
-      const requests = await getStrategyRequests();
-      const userRequestedIds = requests.filter((r) => r.userId === uid).map((r) => r.menuId);
+      const requests = await loadStrategyRequestsFromDB();
+      const userRequestedIds = requests.filter((r: any) => r.userId === uid).map((r: any) => r.menuId);
       keyboard = buildUserMenusKeyboard(uid, getExtraMenuIds, getExtraMenuLabel, userRequestedIds);
       const extraAfter = getExtraMenus(uid);
       const menuList = validIds
@@ -374,8 +374,8 @@ export async function handleSecurityCallback(
     } else {
       const extra = getExtraMenus(uid);
       if (extra.includes(menuId)) await toggleExtraMenu(uid, menuId);
-      const requests = await getStrategyRequests();
-      const userRequestedIds = requests.filter((r) => r.userId === uid).map((r) => r.menuId);
+      const requests = await loadStrategyRequestsFromDB();
+      const userRequestedIds = requests.filter((r: any) => r.userId === uid).map((r: any) => r.menuId);
       keyboard = buildUserMenusKeyboard(uid, getExtraMenuIds, getExtraMenuLabel, userRequestedIds);
       const extraAfter = getExtraMenus(uid);
       const menuList = validIds
@@ -466,7 +466,7 @@ export async function handleSecurityCallback(
     result = "⚙️ *Gestionar Estrategias*\n\nLista, crea o elimina estrategias.";
     keyboard = buildManageEstrategiasKeyboard();
   } else if (data === "admin_estrategias_requests") {
-    const requests = await getStrategyRequests();
+    const requests = await loadStrategyRequestsFromDB();
     if (requests.length === 0) {
       result = "📥 *Solicitudes pendientes*\n\n_No hay solicitudes de estrategias._";
       keyboard = new InlineKeyboard().text("◀️ Volver a Gestionar Estrategias", "admin_estrategias_manage");
