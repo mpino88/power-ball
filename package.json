@@ -7,7 +7,8 @@
     "build": "tsc",
     "start": "node dist/bot.js",
     "dev": "NODE_ENV=development tsx --env-file=.env src/bot.ts",
-    "test:data": "tsx src/test-data-timing.ts"
+    "test:data": "tsx src/test-data-timing.ts",
+    "test:flows": "tsx --env-file=.env scripts/test-ballbot-flows.ts"
   },
   "keywords": [
     "telegram",

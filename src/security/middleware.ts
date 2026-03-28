@@ -7,8 +7,13 @@
 import { InlineKeyboard, Keyboard } from "grammy";
 import type { getOwnerId as GetOwnerId, isAllowed as IsAllowed } from "../user-config.js";
 import { addPlanRequest, requestPlanRenewal, assignPlanToUser, getPlanTemporality, hasUsedTrial, isPlanExpired, refreshIfStale, saveLead, getOwnerIds } from "../user-config.js";
-import { getPlans, getPriceForTemporality, formatPlanPrice, REGULAR_TEMPORALITIES, TEMPORALITIES, TRIAL_TEMPORALITIES } from "../plans.js";
+import { getPlans, getPriceForTemporality, formatPlanPrice, REGULAR_TEMPORALITIES, TEMPORALITIES } from "../plans.js";
 import { getPaymentMethods, loadPaymentMethodsFromDB } from "../payment-methods.js";
+import {
+  setPendingInteraction,
+  getPendingInteraction,
+  deletePendingInteraction,
+} from "../infrastructure/database/PostgresPendingInteractionRepository.js";
 
 export type BuildMainKeyboard = (userId: number | undefined) => InlineKeyboard;
 
@@ -38,10 +43,8 @@ export interface RestrictMiddlewareOptions {
 export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
   const { getOwnerId, isAllowed, requestAccessLink, isOwner } = options;
 
-  /** Usuario sin acceso que eligió un plan+temporalidad y está pendiente de enviar teléfono. */
-  const pendingPlanRequest = new Map<number, { planId: string; planName: string; temporality: string }>();
-  /** Usuario con plan caducado que eligió un plan+temporalidad para renovar. */
-  const pendingRenewal = new Map<number, { planId: string; planName: string; temporality: string }>();
+  // pendingPlanRequest y pendingRenewal ahora persisten en PostgreSQL
+  // vía PostgresPendingInteractionRepository (GAP-03 fix — sobrevive reinicios Render)
 
   const contactRequestKb = (label: string) =>
     new Keyboard()
@@ -54,7 +57,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
   /** Construye los botones de temporalidad de un plan.
    * - Planes autoApprove: un solo botón "✅ Activar gratis".
    * - Planes normales: botón de trial (7d, auto-aprobado) + temporalidades regulares de 2 en 2. */
-  function addPlanTemporalityButtons(kb: InlineKeyboard, planId: string, planTitle: string, plan: ReturnType<typeof getPlans>[number], prefix: string): void {
+  function addPlanTemporalityButtons(kb: InlineKeyboard, planId: string, _planTitle: string, plan: ReturnType<typeof getPlans>[number], prefix: string): void {
     if (plan.autoApprove) {
       kb.text(`✅ Activar gratis — 7 Días`, `${prefix}${planId}_7d`).row();
       return;
@@ -121,7 +124,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
                 return;
               }
               // Trial/autoApprove: pedir teléfono antes de activar
-              pendingRenewal.set(uid, { planId, planName: plan.title, temporality });
+              await setPendingInteraction(uid, "plan_renewal", { planId, planName: plan.title, temporality });
               await ctx.reply(
                 `🔄 *Renovar plan: ${plan.title}* (Trial — 7 Días)\n\n` +
                 "Para activar tu acceso necesitamos tu número de contacto.\n\n" +
@@ -131,7 +134,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
               return;
             }
             const tLabel = TEMPORALITIES.find((t) => t.id === temporality)?.label ?? temporality;
-            pendingRenewal.set(uid, { planId, planName: plan.title, temporality });
+            await setPendingInteraction(uid, "plan_renewal", { planId, planName: plan.title, temporality });
             await ctx.reply(
               `🔄 *Renovar plan: ${plan.title}* (${tLabel})\n\n` +
               "Para completar la renovación necesitamos tu número de contacto.\n\n" +
@@ -149,7 +152,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
       if (data === "help") return next();
 
       // Contacto para renovación
-      const renewal = ctx.message ? pendingRenewal.get(uid) : undefined;
+      const renewal = ctx.message ? await getPendingInteraction(uid, "plan_renewal") : null;
       if (renewal) {
         const contact = ctx.message?.contact;
         if (contact) {
@@ -158,7 +161,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
             [contact.first_name, contact.last_name].filter(Boolean).join(" ").trim() ||
             [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ").trim() ||
             "—";
-          pendingRenewal.delete(uid);
+          await deletePendingInteraction(uid, "plan_renewal");
           const plan = getPlans().find((p) => p.id === renewal.planId);
           const isTrial = plan?.autoApprove || renewal.temporality === "7d";
           try {
@@ -205,7 +208,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
 
         const text = ctx.message?.text?.trim() ?? "";
         if (text === "❌ Cancelar") {
-          pendingRenewal.delete(uid);
+          await deletePendingInteraction(uid, "plan_renewal");
           await ctx.reply("Renovación cancelada.", { reply_markup: { remove_keyboard: true } });
           return;
         }
@@ -287,7 +290,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
             }
             // Trial/autoApprove: pedir teléfono antes de activar
             const tLabel = TEMPORALITIES.find((t) => t.id === temporality)?.label ?? temporality;
-            pendingPlanRequest.set(uid, { planId, planName: plan.title, temporality });
+            await setPendingInteraction(uid, "plan_request", { planId, planName: plan.title, temporality });
             await ctx.reply(
               `📋 Plan *${plan.title}* — ${tLabel}\n\n` +
               "Para activar tu acceso gratuito necesitamos tu número de contacto.\n\n" +
@@ -297,7 +300,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
             return;
           }
           const tLabel = TEMPORALITIES.find((t) => t.id === temporality)?.label ?? temporality;
-          pendingPlanRequest.set(uid, { planId, planName: plan.title, temporality });
+          await setPendingInteraction(uid, "plan_request", { planId, planName: plan.title, temporality });
           await ctx.reply(
             `📋 Plan *${plan.title}* — ${tLabel}\n\n` +
             "Para completar la solicitud necesitamos tu número de contacto.\n\n" +
@@ -311,7 +314,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
       return;
     }
 
-    const pending = ctx.message ? pendingPlanRequest.get(uid) : undefined;
+    const pending = ctx.message ? await getPendingInteraction(uid, "plan_request") : null;
     if (pending) {
       const contact = ctx.message?.contact;
       if (contact) {
@@ -320,7 +323,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
           [contact.first_name, contact.last_name].filter(Boolean).join(" ").trim() ||
           [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ").trim() ||
           "—";
-        pendingPlanRequest.delete(uid);
+        await deletePendingInteraction(uid, "plan_request");
         const plan = getPlans().find((p) => p.id === pending.planId);
         const isTrial = plan?.autoApprove || pending.temporality === "7d";
         try {
@@ -385,7 +388,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
 
       const text = ctx.message?.text?.trim() ?? "";
       if (text === "❌ Cancelar") {
-        pendingPlanRequest.delete(uid);
+        await deletePendingInteraction(uid, "plan_request");
         await ctx.reply("Solicitud cancelada.", { reply_markup: { remove_keyboard: true } });
         return;
       }

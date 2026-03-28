@@ -185,6 +185,7 @@ import {
   parseNumberList,
 } from "./adivinanza.js";
 import { getPaymentMethods, loadPaymentMethodsFromDB } from "./payment-methods.js";
+import { cleanExpiredPendingInteractions } from "./infrastructure/database/PostgresPendingInteractionRepository.js";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -4287,6 +4288,7 @@ async function main(): Promise<void> {
   }
 
   await normalizeUserMenusAfterLoad();
+  await cleanExpiredPendingInteractions();
   await bot.init();
 
   /* Precarga única: lectura de los PDF y extracción de los mapas de fechas. El caché de candidatos ahora es MANUAL. */

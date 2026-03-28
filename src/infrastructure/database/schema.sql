@@ -141,3 +141,20 @@ CREATE INDEX IF NOT EXISTS idx_strategy_requests_user ON strategy_requests (user
 ALTER TABLE suggestions ADD COLUMN IF NOT EXISTS nombre   VARCHAR(255) DEFAULT '';
 ALTER TABLE suggestions ADD COLUMN IF NOT EXISTS telefono VARCHAR(50)  DEFAULT '';
 ALTER TABLE suggestions ADD COLUMN IF NOT EXISTS fecha    VARCHAR(50)  DEFAULT '';
+
+-- ── Fase 4: Pending Interactions — Estado de sesión persistente ──────────────
+-- Reemplaza los Maps en-memoria (pendingPlanRequest, pendingRenewal) de middleware.ts
+-- para sobrevivir reinicios del proceso en Render.
+-- TTL: 30 minutos. El bot limpia rows expirados en el arranque.
+CREATE TABLE IF NOT EXISTS pending_interactions (
+  user_id      BIGINT       PRIMARY KEY,
+  type         VARCHAR(20)  NOT NULL,  -- 'plan_request' | 'plan_renewal'
+  plan_id      VARCHAR(50)  NOT NULL,
+  plan_name    VARCHAR(100) NOT NULL,
+  temporality  VARCHAR(20)  NOT NULL,
+  expires_at   TIMESTAMP WITH TIME ZONE NOT NULL,
+  created_at   TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_pending_interactions_expires ON pending_interactions (expires_at);
+-- Limpieza de rows expirados (ejecutar al arranque del bot)
+-- DELETE FROM pending_interactions WHERE expires_at < NOW();
