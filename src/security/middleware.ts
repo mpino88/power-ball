@@ -159,9 +159,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
     const isOpenAccessAction =
       data === "ver_planes_open" ||
       data === "register_open" ||
-      data?.startsWith("request_plan_") ||
-      (ctx.message?.contact !== undefined) ||
-      (ctx.message?.text?.trim() === "❌ Cancelar");
+      data?.startsWith("request_plan_");
 
     if (!isOpenAccessAction) {
       // ── Dueño: siempre pasa ──────────────────────────────────────────────────

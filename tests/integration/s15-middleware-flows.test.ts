@@ -59,6 +59,10 @@ vi.mock("../../src/user-config.js", () => ({
   refreshIfStale:       vi.fn().mockResolvedValue(undefined),
   saveLead:             vi.fn().mockResolvedValue(undefined),
   getOwnerIds:          vi.fn().mockReturnValue([]),
+  isRegistered:         vi.fn().mockReturnValue(false),
+  getUsername:          vi.fn().mockReturnValue(null),
+  getPhone:             vi.fn().mockReturnValue(null),
+  saveUserContact:      vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../../src/plans.js", () => ({
@@ -89,10 +93,12 @@ import type { addPlanRequest, assignPlanToUser, hasUsedTrial, isPlanExpired } fr
 
 // Alias tipados para los mocks
 const userConfig = await import("../../src/user-config.js");
-const mockAssignPlan    = userConfig.assignPlanToUser as ReturnType<typeof vi.fn>;
-const mockAddPlanReq    = userConfig.addPlanRequest   as ReturnType<typeof vi.fn>;
-const mockHasUsedTrial  = userConfig.hasUsedTrial     as ReturnType<typeof vi.fn>;
-const mockIsPlanExpired = userConfig.isPlanExpired     as ReturnType<typeof vi.fn>;
+const mockAssignPlan       = userConfig.assignPlanToUser   as ReturnType<typeof vi.fn>;
+const mockAddPlanReq       = userConfig.addPlanRequest     as ReturnType<typeof vi.fn>;
+const mockRequestRenewal   = userConfig.requestPlanRenewal as ReturnType<typeof vi.fn>;
+const mockHasUsedTrial     = userConfig.hasUsedTrial       as ReturnType<typeof vi.fn>;
+const mockIsPlanExpired    = userConfig.isPlanExpired      as ReturnType<typeof vi.fn>;
+const mockIsRegistered     = userConfig.isRegistered       as ReturnType<typeof vi.fn>;
 
 const UID  = 100001;
 const UID2 = 100002;
@@ -197,6 +203,9 @@ describe("S-15: Middleware Flows (Nivel 3-4)", () => {
     (uc.refreshIfStale       as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
     (uc.saveLead             as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
     (uc.getOwnerIds          as ReturnType<typeof vi.fn>).mockReturnValue([]);
+    (uc.isRegistered         as ReturnType<typeof vi.fn>).mockReturnValue(false);
+    (uc.getUsername          as ReturnType<typeof vi.fn>).mockReturnValue(null);
+    (uc.getPhone             as ReturnType<typeof vi.fn>).mockReturnValue(null);
 
     // Re-aplicar defaults de plans y payment-methods
     const plans = await import("../../src/plans.js");
@@ -288,7 +297,8 @@ describe("S-15: Middleware Flows (Nivel 3-4)", () => {
     expect(replyText).toContain("activado");
   });
 
-  it("plan_request pago (1m): teléfono recibido → addPlanRequest (NO assignPlan) + pending borrado", async () => {
+  it("plan_request pago (1m): teléfono recibido → requestPlanRenewal (NO assignPlan) + pending borrado", async () => {
+    // processPlanSubmission usa requestPlanRenewal para ambos tipos (plan_requested + renewal_requested)
     setPendingFor(UID, "plan_request", { temporality: "1m" });
     const mw = makeMW({ isAllowed: false });
     const c  = ctx(UID, {
@@ -297,7 +307,7 @@ describe("S-15: Middleware Flows (Nivel 3-4)", () => {
     await mw(c as any, vi.fn());
 
     expect(mockAssignPlan).not.toHaveBeenCalled();
-    expect(mockAddPlanReq).toHaveBeenCalledOnce();
+    expect(mockRequestRenewal).toHaveBeenCalledOnce();
     expect(hasPendingFor(UID, "plan_request")).toBe(false);
 
     const replyText: string = c.reply.mock.calls[0][0];
