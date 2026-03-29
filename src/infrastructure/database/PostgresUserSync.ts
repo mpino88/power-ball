@@ -37,8 +37,10 @@ export async function loadUsersFromPG(): Promise<UsersConfig> {
       continue;
     }
     
-    // Default (approved / active / etc)
-    if (!config.allowed.includes(uid)) config.allowed.push(uid);
+    // Solo los usuarios explícitamente aprobados obtienen acceso completo (allowed)
+    if (u.plan_status === "approved" && !config.allowed.includes(uid)) {
+      config.allowed.push(uid);
+    }
     config.userInfo[uidStr] = {
       name: u.username || undefined,
       phone: u.phone || undefined,

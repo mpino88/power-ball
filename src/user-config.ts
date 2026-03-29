@@ -909,9 +909,7 @@ export async function saveUserContact(userId: number, name: string, phone: strin
     name,
     phone,
   };
-  // Asegurar que el userId esté en allowed para que pueda interactuar
-  if (!config.allowed.includes(userId)) {
-    config.allowed.push(userId);
-  }
+  // NOTA: El usuario NO se agrega a 'allowed' aquí.
+  // Solo los usuarios con planes aprobados entran a 'allowed' (para bypass de gating).
   return persist();
 }
