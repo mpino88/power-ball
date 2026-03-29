@@ -381,6 +381,23 @@ export async function removeAllowed(userId: number): Promise<PersistResult> {
   return persist();
 }
 
+/** Despoja al usuario de su plan y lo marca como no autorizado (caducado). */
+export async function expireUserPlan(userId: number): Promise<PersistResult> {
+  const key = String(userId);
+  if (config.userInfo[key]) {
+    config.userInfo[key] = {
+      ...config.userInfo[key],
+      plan_status: undefined,
+      plan_expiry: undefined,
+      plan_temporality: undefined,
+      // Conservamos el "plan" anterior como log, 
+      // pero al no tener plan_status y no estar en allowed, su acceso desaparece.
+    };
+  }
+  config.allowed = config.allowed.filter((id) => id !== userId);
+  return persist();
+}
+
 export async function setExtraMenus(userId: number, menuIds: string[]): Promise<PersistResult> {
   const key = String(userId);
   config.menus[key] = [...menuIds];
