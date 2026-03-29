@@ -320,7 +320,7 @@ export function getPlanExpiry(userId: number): string | undefined {
 }
 
 /** Parsea una fecha MM/DD/YY a Date. Null si formato inválido. */
-function parseMMDDYY(s: string): Date | null {
+export function parseMMDDYY(s: string): Date | null {
   const parts = s.split("/");
   if (parts.length !== 3) return null;
   const [mm, dd, yy] = parts;

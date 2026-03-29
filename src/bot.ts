@@ -7,6 +7,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { createAutoDrawHandler, type AutoDrawRequest } from "./auto-draw.js";
+import dayjs from "dayjs";
 import { Bot, InputFile, InlineKeyboard } from "grammy";
 import type { Update } from "grammy/types";
 import {
@@ -21,6 +22,7 @@ import {
   getPlanTemporality,
   getPlanExpiry,
   isPlanExpired,
+  parseMMDDYY,
   getUserAssignedMenuIds,
   isOwner,
   initUserConfig,
@@ -254,8 +256,38 @@ async function reloadStrategiesIfStale(): Promise<void> {
 
 function buildHelpText(userId: number | undefined, planName: string): string {
   const safePlan = escapeMd(planName);
-  const currentExpiry = userId ? getPlanExpiry(userId) : undefined;
-  const expiryInfo = currentExpiry ? ` (expira: ${currentExpiry})` : "";
+  const currentExpiryStr = userId ? getPlanExpiry(userId) : undefined;
+  
+  let expiryInfo = "";
+  if (currentExpiryStr) {
+    const d = parseMMDDYY(currentExpiryStr);
+    if (d) {
+      const today = dayjs().startOf("day");
+      const target = dayjs(d).startOf("day");
+      const diffDays = target.diff(today, "day");
+      
+      if (diffDays > 30) {
+        const diffMonths = target.diff(today, "month");
+        const targetMinusMonths = target.subtract(diffMonths, "month");
+        const remainDays = targetMinusMonths.diff(today, "day");
+        
+        let timeStr = `${diffMonths} mes${diffMonths > 1 ? "es" : ""}`;
+        if (remainDays > 0) {
+          timeStr += ` y ${remainDays} día${remainDays > 1 ? "s" : ""}`;
+        }
+        expiryInfo = ` (expira: ${currentExpiryStr} — en ${timeStr})`;
+      } else if (diffDays > 0) {
+        expiryInfo = ` (expira: ${currentExpiryStr} — en ${diffDays} días)`;
+      } else if (diffDays === 0) {
+        expiryInfo = ` (expira: hoy)`;
+      } else {
+        expiryInfo = ` (expiró hace ${Math.abs(diffDays)} días)`;
+      }
+    } else {
+      expiryInfo = ` (expira: ${currentExpiryStr})`;
+    }
+  }
+
   return (
     `📋 *Ayuda — ${safePlan}*${expiryInfo}\n\n` +
     `Ud. posee el plan *${safePlan}*: le brindamos acceso a sus estadísticas y estrategias configuradas.\n\n` +
