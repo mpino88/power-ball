@@ -51,6 +51,8 @@ import {
   clearAllAnnouncements,
   invalidateAnnouncementsCache,
   getAllowedUsers,
+  hasPlan,
+  isRegistered,
 } from "./user-config.js";
 import {
   registerExtraMenu,
@@ -103,6 +105,7 @@ import {
   ESTRATEGIAS_OPEN_CALLBACK,
   buildMainMenuMessage,
   type GameMenu,
+  type UserStatus,
 } from "./menus/index.js";
 import type { StrategyContext } from "./strategies/types.js";
 import {
@@ -677,10 +680,21 @@ const mainKbDeps = {
   getUserAssignedMenuIds,
   getMenuCreatedBy,
   getMenuSubscribers,
+  hasPlan,
+  isRegistered,
 };
 
 function buildMainKb(userId: number | undefined) {
   return buildMainKeyboard(userId, mainKbDeps);
+}
+
+/** Determina el estado del usuario para el mensaje del menú principal. */
+function getUserStatus(userId: number | undefined): UserStatus {
+  if (!userId) return "visitor";
+  if (isOwner(userId)) return "admin";
+  if (hasPlan(userId)) return "verified";
+  if (isRegistered(userId)) return "registered";
+  return "visitor";
 }
 
 /** Mensaje cuando el usuario abre un menú/estrategia sin funcionalidad asignada. */
@@ -955,12 +969,20 @@ bot.command("start", async (ctx) => {
     announcementBanner = buildAnnouncementsBanner(annItems);
   }
 
+  // Banner de registro para usuarios no registrados
+  let registrationBanner = "";
+  if (startUserId && !isOwner(startUserId) && !isRegistered(startUserId)) {
+    registrationBanner = "📢 *¡Bienvenido a Ball Bot!*\n" +
+      "Regístrate compartiendo tu contacto para acceder a todas las funciones.\n" +
+      "Pulsa el botón 📞 *Registrarme* abajo.\n\n";
+  }
+
   const [p3, p4] = await Promise.all([getP3Map(), getP4Map()]);
   const { getHoyResult } = await import("./hoy-results.js");
   const recentDrawsText = buildRecentDrawsDisplay(p3, p4, getTodayFloridaMMDDYY(), getYesterdayFloridaMMDDYY(), getHoyResult());
 
   await ctx.reply(
-    announcementBanner + buildMainMenuMessage(ctx.from?.first_name || "Usuario", recentDrawsText),
+    registrationBanner + announcementBanner + buildMainMenuMessage(ctx.from?.first_name || "Usuario", recentDrawsText, getUserStatus(startUserId)),
     { parse_mode: "Markdown", reply_markup: buildMainKb(startUserId) }
   );
 });
@@ -1732,6 +1754,28 @@ bot.on("callback_query:data", async (ctx) => {
   if (data.startsWith(STRATEGY_CONTEXT_CALLBACK_PREFIX)) {
     const parsed = parseStrategyContextCallback(data);
     if (parsed) {
+      // ── Gating: bloquear ejecución si el usuario no tiene plan ──
+      const stratUserId = ctx.from?.id;
+      if (stratUserId && !isOwner(stratUserId) && !hasPlan(stratUserId)) {
+        await ctx.answerCallbackQuery();
+        const label = getExtraMenuLabel(parsed.menuId) || parsed.menuId;
+        const desc = getExtraMenuDescription(parsed.menuId);
+        const safeLabel = escapeMd(label.replace(/[*_]/g, ""));
+        let lockedMsg = `🔒 *${safeLabel}*\n\n`;
+        if (desc) lockedMsg += `_${escapeMd(desc.replace(/[*_]/g, ""))}_\n\n`;
+        lockedMsg += "⚠️ Para ver los resultados de esta estrategia debes adquirir un plan.\n\n" +
+                     "📋 _Elige un plan para desbloquear todas las estrategias y funciones avanzadas._";
+        const lockedKb = new InlineKeyboard()
+          .text("📋 Ver Planes", "ver_planes_open").row()
+          .text("◀️ Volver a Estrategias", ESTRATEGIAS_OPEN_CALLBACK).row()
+          .text("🏠 Volver al Inicio", "volver");
+        try {
+          await ctx.editMessageText(lockedMsg, { parse_mode: "Markdown", reply_markup: lockedKb });
+        } catch (e) {
+          if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+        }
+        return;
+      }
       // ── Consenso: flujo interactivo en lugar de ejecución directa ──
       if (parsed.menuId === "consensus_multi") {
         await ctx.answerCallbackQuery();
@@ -2935,8 +2979,59 @@ bot.on("callback_query:data", async (ctx) => {
     return;
   }
 
+  // ── Estrategia bloqueada (sin plan): mostrar descripción + pedir plan
+  if (data.startsWith("locked_strat_")) {
+    const menuId = data.slice("locked_strat_".length);
+    await ctx.answerCallbackQuery();
+    const label = getExtraMenuLabel(menuId) || menuId;
+    const desc = getExtraMenuDescription(menuId);
+    const safeLabel = escapeMd(label.replace(/[*_]/g, ""));
+    let msg = `🔒 *${safeLabel}*\n\n`;
+    if (desc) {
+      msg += `_${escapeMd(desc.replace(/[*_]/g, ""))}_\n\n`;
+    }
+    msg += "⚠️ Para ver los resultados de esta estrategia debes adquirir un plan.\n\n" +
+           "📋 _Elige un plan para desbloquear todas las estrategias y funciones avanzadas._";
+    const kb = new InlineKeyboard()
+      .text("📋 Ver Planes", "ver_planes_open").row()
+      .text("◀️ Volver a Estrategias", ESTRATEGIAS_OPEN_CALLBACK).row()
+      .text("🏠 Volver al Inicio", "volver");
+    try {
+      await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
+  }
+
   if (data.startsWith(EXTRA_MENU_CALLBACK_PREFIX)) {
     const menuId = data.slice(EXTRA_MENU_CALLBACK_PREFIX.length);
+
+    // ── Gating: si el usuario no tiene plan, mostrar descripción + pedir plan ──
+    const callerUserId = ctx.from?.id;
+    if (callerUserId && !isOwner(callerUserId) && !hasPlan(callerUserId)) {
+      await ctx.answerCallbackQuery();
+      const label = getExtraMenuLabel(menuId) || menuId;
+      const desc = getExtraMenuDescription(menuId);
+      const safeLabel = escapeMd(label.replace(/[*_]/g, ""));
+      let msg = `🔒 *${safeLabel}*\n\n`;
+      if (desc) {
+        msg += `_${escapeMd(desc.replace(/[*_]/g, ""))}_\n\n`;
+      }
+      msg += "⚠️ Para ver los resultados de esta estrategia debes adquirir un plan.\n\n" +
+             "📋 _Elige un plan para desbloquear todas las estrategias y funciones avanzadas._";
+      const kb = new InlineKeyboard()
+        .text("📋 Ver Planes", "ver_planes_open").row()
+        .text("◀️ Volver a Estrategias", ESTRATEGIAS_OPEN_CALLBACK).row()
+        .text("🏠 Volver al Inicio", "volver");
+      try {
+        await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
+
     if (getExtraMenuStatus(menuId) === "pendiente") {
       await ctx.answerCallbackQuery();
       const desc = getExtraMenuDescription(menuId);

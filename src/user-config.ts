@@ -598,10 +598,11 @@ export async function rejectPlanRequest(userId: number): Promise<PersistResult> 
 
   const pendingRaw = config.userInfo[key]?.pending_plan;
   if (pendingRaw) {
+    const isCurrentlyAllowed = config.allowed.includes(userId);
     config.userInfo[key] = {
       ...config.userInfo[key],
       pending_plan: undefined,
-      plan_status: "rejected",
+      plan_status: isCurrentlyAllowed ? "approved" : "rejected",
     };
     return persist();
   }
@@ -857,4 +858,43 @@ export async function extendPlanByOneMonth(userId: number): Promise<void> {
   }
 
   await persist();
+}
+
+// ─── Gating helpers (acceso abierto con registro) ────────────────────────────
+
+/** true si el usuario ya compartió sus datos de contacto (teléfono). */
+export function isRegistered(userId: number): boolean {
+  const info = config.userInfo[String(userId)];
+  return !!info?.phone;
+}
+
+/**
+ * true si el usuario tiene un plan activo (no caducado).
+ * Owners siempre devuelven true.
+ */
+export function hasPlan(userId: number): boolean {
+  if (getOwnerIds().includes(userId)) return true;
+  const info = config.userInfo[String(userId)];
+  if (!info?.plan) return false;
+  if (info.plan_status !== "approved") return false;
+  if (isPlanExpired(userId)) return false;
+  return true;
+}
+
+/**
+ * Guarda nombre + teléfono de un usuario sin asignarle plan ni acceso.
+ * Se usa en el flujo de registro previo a la adquisición de plan.
+ */
+export async function saveUserContact(userId: number, name: string, phone: string): Promise<PersistResult> {
+  const key = String(userId);
+  config.userInfo[key] = {
+    ...config.userInfo[key],
+    name,
+    phone,
+  };
+  // Asegurar que el userId esté en allowed para que pueda interactuar
+  if (!config.allowed.includes(userId)) {
+    config.allowed.push(userId);
+  }
+  return persist();
 }

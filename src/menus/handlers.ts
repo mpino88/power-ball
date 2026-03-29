@@ -21,6 +21,7 @@ import {
   ESTRATEGIAS_OPEN_CALLBACK,
   buildMainMenuMessage,
   type MainKeyboardDeps,
+  type UserStatus,
 } from "./keyboards.js";
 import { getHoyResult } from "../hoy-results.js";
 import { findWinningStrategies } from "../neuro-hit-engine.js";
@@ -105,8 +106,14 @@ export async function handleMenuCallback(
     const { buildRecentDrawsDisplay } = await import("../recent-draws.js");
     const { getHoyResult } = await import("../hoy-results.js");
     const recentDrawsText = buildRecentDrawsDisplay(p3, p4, deps.getTodayFloridaMMDDYY(), deps.getYesterdayFloridaMMDDYY(), getHoyResult());
+    const uid = ctx.from?.id;
+    const status: UserStatus = !uid ? "visitor"
+      : deps.isOwner(uid) ? "admin"
+      : (deps.hasPlan?.(uid) ?? false) ? "verified"
+      : (deps.isRegistered?.(uid) ?? false) ? "registered"
+      : "visitor";
     return {
-      result: buildMainMenuMessage(ctx.from?.first_name || "Usuario", recentDrawsText),
+      result: buildMainMenuMessage(ctx.from?.first_name || "Usuario", recentDrawsText, status),
       keyboard: mainKb(),
     };
   }

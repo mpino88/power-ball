@@ -198,7 +198,8 @@ export async function handleSecurityCallback(
     const { buildRecentDrawsDisplay } = await import("../recent-draws.js");
     const { getHoyResult } = await import("../hoy-results.js");
     const recentDrawsText = buildRecentDrawsDisplay(p3, p4, deps.getTodayFloridaMMDDYY(), deps.getYesterdayFloridaMMDDYY(), getHoyResult());
-    result = buildMainMenuMessage(ctx.from?.first_name || "Usuario", recentDrawsText);
+    // security_main is only accessible by owners/admins
+    result = buildMainMenuMessage(ctx.from?.first_name || "Usuario", recentDrawsText, "admin");
     keyboard = deps.buildMainKeyboard(ctx.from.id);
   } else if (data === "admin_hoy_update") {
     clearAllFlows(ctx.from.id);
