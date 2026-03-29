@@ -958,12 +958,20 @@ bot.command("start", async (ctx) => {
     announcementBanner = buildAnnouncementsBanner(annItems);
   }
 
+  // Banner de registro para usuarios no registrados
+  let registrationBanner = "";
+  if (startUserId && !isOwner(startUserId) && !isRegistered(startUserId)) {
+    registrationBanner = "📢 *¡Bienvenido a Ball Bot!*\n" +
+      "Regístrate compartiendo tu contacto para acceder a todas las funciones.\n" +
+      "Pulsa el botón 📞 *Registrarme* abajo.\n\n";
+  }
+
   const [p3, p4] = await Promise.all([getP3Map(), getP4Map()]);
   const { getHoyResult } = await import("./hoy-results.js");
   const recentDrawsText = buildRecentDrawsDisplay(p3, p4, getTodayFloridaMMDDYY(), getYesterdayFloridaMMDDYY(), getHoyResult());
 
   await ctx.reply(
-    announcementBanner + buildMainMenuMessage(ctx.from?.first_name || "Usuario", recentDrawsText),
+    registrationBanner + announcementBanner + buildMainMenuMessage(ctx.from?.first_name || "Usuario", recentDrawsText),
     { parse_mode: "Markdown", reply_markup: buildMainKb(startUserId) }
   );
 });
@@ -1735,6 +1743,27 @@ bot.on("callback_query:data", async (ctx) => {
   if (data.startsWith(STRATEGY_CONTEXT_CALLBACK_PREFIX)) {
     const parsed = parseStrategyContextCallback(data);
     if (parsed) {
+      // ── Gating: bloquear ejecución si el usuario no tiene plan ──
+      const stratUserId = ctx.from?.id;
+      if (stratUserId && !isOwner(stratUserId) && !hasPlan(stratUserId)) {
+        await ctx.answerCallbackQuery();
+        const label = getExtraMenuLabel(parsed.menuId) || parsed.menuId;
+        const desc = getExtraMenuDescription(parsed.menuId);
+        let lockedMsg = `🔒 *${escapeMd(label)}*\n\n`;
+        if (desc) lockedMsg += `_${escapeMd(desc)}_\n\n`;
+        lockedMsg += "⚠️ Para ver los resultados de esta estrategia debes adquirir un plan.\n\n" +
+                     "📋 _Elige un plan para desbloquear todas las estrategias y funciones avanzadas._";
+        const lockedKb = new InlineKeyboard()
+          .text("📋 Ver Planes", "ver_planes_open").row()
+          .text("◀️ Volver a Estrategias", ESTRATEGIAS_OPEN_CALLBACK).row()
+          .text("🏠 Volver al Inicio", "volver");
+        try {
+          await ctx.editMessageText(lockedMsg, { parse_mode: "Markdown", reply_markup: lockedKb });
+        } catch (e) {
+          if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+        }
+        return;
+      }
       // ── Consenso: flujo interactivo en lugar de ejecución directa ──
       if (parsed.menuId === "consensus_multi") {
         await ctx.answerCallbackQuery();
