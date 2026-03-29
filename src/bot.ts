@@ -1759,8 +1759,9 @@ bot.on("callback_query:data", async (ctx) => {
         await ctx.answerCallbackQuery();
         const label = getExtraMenuLabel(parsed.menuId) || parsed.menuId;
         const desc = getExtraMenuDescription(parsed.menuId);
-        let lockedMsg = `🔒 *${escapeMd(label)}*\n\n`;
-        if (desc) lockedMsg += `_${escapeMd(desc)}_\n\n`;
+        const safeLabel = escapeMd(label.replace(/[*_]/g, ""));
+        let lockedMsg = `🔒 *${safeLabel}*\n\n`;
+        if (desc) lockedMsg += `_${escapeMd(desc.replace(/[*_]/g, ""))}_\n\n`;
         lockedMsg += "⚠️ Para ver los resultados de esta estrategia debes adquirir un plan.\n\n" +
                      "📋 _Elige un plan para desbloquear todas las estrategias y funciones avanzadas._";
         const lockedKb = new InlineKeyboard()
@@ -2983,9 +2984,10 @@ bot.on("callback_query:data", async (ctx) => {
     await ctx.answerCallbackQuery();
     const label = getExtraMenuLabel(menuId) || menuId;
     const desc = getExtraMenuDescription(menuId);
-    let msg = `🔒 *${escapeMd(label)}*\n\n`;
+    const safeLabel = escapeMd(label.replace(/[*_]/g, ""));
+    let msg = `🔒 *${safeLabel}*\n\n`;
     if (desc) {
-      msg += `_${escapeMd(desc)}_\n\n`;
+      msg += `_${escapeMd(desc.replace(/[*_]/g, ""))}_\n\n`;
     }
     msg += "⚠️ Para ver los resultados de esta estrategia debes adquirir un plan.\n\n" +
            "📋 _Elige un plan para desbloquear todas las estrategias y funciones avanzadas._";
@@ -3010,9 +3012,10 @@ bot.on("callback_query:data", async (ctx) => {
       await ctx.answerCallbackQuery();
       const label = getExtraMenuLabel(menuId) || menuId;
       const desc = getExtraMenuDescription(menuId);
-      let msg = `🔒 *${escapeMd(label)}*\n\n`;
+      const safeLabel = escapeMd(label.replace(/[*_]/g, ""));
+      let msg = `🔒 *${safeLabel}*\n\n`;
       if (desc) {
-        msg += `_${escapeMd(desc)}_\n\n`;
+        msg += `_${escapeMd(desc.replace(/[*_]/g, ""))}_\n\n`;
       }
       msg += "⚠️ Para ver los resultados de esta estrategia debes adquirir un plan.\n\n" +
              "📋 _Elige un plan para desbloquear todas las estrategias y funciones avanzadas._";
