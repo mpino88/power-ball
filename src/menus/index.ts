@@ -22,6 +22,6 @@ export {
   CONSULTAR_DATOS_CALLBACK,
   buildMainMenuMessage,
 } from "./keyboards.js";
-export type { MainKeyboardDeps } from "./keyboards.js";
+export type { MainKeyboardDeps, UserStatus } from "./keyboards.js";
 export { handleMenuCallback } from "./handlers.js";
 export type { MenuHandlersDeps } from "./handlers.js";

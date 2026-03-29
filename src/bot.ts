@@ -105,6 +105,7 @@ import {
   ESTRATEGIAS_OPEN_CALLBACK,
   buildMainMenuMessage,
   type GameMenu,
+  type UserStatus,
 } from "./menus/index.js";
 import type { StrategyContext } from "./strategies/types.js";
 import {
@@ -686,6 +687,15 @@ function buildMainKb(userId: number | undefined) {
   return buildMainKeyboard(userId, mainKbDeps);
 }
 
+/** Determina el estado del usuario para el mensaje del menú principal. */
+function getUserStatus(userId: number | undefined): UserStatus {
+  if (!userId) return "visitor";
+  if (isOwner(userId)) return "admin";
+  if (hasPlan(userId)) return "verified";
+  if (isRegistered(userId)) return "registered";
+  return "visitor";
+}
+
 /** Mensaje cuando el usuario abre un menú/estrategia sin funcionalidad asignada. */
 const MENU_PENDIENTE_MESSAGE =
   "⏳ _Esta estrategia está pendiente de implementación por el administrador. Vuelve pronto._";
@@ -971,7 +981,7 @@ bot.command("start", async (ctx) => {
   const recentDrawsText = buildRecentDrawsDisplay(p3, p4, getTodayFloridaMMDDYY(), getYesterdayFloridaMMDDYY(), getHoyResult());
 
   await ctx.reply(
-    registrationBanner + announcementBanner + buildMainMenuMessage(ctx.from?.first_name || "Usuario", recentDrawsText),
+    registrationBanner + announcementBanner + buildMainMenuMessage(ctx.from?.first_name || "Usuario", recentDrawsText, getUserStatus(startUserId)),
     { parse_mode: "Markdown", reply_markup: buildMainKb(startUserId) }
   );
 });

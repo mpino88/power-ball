@@ -55,10 +55,21 @@ function getStrategyIcon(
 /** Callback al pulsar "➕ Estrategias": abre el submenú de estrategias. */
 export const ESTRATEGIAS_OPEN_CALLBACK = "estrategias_open";
 
+/** Estado del usuario para el mensaje del menú principal. */
+export type UserStatus = "visitor" | "registered" | "verified" | "admin";
+
+const USER_STATUS_LABELS: Record<UserStatus, string> = {
+  visitor: "👤 Visitante",
+  registered: "👤 Registrado",
+  verified: "👤 Usuario Verificado",
+  admin: "👑 Administrador",
+};
+
 /** Mensaje del menú principal — se usa en /start, volver y security_main. */
-export function buildMainMenuMessage(name: string, recentDrawsText?: string): string {
+export function buildMainMenuMessage(name: string, recentDrawsText?: string, status: UserStatus = "verified"): string {
+  const statusLabel = USER_STATUS_LABELS[status];
   const intro = `🔮  BALL BOT \n\n` +
-    `👤 Usuario Verificado 🫆 *${name}*\n` +
+    `${statusLabel} 🫆 *${name}*\n` +
     `📡 Sincronizado con Florida Lottery 🧠 en tiempo real.\n\n`;
 
   const mid = recentDrawsText ? `${recentDrawsText}\n\n` : '';
