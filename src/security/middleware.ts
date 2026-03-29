@@ -88,18 +88,25 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
     const ownerId = getOwnerId();
     if (ownerId === null) return next();
 
-    // ── Dueño: siempre pasa ──────────────────────────────────────────────────
-    if (isOwner(uid)) return next();
-
     // ── Verificar caché: recargar desde Sheet si tiene > 3 min de antigüedad ─
     await refreshIfStale();
 
-    // ── Usuario autorizado: verificar caducidad ──────────────────────────────
-    if (isAllowed(uid)) {
-      if (!isPlanExpired(uid)) return next();
+    const data = ctx.callbackQuery?.data;
+    const isOpenAccessAction =
+      data === "ver_planes_open" ||
+      data === "register_open" ||
+      data?.startsWith("request_plan_") ||
+      (ctx.message && pendingPlanRequest.has(uid));
 
-      // Plan caducado — manejar flujo de renovación
-      const data = ctx.callbackQuery?.data;
+    if (!isOpenAccessAction) {
+      // ── Dueño: siempre pasa ──────────────────────────────────────────────────
+      if (isOwner(uid)) return next();
+
+      // ── Usuario autorizado: verificar caducidad ──────────────────────────────
+      if (isAllowed(uid)) {
+        if (!isPlanExpired(uid)) return next();
+
+        // Plan caducado — manejar flujo de renovación
 
       // Botón de renovar plan (selección de temporalidad)
       if (data?.startsWith("renew_plan_")) {
@@ -246,12 +253,13 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
       if (link) kb.row().url("📩 Contactar al administrador", link);
 
       if (ctx.callbackQuery) await ctx.answerCallbackQuery?.().catch(() => { });
-      try {
-        await ctx.reply(expiryMsg, { parse_mode: "Markdown", reply_markup: kb });
-      } catch (e) {
-        console.error("[middleware] Error al mostrar mensaje de caducidad:", (e as Error)?.message ?? e);
+        try {
+          await ctx.reply(expiryMsg, { parse_mode: "Markdown", reply_markup: kb });
+        } catch (e) {
+          console.error("[middleware] Error al mostrar mensaje de caducidad:", (e as Error)?.message ?? e);
+        }
+        return;
       }
-      return;
     }
 
     // ── Usuario NO autorizado (nuevo flujo: acceso abierto con gating) ────────
@@ -265,8 +273,6 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
          console.log(`[Referrals] Usuario nuevo ${uid} invitado por ${referrerId}`);
       }
     }
-
-    const data = ctx.callbackQuery?.data;
 
     // ── Registro: compartir contacto ──────────────────────────────────────────
     if (data === "register_open") {
