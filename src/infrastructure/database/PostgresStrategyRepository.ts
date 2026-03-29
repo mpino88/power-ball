@@ -12,7 +12,7 @@ export class PostgresStrategyRepository implements IStrategyRepository {
         id: r.id,
         titulo: r.titulo,
         descripcion: r.descripcion ?? undefined,
-        createdBy: r.created_by ?? undefined,
+        createdBy: r.created_by != null ? Number(r.created_by) : undefined,
         price: r.price ?? undefined,
         visibility: (r.visibility === "public" ? "public" : "private") as "public" | "private",
         subscribers: r.subscribers ?? 0,
