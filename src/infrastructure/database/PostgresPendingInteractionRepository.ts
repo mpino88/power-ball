@@ -89,21 +89,36 @@ export async function getPendingInteraction(
 // ─── Eliminación ──────────────────────────────────────────────────────────────
 
 /**
- * Elimina la interacción pendiente del usuario (tras procesar el contacto o cancelar).
+ * Elimina la interacción pendiente del usuario de forma ATÓMICA.
+ *
+ * Usa DELETE...RETURNING para garantizar que solo un proceso procese
+ * la interacción, incluso ante requests concurrentes (doble-tap).
+ *
+ * @returns true  — esta instancia ganó la race, puede activar el plan.
+ *          false — otra instancia ya procesó la interacción (abortar).
+ * @throws  Re-lanza errores de DB para que el middleware los capture y
+ *          responda al usuario en lugar de activar el plan silenciosamente.
  */
 export async function deletePendingInteraction(
   userId: number,
   type: "plan_request" | "plan_renewal"
-): Promise<void> {
+): Promise<boolean> {
   const pool = getDbPool();
   try {
-    await pool.query(
-      `DELETE FROM pending_interactions WHERE user_id = $1 AND type = $2`,
+    const { rowCount } = await pool.query(
+      `DELETE FROM pending_interactions WHERE user_id = $1 AND type = $2 RETURNING user_id`,
       [userId, type]
     );
-    console.log(`[PendingInteraction] DELETE userId=${userId} type=${type}`);
+    const deleted = (rowCount ?? 0) > 0;
+    if (deleted) {
+      console.log(`[PendingInteraction] DELETE userId=${userId} type=${type}`);
+    } else {
+      console.log(`[PendingInteraction] DELETE no-op (ya procesado) userId=${userId} type=${type}`);
+    }
+    return deleted;
   } catch (e) {
     console.error("[PendingInteraction] Error en DELETE:", e);
+    throw e; // BUG-1 fix: re-lanzar para que el middleware no active el plan
   }
 }
 

@@ -80,11 +80,11 @@ describe("parseMMDDYY", () => {
     expect(d!.getFullYear()).toBe(2000);
   });
 
-  it("sets time to 23:59:59 (end of day)", () => {
+  it("sets time to 23:59:59 UTC (end of day)", () => {
     const d = parseMMDDYY("06/15/25");
-    expect(d!.getHours()).toBe(23);
-    expect(d!.getMinutes()).toBe(59);
-    expect(d!.getSeconds()).toBe(59);
+    expect(d!.getUTCHours()).toBe(23);
+    expect(d!.getUTCMinutes()).toBe(59);
+    expect(d!.getUTCSeconds()).toBe(59);
   });
 });
 
@@ -106,29 +106,30 @@ describe("isPlanExpired", () => {
   });
 
   it("returns true for a date in the past (yesterday)", () => {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const mm = String(yesterday.getMonth() + 1).padStart(2, "0");
-    const dd = String(yesterday.getDate()).padStart(2, "0");
-    const yy = String(yesterday.getFullYear()).slice(-2);
+    // Use UTC dates to match parseMMDDYY which now uses Date.UTC
+    const now = new Date();
+    const yesterdayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1));
+    const mm = String(yesterdayUTC.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(yesterdayUTC.getUTCDate()).padStart(2, "0");
+    const yy = String(yesterdayUTC.getUTCFullYear()).slice(-2);
     expect(isPlanExpired(`${mm}/${dd}/${yy}`)).toBe(true);
   });
 
   it("returns false for a date in the future (tomorrow)", () => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const mm = String(tomorrow.getMonth() + 1).padStart(2, "0");
-    const dd = String(tomorrow.getDate()).padStart(2, "0");
-    const yy = String(tomorrow.getFullYear()).slice(-2);
+    const now = new Date();
+    const tomorrowUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+    const mm = String(tomorrowUTC.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(tomorrowUTC.getUTCDate()).padStart(2, "0");
+    const yy = String(tomorrowUTC.getUTCFullYear()).slice(-2);
     expect(isPlanExpired(`${mm}/${dd}/${yy}`)).toBe(false);
   });
 
-  it("returns false for today (expires end of day 23:59:59)", () => {
-    // Plans expire at end-of-day, so today is still valid
-    const today = new Date();
-    const mm = String(today.getMonth() + 1).padStart(2, "0");
-    const dd = String(today.getDate()).padStart(2, "0");
-    const yy = String(today.getFullYear()).slice(-2);
+  it("returns false for today (expires end of day 23:59:59 UTC)", () => {
+    // Plans expire at end-of-day UTC, so today is still valid until 23:59:59 UTC
+    const now = new Date();
+    const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(now.getUTCDate()).padStart(2, "0");
+    const yy = String(now.getUTCFullYear()).slice(-2);
     expect(isPlanExpired(`${mm}/${dd}/${yy}`)).toBe(false);
   });
 

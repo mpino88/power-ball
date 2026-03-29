@@ -161,10 +161,11 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
             [contact.first_name, contact.last_name].filter(Boolean).join(" ").trim() ||
             [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ").trim() ||
             "—";
-          await deletePendingInteraction(uid, "plan_renewal");
-          const plan = getPlans().find((p) => p.id === renewal.planId);
-          const isTrial = plan?.autoApprove || renewal.temporality === "7d";
-          try {
+            try {
+            const claimed = await deletePendingInteraction(uid, "plan_renewal");
+            if (!claimed) return; // otra request ya procesó este contacto (doble-tap)
+            const plan = getPlans().find((p) => p.id === renewal.planId);
+            const isTrial = plan?.autoApprove || renewal.temporality === "7d";
             // Guardar lead siempre
             saveLead(uid, name, phone, renewal.planName, renewal.temporality, isTrial ? "trial_active" : "renewal_requested").catch(() => { });
             if (isTrial) {
@@ -323,10 +324,11 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
           [contact.first_name, contact.last_name].filter(Boolean).join(" ").trim() ||
           [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ").trim() ||
           "—";
-        await deletePendingInteraction(uid, "plan_request");
-        const plan = getPlans().find((p) => p.id === pending.planId);
-        const isTrial = plan?.autoApprove || pending.temporality === "7d";
         try {
+          const claimed = await deletePendingInteraction(uid, "plan_request");
+          if (!claimed) return; // otra request ya procesó este contacto (doble-tap)
+          const plan = getPlans().find((p) => p.id === pending.planId);
+          const isTrial = plan?.autoApprove || pending.temporality === "7d";
           // Guardar lead siempre
           saveLead(uid, name, phone, pending.planName, pending.temporality, isTrial ? "trial_active" : "plan_requested").catch(() => { });
           if (isTrial) {

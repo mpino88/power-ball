@@ -39,13 +39,12 @@ vi.mock("../../src/infrastructure/database/PostgresPendingInteractionRepository.
     return _mockPendingStore.get(`${userId}:${type}`) ?? null;
   }),
   deletePendingInteraction: vi.fn(async (userId: number, type: string) => {
-    if (_deleteShouldFail) {
-      // Simula BUG-1: el repo swallows el error internamente, no lanza
-      console.error("[PendingInteraction] Error en DELETE: simulated failure");
-      return; // NO hace throw — igual que el código real en catch block
-    }
-    _deletePendingCalls.push([userId, type]);
-    _mockPendingStore.delete(`${userId}:${type}`);
+    if (_deleteShouldFail) throw new Error("DB failure simulated"); // FIX-1: re-lanza
+    const key = `${userId}:${type}`;
+    const existed = _mockPendingStore.has(key); // FIX-2: atomicidad via boolean
+    _mockPendingStore.delete(key);
+    if (existed) _deletePendingCalls.push([userId, type]);
+    return existed;
   }),
   cleanExpiredPendingInteractions: vi.fn().mockResolvedValue(undefined),
 }));
@@ -179,12 +178,12 @@ describe("S-15: Middleware Flows (Nivel 3-4)", () => {
     );
     (repo.deletePendingInteraction as ReturnType<typeof vi.fn>).mockImplementation(
       async (userId: number, type: string) => {
-        if (_deleteShouldFail) {
-          console.error("[PendingInteraction] Error en DELETE: simulated failure");
-          return;
-        }
-        _deletePendingCalls.push([userId, type]);
-        _mockPendingStore.delete(`${userId}:${type}`);
+        if (_deleteShouldFail) throw new Error("DB failure simulated");
+        const key = `${userId}:${type}`;
+        const existed = _mockPendingStore.has(key);
+        _mockPendingStore.delete(key);
+        if (existed) _deletePendingCalls.push([userId, type]);
+        return existed;
       }
     );
 
@@ -411,18 +410,16 @@ describe("S-15: Middleware Flows (Nivel 3-4)", () => {
     expect(text).toContain("renovación registrada");
   });
 
-  // ── BUG-1: deletePendingInteraction swallows error ────────────────────────────
+  // ── FIX-1: delete re-lanza el error → middleware NO activa el plan ──────────
 
-  it("BUG-1: delete falla silenciosamente → el plan se activa pero pending sobrevive en store", async () => {
+  it("FIX-1: delete falla (throw) → assignPlanToUser NO se llama, reply de error", async () => {
     /**
-     * Replica el comportamiento real del repositorio:
-     *   catch (e) { console.error(...); } // NO hace throw
-     *
-     * Consecuencia: si la DB falla en DELETE, el middleware cree que procesó
-     * correctamente y responde al usuario "plan activado", pero el pending
-     * sigue en DB. El próximo mensaje del usuario vuelve a ejecutar el flujo.
+     * FIXED: deletePendingInteraction ahora re-lanza el error.
+     * Si la DB falla en DELETE, el middleware captura la excepción en su
+     * try/catch existente y responde "No se pudo guardar la solicitud".
+     * El plan NO se activa. El pending queda en DB para reintento.
      */
-    _deleteShouldFail = true; // activa el mock que simula el swallow
+    _deleteShouldFail = true;
     setPendingFor(UID, "plan_request", { temporality: "7d" });
 
     const mw = makeMW({ isAllowed: false });
@@ -431,42 +428,31 @@ describe("S-15: Middleware Flows (Nivel 3-4)", () => {
     });
     await mw(c as any, vi.fn());
 
-    // El plan se activó (assignPlanToUser fue llamado)
-    expect(mockAssignPlan).toHaveBeenCalledOnce();
+    // El plan NO se activó — el error fue capturado antes de llegar a assignPlanToUser
+    expect(mockAssignPlan).not.toHaveBeenCalled();
 
-    // El pending SIGUE en el store porque delete falló silenciosamente
+    // El pending sigue en store (DB falla = no se borró)
     expect(hasPendingFor(UID, "plan_request")).toBe(true);
 
-    // El reply fue enviado — el usuario cree que todo está bien
+    // El middleware respondió con el mensaje de error
     expect(c.reply).toHaveBeenCalled();
     const text: string = c.reply.mock.calls[0][0];
-    expect(text).toContain("activado");
-
-    console.warn(
-      "[S-15 BUG-1] Confirmado: assignPlanToUser ejecutado pero pending NO borrado. " +
-      "Fix: re-lanzar el error en deletePendingInteraction o usar DELETE...RETURNING."
-    );
+    expect(text).toContain("No se pudo");
   });
 
-  // ── BUG-2: Race condition doble-tap ──────────────────────────────────────────
+  // ── FIX-2: DELETE...RETURNING atómico — doble-tap activa el plan solo 1 vez ─
 
-  it("BUG-2: doble-tap — dos requests concurrentes con mismo contacto pueden activar el plan 2 veces", async () => {
+  it("FIX-2: doble-tap — DELETE...RETURNING garantiza que solo una request activa el plan", async () => {
     /**
-     * Escenario: usuario toca "Compartir número" dos veces rápido (o Telegram re-entrega).
-     * Ambas requests llegan al middleware al mismo tiempo.
+     * FIXED: deletePendingInteraction retorna boolean (DELETE...RETURNING).
+     * La primera request en llegar borra el pending (retorna true) y activa el plan.
+     * La segunda request intenta borrar pero retorna false → middleware hace return.
      *
-     * Sin atomicidad (sin DELETE...RETURNING), ambas pasan el check de getPending
-     * antes de que alguna haga el DELETE. Resultado: plan activado 2 veces.
-     *
-     * Fix: usar DELETE...RETURNING en el repositorio:
-     *   DELETE FROM pending_interactions WHERE user_id=$1 AND type=$2 RETURNING *
-     *   → Si retorna 0 filas: otro proceso ya lo procesó, abortar.
+     * En el mock: la primera llamada a delete borra el entry del store y retorna true.
+     * La segunda encuentra el store vacío y retorna false → middleware aborta.
      */
     setPendingFor(UID, "plan_request", { temporality: "7d" });
 
-    // No override de mockImplementation — la implementación por defecto usa _mockPendingStore.
-    // Con Promise.all ambas requests ejecutan sus awaits intercalados en la microtask queue:
-    // A: await getPending → yield → B: await getPending → ambas ven el pending antes de delete.
     const mw = makeMW({ isAllowed: false });
     const contact = { phone_number: "+15559998888", first_name: "Double" };
     const ctxA = ctx(UID, { message: { contact } });
@@ -477,15 +463,8 @@ describe("S-15: Middleware Flows (Nivel 3-4)", () => {
       mw(ctxB as any, vi.fn()),
     ]);
 
-    const assignCalls = mockAssignPlan.mock.calls.length;
-    if (assignCalls > 1) {
-      console.warn(
-        `[S-15 BUG-2] RACE CONDITION: assignPlanToUser llamado ${assignCalls} veces. ` +
-        `El plan se activó 2 veces. Fix: DELETE...RETURNING para atomicidad.`
-      );
-    }
-    // Documentamos el bug: en estado actual puede llamarse 2 veces
-    expect(assignCalls).toBeGreaterThanOrEqual(1);
+    // Solo una de las dos requests activó el plan — atomicidad garantizada
+    expect(mockAssignPlan).toHaveBeenCalledOnce();
   });
 
   // ── Aislamiento entre usuarios ────────────────────────────────────────────────

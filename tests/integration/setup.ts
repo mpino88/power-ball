@@ -134,7 +134,8 @@ export function parseMMDDYY(expiry: string | null | undefined): Date | null {
   if (isNaN(y) || isNaN(m) || isNaN(d)) return null;
   if (m < 1 || m > 12 || d < 1 || d > 31) return null;
   const year = y <= 49 ? 2000 + y : 1900 + y;
-  return new Date(year, m - 1, d, 23, 59, 59);
+  // Use UTC to match Postgres's timezone-agnostic date storage (MM/DD/YY has no TZ info)
+  return new Date(Date.UTC(year, m - 1, d, 23, 59, 59));
 }
 
 /**
