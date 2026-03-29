@@ -275,32 +275,36 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
         const plan = getPlans().find((p) => p.id === planId);
         if (plan && TEMPORALITIES.some((t) => t.id === temporality)) {
           if (ctx.callbackQuery) await ctx.answerCallbackQuery?.().catch(() => { });
-          if (plan.autoApprove || temporality === "7d") {
-            if (await hasUsedTrial(uid)) {
-              if (ctx.callbackQuery) await ctx.answerCallbackQuery?.({ text: "Ya usaste tu trial gratuito." }).catch(() => { });
-              await ctx.reply(
-                "⚠️ *Ya usaste tu acceso de prueba*\n\nEl plan Trial solo puede activarse una vez por usuario. Elige un plan de pago para continuar.",
-                { parse_mode: "Markdown", reply_markup: options.buildMainKeyboard(uid) }
-              );
-              return;
-            }
-            // Trial/autoApprove: pedir teléfono antes de activar
-            const tLabel = TEMPORALITIES.find((t) => t.id === temporality)?.label ?? temporality;
-            pendingPlanRequest.set(uid, { planId, planName: plan.title, temporality });
+          
+          const isTrial = plan.autoApprove || temporality === "7d";
+          
+          if (isTrial && await hasUsedTrial(uid)) {
             await ctx.reply(
-              `📋 Plan *${plan.title}* — ${tLabel}\n\n` +
-              "Para activar tu acceso gratuito necesitamos tu número de contacto.\n\n" +
-              "Toca el botón de abajo — Telegram te pedirá tu consentimiento antes de compartirlo.",
-              { parse_mode: "Markdown", reply_markup: contactRequestKb(`${plan.title} (${tLabel})`) }
+              "⚠️ *Ya usaste tu acceso de prueba*\n\nEl plan Trial solo puede activarse una vez por usuario. Elige un plan de pago para continuar.",
+              { parse_mode: "Markdown", reply_markup: options.buildMainKeyboard(uid) }
             );
             return;
           }
+
+          // Si el usuario ya está registrado, enviar solicitud directo sin pedir contacto
+          if (isRegistered(uid)) {
+            const name = getUsername(uid) || ctx.from?.first_name || "Usuario";
+            const phone = getPhone(uid) || "No provisto";
+            await processPlanSubmission(ctx, uid, plan.id, plan.title, temporality, name, phone, "plan_requested");
+            return;
+          }
+
+          // Flujo para visitantes: pedir número de contacto
           const tLabel = TEMPORALITIES.find((t) => t.id === temporality)?.label ?? temporality;
           pendingPlanRequest.set(uid, { planId, planName: plan.title, temporality });
+          
+          const textBody = isTrial 
+            ? "Para activar tu acceso gratuito necesitamos tu número de contacto." 
+            : "Para completar la solicitud necesitamos tu número de contacto.";
+
           await ctx.reply(
             `📋 Plan *${plan.title}* — ${tLabel}\n\n` +
-            "Para completar la solicitud necesitamos tu número de contacto.\n\n" +
-            "Toca el botón de abajo — Telegram te pedirá tu consentimiento antes de compartirlo.",
+            textBody + "\n\nToca el botón de abajo — Telegram te pedirá tu consentimiento antes de compartirlo.",
             { parse_mode: "Markdown", reply_markup: contactRequestKb(`${plan.title} (${tLabel})`) }
           );
           return;
