@@ -51,6 +51,8 @@ import {
   clearAllAnnouncements,
   invalidateAnnouncementsCache,
   getAllowedUsers,
+  hasPlan,
+  isRegistered,
 } from "./user-config.js";
 import {
   registerExtraMenu,
@@ -676,6 +678,8 @@ const mainKbDeps = {
   getUserAssignedMenuIds,
   getMenuCreatedBy,
   getMenuSubscribers,
+  hasPlan,
+  isRegistered,
 };
 
 function buildMainKb(userId: number | undefined) {
@@ -2934,8 +2938,57 @@ bot.on("callback_query:data", async (ctx) => {
     return;
   }
 
+  // ── Estrategia bloqueada (sin plan): mostrar descripción + pedir plan
+  if (data.startsWith("locked_strat_")) {
+    const menuId = data.slice("locked_strat_".length);
+    await ctx.answerCallbackQuery();
+    const label = getExtraMenuLabel(menuId) || menuId;
+    const desc = getExtraMenuDescription(menuId);
+    let msg = `🔒 *${escapeMd(label)}*\n\n`;
+    if (desc) {
+      msg += `_${escapeMd(desc)}_\n\n`;
+    }
+    msg += "⚠️ Para ver los resultados de esta estrategia debes adquirir un plan.\n\n" +
+           "📋 _Elige un plan para desbloquear todas las estrategias y funciones avanzadas._";
+    const kb = new InlineKeyboard()
+      .text("📋 Ver Planes", "ver_planes_open").row()
+      .text("◀️ Volver a Estrategias", ESTRATEGIAS_OPEN_CALLBACK).row()
+      .text("🏠 Volver al Inicio", "volver");
+    try {
+      await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return;
+  }
+
   if (data.startsWith(EXTRA_MENU_CALLBACK_PREFIX)) {
     const menuId = data.slice(EXTRA_MENU_CALLBACK_PREFIX.length);
+
+    // ── Gating: si el usuario no tiene plan, mostrar descripción + pedir plan ──
+    const callerUserId = ctx.from?.id;
+    if (callerUserId && !isOwner(callerUserId) && !hasPlan(callerUserId)) {
+      await ctx.answerCallbackQuery();
+      const label = getExtraMenuLabel(menuId) || menuId;
+      const desc = getExtraMenuDescription(menuId);
+      let msg = `🔒 *${escapeMd(label)}*\n\n`;
+      if (desc) {
+        msg += `_${escapeMd(desc)}_\n\n`;
+      }
+      msg += "⚠️ Para ver los resultados de esta estrategia debes adquirir un plan.\n\n" +
+             "📋 _Elige un plan para desbloquear todas las estrategias y funciones avanzadas._";
+      const kb = new InlineKeyboard()
+        .text("📋 Ver Planes", "ver_planes_open").row()
+        .text("◀️ Volver a Estrategias", ESTRATEGIAS_OPEN_CALLBACK).row()
+        .text("🏠 Volver al Inicio", "volver");
+      try {
+        await ctx.editMessageText(msg, { parse_mode: "Markdown", reply_markup: kb });
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return;
+    }
+
     if (getExtraMenuStatus(menuId) === "pendiente") {
       await ctx.answerCallbackQuery();
       const desc = getExtraMenuDescription(menuId);

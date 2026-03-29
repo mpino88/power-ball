@@ -254,9 +254,9 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
       return;
     }
 
-    // ── Usuario NO autorizado ──────────────────────────────────────────────────
+    // ── Usuario NO autorizado (nuevo flujo: acceso abierto con gating) ────────
     
-    // Si viene de un link de referido, registrar antes de mostrar el onboarding
+    // Si viene de un link de referido, registrar antes de continuar
     const textOriginal = ctx.message?.text?.trim() ?? "";
     if (textOriginal.startsWith("/start ref_")) {
       const referrerId = parseInt(textOriginal.replace("/start ref_", ""), 10);
@@ -267,6 +267,57 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
     }
 
     const data = ctx.callbackQuery?.data;
+
+    // ── Registro: compartir contacto ──────────────────────────────────────────
+    if (data === "register_open") {
+      if (ctx.callbackQuery) await ctx.answerCallbackQuery?.().catch(() => { });
+      await ctx.reply(
+        "📞 *Registrarme en Ball Bot*\n\n" +
+        "Para completar tu registro necesitamos tu número de contacto.\n\n" +
+        "Toca el botón de abajo — Telegram te pedirá tu consentimiento antes de compartirlo.",
+        { parse_mode: "Markdown", reply_markup: contactRequestKb("Registrarme") }
+      );
+      return;
+    }
+
+    // Contacto recibido: registro (sin plan pendiente) o plan pendiente
+    const pending = ctx.message ? pendingPlanRequest.get(uid) : undefined;
+    const contact = ctx.message?.contact;
+
+    if (contact && !pending) {
+      // Registro simple (sin plan seleccionado): guardar nombre + teléfono
+      const phone = contact.phone_number;
+      const name =
+        [contact.first_name, contact.last_name].filter(Boolean).join(" ").trim() ||
+        [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ").trim() ||
+        "—";
+      try {
+        const { saveUserContact } = await import("../user-config.js");
+        await saveUserContact(uid, name, phone);
+        saveLead(uid, name, phone, "", "", "registered").catch(() => { });
+        await ctx.reply(
+          "✅ *¡Registro completado!*\n\n" +
+          `Bienvenido, *${name}*. Ya puedes explorar el bot.\n\n` +
+          "Para acceder a todas las estrategias y funciones avanzadas, elige un plan:",
+          { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } }
+        );
+        // Mostrar menú principal
+        await ctx.reply("Selecciona una opción:", { reply_markup: options.buildMainKeyboard(uid) });
+      } catch {
+        await ctx.reply("No se pudo completar el registro. Intenta más tarde.", {
+          reply_markup: { remove_keyboard: true },
+        }).catch(() => { });
+      }
+      return;
+    }
+
+    // Cancelar registro (teclado personalizado)
+    if (ctx.message?.text?.trim() === "❌ Cancelar" && !pending) {
+      await ctx.reply("Registro cancelado. Puedes registrarte cuando quieras.", { reply_markup: { remove_keyboard: true } });
+      return;
+    }
+
+    // ── Solicitud de plan (request_plan_) ────────────────────────────────────
     if (data?.startsWith("request_plan_")) {
       const rest = data.slice("request_plan_".length);
       const lastUnderscore = rest.lastIndexOf("_");
@@ -311,9 +362,8 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
       return;
     }
 
-    const pending = ctx.message ? pendingPlanRequest.get(uid) : undefined;
+    // ── Contacto para plan pendiente ─────────────────────────────────────────
     if (pending) {
-      const contact = ctx.message?.contact;
       if (contact) {
         const phone = contact.phone_number;
         const name =
@@ -360,8 +410,8 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
               `${i + 1}. *${p.description}*\n   💳 \`${p.account}\` · 🌐 ${p.currency}`
             );
 
-            const ownerId = options.getOwnerId();
-            const contactMsg = ownerId ? `\n\n[📩 Contactar al administrador](tg://user?id=${ownerId})` : "";
+            const ownerId2 = options.getOwnerId();
+            const contactMsg = ownerId2 ? `\n\n[📩 Contactar al administrador](tg://user?id=${ownerId2})` : "";
 
             const message = `✅ Solicitud registrada (*${pending.planName}* — ${tLabel}). El administrador revisará tu acceso.` + contactMsg;
             await ctx.reply(message, { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } });
@@ -398,56 +448,66 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
       return;
     }
 
-    // Sincronizar precios desde Sheet antes de mostrar el menú de planes
-    await options.reloadPlans?.();
-
-    const raw = requestAccessLink;
-    let link = "";
-    if (raw) {
-      link = raw.startsWith("http") ? raw : "https://t.me/" + raw.replace(/^t\.me\/?/i, "");
-    } else if (ownerId !== null) {
-      link = `tg://user?id=${ownerId}`;
-    }
-
-    const plans = getPlans();
-
-    let msg: string;
-    if (plans.length === 0) {
-      msg = "📋 *Elige un plan y solicita acceso*\n\nNo hay planes configurados. Contacta al administrador para solicitar acceso.";
-    } else {
-      const planList = plans
-        .map((p) => {
-          const autoTag = p.autoApprove ? " — _acceso inmediato_" : "";
-          return (
-            `*${p.title}*${autoTag}\n` +
-            `_${p.description.replace(/\n/g, " ")}_`
-          );
-        })
-        .join("\n\n─────────────\n\n");
-      msg =
-        "📋 *Elige un plan y solicita acceso*\n\n" +
-        planList +
-        "\n\n👇 _Selecciona la duración y toca el botón:_";
-    }
-
-    // Teclado completo con botones de selección de plan (usado en el paso 2).
-    const keyboard = new InlineKeyboard();
-    if (plans.length === 0 && link) {
-      keyboard.url("📩 Solicitar acceso", link);
-    } else {
-      for (const p of plans) {
-        keyboard.text(`📋 ${p.title}`, `noop_plan`).row();
-        addPlanTemporalityButtons(keyboard, p.id, p.title, p, "request_plan_");
-      }
-      if (link) keyboard.url("📩 Contactar al administrador", link);
-    }
-
-    // ── Paso 2: "Ver Planes" — editar caption con info completa + botones ───
+    // ── Ver Planes (callback desde menú principal o estrategias) ─────────────
     if (data === "ver_planes_open") {
       if (ctx.callbackQuery) await ctx.answerCallbackQuery?.().catch(() => { });
+      // Sincronizar precios desde Sheet
+      await options.reloadPlans?.();
+
+      const raw = requestAccessLink;
+      let link = "";
+      if (raw) {
+        link = raw.startsWith("http") ? raw : "https://t.me/" + raw.replace(/^t\.me\/?/i, "");
+      } else if (ownerId !== null) {
+        link = `tg://user?id=${ownerId}`;
+      }
+
+      const plans = getPlans();
+      let msg: string;
+      if (plans.length === 0) {
+        msg = "📋 *Elige un plan y solicita acceso*\n\nNo hay planes configurados. Contacta al administrador para solicitar acceso.";
+      } else {
+        const planList = plans
+          .map((p) => {
+            const autoTag = p.autoApprove ? " — _acceso inmediato_" : "";
+            return (
+              `*${p.title}*${autoTag}\n` +
+              `_${p.description.replace(/\n/g, " ")}_`
+            );
+          })
+          .join("\n\n─────────────\n\n");
+        msg =
+          "📋 *Elige un plan y solicita acceso*\n\n" +
+          planList +
+          "\n\n👇 _Selecciona la duración y toca el botón:_";
+      }
+
+      const keyboard = new InlineKeyboard();
+      if (plans.length === 0 && link) {
+        keyboard.url("📩 Solicitar acceso", link);
+      } else {
+        for (const p of plans) {
+          keyboard.text(`📋 ${p.title}`, `noop_plan`).row();
+          addPlanTemporalityButtons(keyboard, p.id, p.title, p, "request_plan_");
+        }
+        if (link) keyboard.url("📩 Contactar al administrador", link);
+      }
+      keyboard.row().text("◀️ Volver", "volver");
+
+      // Intentar editar el mensaje actual (si viene de un callback)
       const ctxEdit = ctx as {
+        editMessageText?: (text: string, opts?: object) => Promise<unknown>;
         editMessageCaption?: (opts: { caption?: string; parse_mode?: string; reply_markup?: unknown }) => Promise<unknown>;
       };
+      if (ctxEdit.editMessageText) {
+        try {
+          await ctxEdit.editMessageText(msg, { parse_mode: "Markdown", reply_markup: keyboard });
+          return;
+        } catch (e) {
+          if ((e as Error).message?.includes("message is not modified")) return;
+          // Fallback: intentar editarCaption (si el mensaje original era foto)
+        }
+      }
       if (ctxEdit.editMessageCaption) {
         const caption = msg.length > 1024 ? msg.slice(0, 1021) + "…" : msg;
         try {
@@ -462,46 +522,14 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
           console.error("[middleware] Error al editar caption de planes:", e);
         }
       }
-      // Fallback: nuevo mensaje con el contenido completo
+      // Fallback: nuevo mensaje
       await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: keyboard });
       return;
     }
 
-    // ── Paso 1: imagen de onboarding con un solo botón "Ver Planes" ─────────
-    const onboardingPhoto = options.getOnboardingPhoto?.();
-    const welcomeKeyboard = new InlineKeyboard().text("📋 Ver Planes", "ver_planes_open");
-    const welcomeCaption =
-      "🎰 *¡Bienvenido a Ball Bot!*\n\n" +
-      "🚀 _Tu asistente inteligente para dominar los Fijos (Pick 3) y Corridos (Pick 4) de la Florida Lottery._\n\n" +
-      "Accede a resultados instantáneos, análisis estadísticos profundos y estrategias avanzadas para multiplicar tus probabilidades de ganar.\n\n" +
-      "🛒 _¡Además, crea y comercializa tus propias estrategias en nuestra tienda exclusiva!_\n\n" +
-      "👇 _Toca el botón abajo para descubrir los planes disponibles:_";
-
-    const ctxWithPhoto = ctx as {
-      replyWithPhoto?: (photo: unknown, opts?: object) => Promise<{ photo?: Array<{ file_id: string }> }>;
-    };
-
-    if (ctxWithPhoto.replyWithPhoto && onboardingPhoto !== undefined) {
-      try {
-        const sentMsg = await ctxWithPhoto.replyWithPhoto(onboardingPhoto, {
-          caption: welcomeCaption,
-          parse_mode: "Markdown",
-          reply_markup: welcomeKeyboard,
-        });
-        if (typeof onboardingPhoto !== "string" && options.onOnboardingPhotoSent) {
-          const photos = sentMsg?.photo;
-          if (photos && photos.length > 0) {
-            options.onOnboardingPhotoSent(photos[photos.length - 1]!.file_id);
-          }
-        }
-        return;
-      } catch (photoErr) {
-        console.error("[middleware] Error al enviar foto de onboarding:", photoErr);
-        // Fallback al texto de bienvenida abajo
-      }
-    }
-
-    // Fallback: mostrar texto de bienvenida con botón "Ver Planes"
-    await ctx.reply(welcomeCaption, { parse_mode: "Markdown", reply_markup: welcomeKeyboard });
+    // ── ACCESO ABIERTO: dejar pasar al bot handler principal ────────────────
+    // Todos los usuarios (registrados o no, con o sin plan) pueden ver el menú
+    // principal y navegar. El gating se aplica selectivamente en bot.ts.
+    return next();
   };
 }

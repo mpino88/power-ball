@@ -24,6 +24,10 @@ export interface MainKeyboardDeps {
   getMenuCreatedBy?: (menuId: string) => number | undefined;
   /** Devuelve el nº de suscriptores de una estrategia custom para mostrarlo en el botón. */
   getMenuSubscribers?: (menuId: string) => number;
+  /** true si el usuario tiene un plan activo (no caducado). */
+  hasPlan?: (userId: number) => boolean;
+  /** true si el usuario ya compartió su teléfono (registro). */
+  isRegistered?: (userId: number) => boolean;
 }
 
 function getStrategyIcon(
@@ -87,32 +91,48 @@ export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboard
     .text("🔎 Consultar Datos", CONSULTAR_DATOS_CALLBACK);
   const ownerId = deps.getOwnerId();
   const uid = userId ?? 0;
+  const isOwnerUser = deps.isOwner(uid);
+  const userHasPlan = isOwnerUser || (deps.hasPlan?.(uid) ?? false);
+  const userIsRegistered = isOwnerUser || (deps.isRegistered?.(uid) ?? false);
   const extraIds = deps.getExtraMenuIds();
   const userMenus = deps.getExtraMenus(uid);
   const showExtra = extraIds.filter((id) => {
     if (id === CONSENSUS_MENU_ID) return false;
     if (ownerId === null) return true;
-    if (deps.isOwner(uid)) return true;
+    if (isOwnerUser) return true;
     return userMenus.includes(id);
   });
   const hasConsensus = extraIds.includes(CONSENSUS_MENU_ID) && (
-    ownerId === null || deps.isOwner(uid) || userMenus.includes(CONSENSUS_MENU_ID)
+    ownerId === null || isOwnerUser || userMenus.includes(CONSENSUS_MENU_ID)
   );
-  if (showExtra.length > 0) {
-    kb.row().text("➕ Estrategias", ESTRATEGIAS_OPEN_CALLBACK);
-  }
-  if (hasConsensus) {
+
+  // Estrategias siempre visible: usuarios con plan ven las suyas,
+  // usuarios sin plan ven catálogo PRO como vitrina.
+  kb.row().text("➕ Estrategias", ESTRATEGIAS_OPEN_CALLBACK);
+
+  if (hasConsensus && userHasPlan) {
     kb.row().text("🤝 Consenso Multi-Estrategia", EXTRA_MENU_CALLBACK_PREFIX + CONSENSUS_MENU_ID);
   }
   kb.row().text("🃏 Charada Cubana", "charada_open");
-  kb.row().text("🛒 Tienda", "estrategias_tienda").text("🔗 Mi Link", "mi_link_open");
-  if (ownerId === null || !deps.isOwner(uid)) {
+
+  if (userHasPlan) {
+    kb.row().text("🛒 Tienda", "estrategias_tienda").text("🔗 Mi Link", "mi_link_open");
+  }
+
+  if (ownerId === null || !isOwnerUser) {
     kb.row().text("❓ Ayuda", "help").text("💬 Sugerencia", "sugerencia_open");
-    if (ownerId !== null && !deps.isOwner(uid)) {
+    if (!userIsRegistered) {
+      // Usuario no registrado: botón para compartir contacto
+      kb.row().text("📞 Registrarme", "register_open");
+    } else if (!userHasPlan) {
+      // Registrado pero sin plan: botón para ver planes
+      kb.row().text("📋 Ver Planes", "ver_planes_open");
+    } else {
+      // Registrado con plan: cambiar plan
       kb.row().text("📋 Cambiar plan", "cambiar_plan_open");
     }
   }
-  if (ownerId !== null && deps.isOwner(uid)) {
+  if (ownerId !== null && isOwnerUser) {
     kb.row().text("⚙️ Administrar", "security_open").text("🧪 Testing", "testing_open");
     kb.row().text("🔮 Crear Adivinanza", "adivinanza_open");
     kb.row().text("📣 Sugerencia", "admin_sugerencia_open").text("📢 Anuncios", "admin_ann_open");
@@ -132,30 +152,51 @@ export function buildEstrategiasKeyboard(userId: number | undefined, deps: MainK
   const ownerId = deps.getOwnerId();
   const uid = userId ?? 0;
   const isOwnerUser = deps.isOwner(uid);
+  const userHasPlan = isOwnerUser || (deps.hasPlan?.(uid) ?? false);
   const extraIds = deps.getExtraMenuIds();
 
-  // Both owner and regular users see only their assigned strategies.
-  // Owner has all strategies assigned via seed, so they still see all 9.
-  // consensus_multi lives at main-menu level, so it's excluded here.
-  const showExtra = extraIds.filter((id) => {
-    if (id === CONSENSUS_MENU_ID) return false;
-    if (ownerId === null) return true;
-    return deps.getExtraMenus(uid).includes(id);
-  });
-
   const kb = new InlineKeyboard();
-  for (const id of showExtra) {
-    const label = deps.getExtraMenuLabel(id);
-    if (label) {
-      const icon = getStrategyIcon(id, uid, deps.isOwner, deps);
-      const count = isOwnerUser ? (deps.getMenuSubscribers?.(id) ?? 0) : 0;
-      const countSuffix = count > 0 ? ` 👤${count}` : "";
-      kb.text(icon + label + countSuffix, EXTRA_MENU_CALLBACK_PREFIX + id).row();
+
+  if (userHasPlan) {
+    // ── Usuario con plan: ve sus estrategias asignadas (plan + adquiridas) ──
+    const showExtra = extraIds.filter((id) => {
+      if (id === CONSENSUS_MENU_ID) return false;
+      if (ownerId === null) return true;
+      return deps.getExtraMenus(uid).includes(id);
+    });
+
+    for (const id of showExtra) {
+      const label = deps.getExtraMenuLabel(id);
+      if (label) {
+        const icon = getStrategyIcon(id, uid, deps.isOwner, deps);
+        const count = isOwnerUser ? (deps.getMenuSubscribers?.(id) ?? 0) : 0;
+        const countSuffix = count > 0 ? ` 👤${count}` : "";
+        kb.text(icon + label + countSuffix, EXTRA_MENU_CALLBACK_PREFIX + id).row();
+      }
     }
+
+    kb.row().text(`🔢 Resultados por estrategia: ${currentTopN}`, "topn_open");
+    kb.row().text("⚙️ Gestionar estrategias", "estrategias_manage");
+  } else {
+    // ── Usuario sin plan: catálogo PRO como vitrina ──
+    // Buscar el plan PRO y mostrar sus estrategias con 🔒
+    const proPlan = deps.getPlanByTitle?.("Pro");
+    const proMenuIds = proPlan?.menuIds ?? [];
+    const allStratIds = proMenuIds.length > 0
+      ? extraIds.filter((id) => id !== CONSENSUS_MENU_ID && proMenuIds.includes(id))
+      : extraIds.filter((id) => id !== CONSENSUS_MENU_ID);
+
+    for (const id of allStratIds) {
+      const label = deps.getExtraMenuLabel(id);
+      if (label) {
+        // Callback "locked_": interceptado en bot.ts para mostrar descripción + pedirle que adquiera plan
+        kb.text(`🔒 ${label}`, `locked_strat_${id}`).row();
+      }
+    }
+
+    kb.row().text("📋 Ver Planes", "ver_planes_open");
   }
 
-  kb.row().text(`🔢 Resultados por estrategia: ${currentTopN}`, "topn_open");
-  kb.row().text("⚙️ Gestionar estrategias", "estrategias_manage");
   kb.row().text("◀️ Volver", "volver");
   return kb;
 }
