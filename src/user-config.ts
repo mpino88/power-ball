@@ -598,10 +598,11 @@ export async function rejectPlanRequest(userId: number): Promise<PersistResult> 
 
   const pendingRaw = config.userInfo[key]?.pending_plan;
   if (pendingRaw) {
+    const isCurrentlyAllowed = config.allowed.includes(userId);
     config.userInfo[key] = {
       ...config.userInfo[key],
       pending_plan: undefined,
-      plan_status: "rejected",
+      plan_status: isCurrentlyAllowed ? "approved" : "rejected",
     };
     return persist();
   }
