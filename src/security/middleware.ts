@@ -6,7 +6,7 @@
 
 import { InlineKeyboard, Keyboard } from "grammy";
 import type { getOwnerId as GetOwnerId, isAllowed as IsAllowed } from "../user-config.js";
-import { addPlanRequest, requestPlanRenewal, assignPlanToUser, getPlanTemporality, hasUsedTrial, isPlanExpired, refreshIfStale, saveLead, getOwnerIds } from "../user-config.js";
+import { addPlanRequest, requestPlanRenewal, assignPlanToUser, getPlanTemporality, hasUsedTrial, isPlanExpired, refreshIfStale, saveLead, getOwnerIds, isRegistered, getUsername, getPhone } from "../user-config.js";
 import { getPlans, getPriceForTemporality, formatPlanPrice, REGULAR_TEMPORALITIES, TEMPORALITIES, TRIAL_TEMPORALITIES } from "../plans.js";
 import { getPaymentMethods, loadPaymentMethodsFromDB } from "../payment-methods.js";
 
@@ -73,6 +73,67 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
     if (temps.length % 2 !== 0) kb.row();
   }
 
+  async function processPlanSubmission(ctx: any, uid: number, planId: string, planName: string, temporality: string, name: string, phone: string, pendingPlanType: "plan_requested" | "renewal_requested") {
+    try {
+      const plan = getPlans().find((p) => p.id === planId);
+      const isTrial = plan?.autoApprove || temporality === "7d";
+      saveLead(uid, name, phone, planName, temporality, isTrial ? "trial_active" : pendingPlanType).catch(() => { });
+      if (isTrial) {
+        await assignPlanToUser(uid, planName, plan?.menuIds ?? [], temporality, name, phone);
+        await ctx.reply(
+          `✅ *Plan ${planName} activado*\n\nTu acceso de prueba está listo por *7 días*.`,
+          { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } }
+        );
+        await ctx.reply("Selecciona una opción:", { reply_markup: options.buildMainKeyboard(uid) });
+      } else {
+        await requestPlanRenewal(uid, planName, { name, phone, temporality: temporality });
+        const ownerIds = getOwnerIds().filter((id) => id !== uid);
+        if (ownerIds.length > 0) {
+          const ctxApi = (ctx as { api?: { sendMessage?: (id: number, txt: string, opts?: object) => Promise<unknown> } }).api;
+          const tLabel = TEMPORALITIES.find((t) => t.id === temporality)?.label ?? temporality;
+          const titleType = pendingPlanType === "renewal_requested" ? "Solicitud de plan (renovación)" : "Solicitud de plan";
+          const adminPushMsg = `🔔 *${titleType}*\n\nUsuario: \`${uid}\` — ${name}\nPlan: *${planName}* (${tLabel})\nTeléfono: \`${phone}\``;
+          const adminKb = new InlineKeyboard()
+            .text("✅ Aprobar", `admin_plans_approve_${uid}`)
+            .text("❌ Rechazar", `admin_plans_reject_${uid}`)
+            .row()
+            .url("📩 Contactar Usuario", `tg://openmessage?user_id=${uid}`);
+          for (const oid of ownerIds) {
+            ctxApi?.sendMessage?.(oid, adminPushMsg, { parse_mode: "Markdown", reply_markup: adminKb }).catch(() => {});
+          }
+        }
+
+        if (pendingPlanType === "renewal_requested") {
+          await ctx.reply(
+            `✅ Solicitud de renovación registrada (*${planName}*). El administrador activará tu acceso.`,
+            { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } }
+          );
+        } else {
+          const tLabel = TEMPORALITIES.find((t) => t.id === temporality)?.label ?? temporality;
+          await loadPaymentMethodsFromDB();
+          const pms = getPaymentMethods();
+          const pmLines = pms.map((p, i) => `${i + 1}. *${p.description}*\n   💳 \`${p.account}\` · 🌐 ${p.currency}`);
+          const ownerId2 = options.getOwnerId();
+          const contactMsg = ownerId2 ? `\n\n[📩 Contactar al administrador](tg://user?id=${ownerId2})` : "";
+          const message = `✅ Solicitud registrada (*${planName}* — ${tLabel}). El administrador revisará tu acceso.` + contactMsg;
+          await ctx.reply(message, { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } });
+          
+          if (pms.length > 0) {
+            const pmText = `💳 *Formas de pago disponibles:*\n\n` + pmLines.join("\n\n");
+            const pmKb = new InlineKeyboard();
+            for (const pm of pms) {
+              pmKb.copyText(`📋 ${pm.description}`, pm.account).row();
+            }
+            await ctx.reply(pmText, { parse_mode: "Markdown", reply_markup: pmKb });
+          }
+        }
+      }
+    } catch (e) {
+      console.error("[middleware] Error processing plan request:", e);
+      await ctx.reply("No se pudo guardar la solicitud. Intenta más tarde.", { reply_markup: { remove_keyboard: true } }).catch(() => { });
+    }
+  }
+
   return async (
     ctx: {
       from?: { id: number; first_name?: string; last_name?: string };
@@ -107,152 +168,99 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
         if (!isPlanExpired(uid)) return next();
 
         // Plan caducado — manejar flujo de renovación
-
-      // Botón de renovar plan (selección de temporalidad)
-      if (data?.startsWith("renew_plan_")) {
-        const rest = data.slice("renew_plan_".length);
-        const lastUnderscore = rest.lastIndexOf("_");
-        if (lastUnderscore > 0) {
-          const planId = rest.slice(0, lastUnderscore);
-          const temporality = rest.slice(lastUnderscore + 1);
-          const plan = getPlans().find((p) => p.id === planId);
-          if (plan && TEMPORALITIES.some((t) => t.id === temporality)) {
-            if (ctx.callbackQuery) await ctx.answerCallbackQuery?.().catch(() => { });
-            if (plan.autoApprove || temporality === "7d") {
-              if (await hasUsedTrial(uid)) {
-                if (ctx.callbackQuery) await ctx.answerCallbackQuery?.({ text: "Ya usaste tu trial gratuito." }).catch(() => { });
-                await ctx.reply(
-                  "⚠️ *Ya usaste tu acceso de prueba*\n\nEl plan Trial solo puede activarse una vez por usuario. Elige un plan de pago para continuar.",
-                  { parse_mode: "Markdown" }
-                );
+        
+        // Botón de renovar plan (selección de temporalidad)
+        if (data?.startsWith("renew_plan_")) {
+          const rest = data.slice("renew_plan_".length);
+          const lastUnderscore = rest.lastIndexOf("_");
+          if (lastUnderscore > 0) {
+            const planId = rest.slice(0, lastUnderscore);
+            const temporality = rest.slice(lastUnderscore + 1);
+            const plan = getPlans().find((p) => p.id === planId);
+            if (plan && TEMPORALITIES.some((t) => t.id === temporality)) {
+              if (ctx.callbackQuery) await ctx.answerCallbackQuery?.().catch(() => { });
+              const isTrial = plan.autoApprove || temporality === "7d";
+              if (isTrial && await hasUsedTrial(uid)) {
+                await ctx.reply("⚠️ *Ya usaste tu acceso de prueba*\n\nEl plan Trial solo puede activarse una vez por usuario. Elige un plan de pago para continuar.", { parse_mode: "Markdown" });
                 return;
               }
-              // Trial/autoApprove: pedir teléfono antes de activar
+              if (isRegistered(uid)) {
+                 const name = getUsername(uid) || ctx.from?.first_name || "Usuario";
+                 const phone = getPhone(uid) || "No provisto";
+                 await processPlanSubmission(ctx, uid, plan.id, plan.title, temporality, name, phone, "renewal_requested");
+                 return;
+              }
+              const tLabel = TEMPORALITIES.find((t) => t.id === temporality)?.label ?? temporality;
               pendingRenewal.set(uid, { planId, planName: plan.title, temporality });
               await ctx.reply(
-                `🔄 *Renovar plan: ${plan.title}* (Trial — 7 Días)\n\n` +
-                "Para activar tu acceso necesitamos tu número de contacto.\n\n" +
-                "Toca el botón de abajo — Telegram te pedirá tu consentimiento antes de compartirlo.",
-                { parse_mode: "Markdown", reply_markup: contactRequestKb(`${plan.title} (Trial)`) }
+                `🔄 *Renovar plan: ${plan.title}* (${tLabel})\n\nPara renovar tu acceso necesitamos tu número de contacto.\nToca el botón de abajo — Telegram te pedirá tu consentimiento antes de compartirlo.`,
+                { parse_mode: "Markdown", reply_markup: contactRequestKb(`${plan.title} (${tLabel})`) }
               );
               return;
             }
-            const tLabel = TEMPORALITIES.find((t) => t.id === temporality)?.label ?? temporality;
-            pendingRenewal.set(uid, { planId, planName: plan.title, temporality });
-            await ctx.reply(
-              `🔄 *Renovar plan: ${plan.title}* (${tLabel})\n\n` +
-              "Para completar la renovación necesitamos tu número de contacto.\n\n" +
-              "Toca el botón de abajo — Telegram te pedirá tu consentimiento antes de compartirlo.",
-              { parse_mode: "Markdown", reply_markup: contactRequestKb(`${plan.title} (${tLabel})`) }
-            );
+          }
+          if (ctx.callbackQuery) await ctx.answerCallbackQuery?.({ text: "Plan no encontrado." }).catch(() => { });
+          return;
+        }
+
+        // Solo "help" pasa cuando el plan está caducado
+        if (data === "help") return next();
+
+        // Contacto para renovación
+        const renewal = ctx.message ? pendingRenewal.get(uid) : undefined;
+        if (renewal) {
+          const contact = ctx.message?.contact;
+          if (contact) {
+            const phone = contact.phone_number;
+            const name = [contact.first_name, contact.last_name].filter(Boolean).join(" ").trim() ||
+              [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ").trim() || "—";
+            pendingRenewal.delete(uid);
+            await processPlanSubmission(ctx, uid, renewal.planId, renewal.planName, renewal.temporality, name, phone, "renewal_requested");
             return;
           }
-        }
-        if (ctx.callbackQuery) await ctx.answerCallbackQuery?.({ text: "Plan no encontrado." }).catch(() => { });
-        return;
-      }
-
-      // Solo "help" pasa cuando el plan está caducado
-      if (data === "help") return next();
-
-      // Contacto para renovación
-      const renewal = ctx.message ? pendingRenewal.get(uid) : undefined;
-      if (renewal) {
-        const contact = ctx.message?.contact;
-        if (contact) {
-          const phone = contact.phone_number;
-          const name =
-            [contact.first_name, contact.last_name].filter(Boolean).join(" ").trim() ||
-            [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ").trim() ||
-            "—";
-          pendingRenewal.delete(uid);
-          const plan = getPlans().find((p) => p.id === renewal.planId);
-          const isTrial = plan?.autoApprove || renewal.temporality === "7d";
-          try {
-            // Guardar lead siempre
-            saveLead(uid, name, phone, renewal.planName, renewal.temporality, isTrial ? "trial_active" : "renewal_requested").catch(() => { });
-            if (isTrial) {
-              // Trial/autoApprove: activar inmediatamente después de capturar teléfono
-              await assignPlanToUser(uid, renewal.planName, plan?.menuIds ?? [], renewal.temporality, name, phone);
-              await ctx.reply(
-                `✅ *Plan ${renewal.planName} activado*\n\nTu acceso de prueba está listo por *7 días*.`,
-                { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } }
-              );
-              // Enviar menú principal en mensaje aparte
-              await ctx.reply("Selecciona una opción:", { reply_markup: options.buildMainKeyboard(uid) });
-            } else {
-              await requestPlanRenewal(uid, renewal.planName, { name, phone, temporality: renewal.temporality });
-              // Notificar a todos los owners con botones de aprobar/rechazar
-              const ownerIds = getOwnerIds().filter((id) => id !== uid);
-              if (ownerIds.length > 0) {
-                const ctxApi = (ctx as { api?: { sendMessage?: (id: number, txt: string, opts?: object) => Promise<unknown> } }).api;
-                const tLabel = TEMPORALITIES.find((t) => t.id === renewal.temporality)?.label ?? renewal.temporality;
-                const adminPushMsg = `🔔 *Solicitud de plan (renovación)*\n\nUsuario: \`${uid}\` — ${name}\nPlan: *${renewal.planName}* (${tLabel})\nTeléfono: \`${phone}\``;
-                const adminKb = new InlineKeyboard()
-                  .text("✅ Aprobar", `admin_plans_approve_${uid}`)
-                  .text("❌ Rechazar", `admin_plans_reject_${uid}`)
-                  .row()
-                  .url("📩 Contactar Usuario", `tg://openmessage?user_id=${uid}`);
-                for (const oid of ownerIds) {
-                  ctxApi?.sendMessage?.(oid, adminPushMsg, { parse_mode: "Markdown", reply_markup: adminKb }).catch(() => {});
-                }
-              }
-              await ctx.reply(
-                `✅ Solicitud de renovación registrada (*${renewal.planName}*). El administrador activará tu acceso.`,
-                { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } }
-              );
-            }
-          } catch {
-            await ctx.reply("No se pudo guardar la solicitud. Intenta más tarde.", {
-              reply_markup: { remove_keyboard: true },
-            }).catch(() => { });
+          const text = ctx.message?.text?.trim() ?? "";
+          if (text === "❌ Cancelar") {
+            pendingRenewal.delete(uid);
+            await ctx.reply("Renovación cancelada.", { reply_markup: { remove_keyboard: true } });
+            return;
           }
+          const t = TEMPORALITIES.find((t) => t.id === renewal.temporality);
+          await ctx.reply(
+            `⚠️ Para renovar el plan *${renewal.planName}* (${t?.label ?? renewal.temporality}) debes compartir tu número usando el botón de abajo.`,
+            { parse_mode: "Markdown", reply_markup: contactRequestKb(`${renewal.planName} (${t?.label ?? renewal.temporality})`) }
+          );
           return;
         }
 
-        const text = ctx.message?.text?.trim() ?? "";
-        if (text === "❌ Cancelar") {
-          pendingRenewal.delete(uid);
-          await ctx.reply("Renovación cancelada.", { reply_markup: { remove_keyboard: true } });
-          return;
+        // Mostrar mensaje de caducidad (sincronizar precios desde Sheet antes de mostrar)
+        await options.reloadPlans?.();
+        const plans = getPlans();
+        let link = "";
+        const raw = requestAccessLink;
+        if (raw) {
+          link = raw.startsWith("http") ? raw : "https://t.me/" + raw.replace(/^t\.me\/?/i, "");
+        } else if (ownerId !== null) {
+          link = `tg://user?id=${ownerId}`;
         }
-        const t = TEMPORALITIES.find((t) => t.id === renewal.temporality);
-        await ctx.reply(
-          `⚠️ Para renovar el plan *${renewal.planName}* (${t?.label ?? renewal.temporality}) debes compartir tu número usando el botón de abajo.`,
-          { parse_mode: "Markdown", reply_markup: contactRequestKb(`${renewal.planName} (${t?.label ?? renewal.temporality})`) }
-        );
-        return;
-      }
 
-      // Mostrar mensaje de caducidad (sincronizar precios desde Sheet antes de mostrar)
-      await options.reloadPlans?.();
-      const plans = getPlans();
-      let link = "";
-      const raw = requestAccessLink;
-      if (raw) {
-        link = raw.startsWith("http") ? raw : "https://t.me/" + raw.replace(/^t\.me\/?/i, "");
-      } else if (ownerId !== null) {
-        link = `tg://user?id=${ownerId}`;
-      }
+        const wasTrial = getPlanTemporality(uid) === "7d";
+        const expiryMsg = wasTrial
+          ? "⏳ *Tu acceso de prueba (Trial 7 Días) ha expirado*\n\n" +
+          "El periodo gratuito ha terminado. Para seguir disfrutando de todas las funciones, elige uno de nuestros planes:\n\n" +
+          "_Selecciona el plan y la duración que prefieras:_"
+          : "⏰ *Tu plan ha caducado*\n\n" +
+          "Ya no tienes acceso al bot. Para seguir usando todas las funciones, renueva tu plan.\n\n" +
+          "_Elige el plan y la temporalidad que deseas renovar:_";
 
-      const wasTrial = getPlanTemporality(uid) === "7d";
-      const expiryMsg = wasTrial
-        ? "⏳ *Tu acceso de prueba (Trial 7 Días) ha expirado*\n\n" +
-        "El periodo gratuito ha terminado. Para seguir disfrutando de todas las funciones, elige uno de nuestros planes:\n\n" +
-        "_Selecciona el plan y la duración que prefieras:_"
-        : "⏰ *Tu plan ha caducado*\n\n" +
-        "Ya no tienes acceso al bot. Para seguir usando todas las funciones, renueva tu plan.\n\n" +
-        "_Elige el plan y la temporalidad que deseas renovar:_";
+        const kb = new InlineKeyboard();
+        for (const p of plans) {
+          kb.text(`📋 ${p.title}`, `noop`).row();
+          addPlanTemporalityButtons(kb, p.id, p.title, p, "renew_plan_");
+        }
+        kb.text("❓ Ayuda", "help");
+        if (link) kb.row().url("📩 Contactar al administrador", link);
 
-      const kb = new InlineKeyboard();
-      for (const p of plans) {
-        kb.text(`📋 ${p.title}`, `noop`).row();
-        addPlanTemporalityButtons(kb, p.id, p.title, p, "renew_plan_");
-      }
-      kb.text("❓ Ayuda", "help");
-      if (link) kb.row().url("📩 Contactar al administrador", link);
-
-      if (ctx.callbackQuery) await ctx.answerCallbackQuery?.().catch(() => { });
+        if (ctx.callbackQuery) await ctx.answerCallbackQuery?.().catch(() => { });
         try {
           await ctx.reply(expiryMsg, { parse_mode: "Markdown", reply_markup: kb });
         } catch (e) {
@@ -377,65 +385,7 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
           [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ").trim() ||
           "—";
         pendingPlanRequest.delete(uid);
-        const plan = getPlans().find((p) => p.id === pending.planId);
-        const isTrial = plan?.autoApprove || pending.temporality === "7d";
-        try {
-          // Guardar lead siempre
-          saveLead(uid, name, phone, pending.planName, pending.temporality, isTrial ? "trial_active" : "plan_requested").catch(() => { });
-          if (isTrial) {
-            // Trial/autoApprove: activar inmediatamente después de capturar teléfono
-            await assignPlanToUser(uid, pending.planName, plan?.menuIds ?? [], pending.temporality, name, phone);
-            await ctx.reply(
-              `✅ *¡Plan ${pending.planName} activado!*\n\nTienes *7 días* de acceso gratuito para explorar todas las funciones. ¡Disfrútalo!`,
-              { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } }
-            );
-            // Enviar menú principal en mensaje aparte
-            await ctx.reply("Selecciona una opción:", { reply_markup: options.buildMainKeyboard(uid) });
-          } else {
-            await addPlanRequest(uid, pending.planName, { name, phone, temporality: pending.temporality });
-            // Notificar a todos los owners con botones de aprobar/rechazar
-            const ownerIds2 = getOwnerIds().filter((id) => id !== uid);
-            if (ownerIds2.length > 0) {
-              const ctxApi = (ctx as { api?: { sendMessage?: (id: number, txt: string, opts?: object) => Promise<unknown> } }).api;
-              const tLabel2 = TEMPORALITIES.find((t) => t.id === pending.temporality)?.label ?? pending.temporality;
-              const adminPushMsg2 = `🔔 *Solicitud de plan*\n\nUsuario: \`${uid}\` — ${name}\nPlan: *${pending.planName}* (${tLabel2})\nTeléfono: \`${phone}\``;
-              const adminKb2 = new InlineKeyboard()
-                .text("✅ Aprobar", `admin_plans_approve_${uid}`)
-                .text("❌ Rechazar", `admin_plans_reject_${uid}`)
-                .row()
-                .url("📩 Contactar Usuario", `tg://openmessage?user_id=${uid}`);
-              for (const oid of ownerIds2) {
-                ctxApi?.sendMessage?.(oid, adminPushMsg2, { parse_mode: "Markdown", reply_markup: adminKb2 }).catch(() => {});
-              }
-            }
-            const tLabel = TEMPORALITIES.find((t) => t.id === pending.temporality)?.label ?? pending.temporality;
-
-            await loadPaymentMethodsFromDB();
-            const pms = getPaymentMethods();
-            const pmLines = pms.map((p, i) =>
-              `${i + 1}. *${p.description}*\n   💳 \`${p.account}\` · 🌐 ${p.currency}`
-            );
-
-            const ownerId2 = options.getOwnerId();
-            const contactMsg = ownerId2 ? `\n\n[📩 Contactar al administrador](tg://user?id=${ownerId2})` : "";
-
-            const message = `✅ Solicitud registrada (*${pending.planName}* — ${tLabel}). El administrador revisará tu acceso.` + contactMsg;
-            await ctx.reply(message, { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } });
-
-            if (pms.length > 0) {
-              const pmText = `💳 *Formas de pago disponibles:*\n\n` + pmLines.join("\n\n");
-              const pmKb = new InlineKeyboard();
-              for (const pm of pms) {
-                pmKb.copyText(`📋 ${pm.description}`, pm.account).row();
-              }
-              await ctx.reply(pmText, { parse_mode: "Markdown", reply_markup: pmKb });
-            }
-          }
-        } catch {
-          await ctx.reply("No se pudo guardar la solicitud. Intenta más tarde o contacta al administrador.", {
-            reply_markup: { remove_keyboard: true },
-          }).catch(() => { });
-        }
+        await processPlanSubmission(ctx, uid, pending.planId, pending.planName, pending.temporality, name, phone, "plan_requested");
         return;
       }
 
