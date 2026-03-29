@@ -252,10 +252,12 @@ async function reloadStrategiesIfStale(): Promise<void> {
   }
 }
 
-function buildHelpText(planName: string): string {
+function buildHelpText(userId: number | undefined, planName: string): string {
   const safePlan = escapeMd(planName);
+  const currentExpiry = userId ? getPlanExpiry(userId) : undefined;
+  const expiryInfo = currentExpiry ? ` (expira: ${currentExpiry})` : "";
   return (
-    `📋 *Ayuda — ${safePlan}*\n\n` +
+    `📋 *Ayuda — ${safePlan}*${expiryInfo}\n\n` +
     `Ud. posee el plan *${safePlan}*: le brindamos acceso a sus estadísticas y estrategias configuradas.\n\n` +
     "Si requiere implementar su propia solución con un costo adicional, contacte al administrador.\n\n" +
     "Note que esas funciones las podrá comercializar con otros usuarios a través de la aplicación y por medio del admin."
@@ -995,7 +997,7 @@ bot.command("help", async (ctx) => {
   if (ownerId) {
     kb.row().url("📩 Contactar al administrador", `tg://user?id=${ownerId}`);
   }
-  await ctx.reply(buildHelpText(planName), { parse_mode: "Markdown", reply_markup: kb });
+  await ctx.reply(buildHelpText(userId, planName), { parse_mode: "Markdown", reply_markup: kb });
 });
 
 bot.command("admin", async (ctx) => {

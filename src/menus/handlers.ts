@@ -31,7 +31,7 @@ import { resolveLatestDraw } from "../draw-resolver.js";
 
 export interface MenuHandlersDeps extends MainKeyboardDeps {
   /** Genera el texto de ayuda a partir del nombre de plan actual del usuario. */
-  buildHelpText: (planName: string) => string;
+  buildHelpText: (userId: number | undefined, planName: string) => string;
   /** Recarga la config desde el Sheet (o archivo) para reflejar cambios de plan aprobados. */
   reloadUserConfig: () => Promise<void>;
   /** ID numérico del dueño (BOT_OWNER_ID). Si está definido, aparece botón de contacto directo en la ayuda. */
@@ -97,7 +97,7 @@ export async function handleMenuCallback(
     if (deps.ownerUserId) {
       kb.row().url("📩 Contactar al administrador", `tg://user?id=${deps.ownerUserId}`);
     }
-    return { result: "*❓ Ayuda*\n\n" + deps.buildHelpText(planName), keyboard: kb };
+    return { result: "*❓ Ayuda*\n\n" + deps.buildHelpText(userId, planName), keyboard: kb };
   }
 
   if (data === "volver") {
