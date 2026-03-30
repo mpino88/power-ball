@@ -16,7 +16,6 @@ export interface ResolvedDraw {
 
 /** 
  * Formatea el número como "1-2-3" o "1-2-3-4". 
- * Es la base visual de la asimetría positiva en la lectura de resultados.
  */
 export function formatDigits(v: string | number[] | undefined): string {
   if (!v) return "---";
@@ -29,45 +28,35 @@ export function formatDigits(v: string | number[] | undefined): string {
 }
 
 /**
- * MOTOR DE RESOLUCIÓN ÚNICO (SST)
- * Decide qué sorteo mostrar basándose en la disponibilidad jerárquica:
- * 1. Manual push (hoyData)
- * 2. PDF Scraper Today
- * 3. FALLBACK: PDF Scraper Yesterday (Step-Down dinámico)
+ * MOTOR DE RESOLUCIÓN ÚNICO — PostgreSQL como Única Fuente de Verdad
+ *
+ * Obtiene el sorteo más reciente disponible en los mapas cargados desde DB.
+ * El parámetro `hoyData` se mantiene por compatibilidad con llamadas existentes
+ * pero ya NO se usa — la BD es siempre la fuente definitiva.
+ *
+ * Jerarquía:
+ *  1. Dato más reciente en maps (cargados desde PostgreSQL)
+ *  2. Si no hay dato → vacío ("---")
  */
 export function resolveLatestDraw(
   source: "p3" | "p4",
   period: "m" | "e",
   maps: { p3: DateDrawsMap; p4: DateDrawsMap },
   dates: { today: string; yesterday: string },
-  hoyData: HoyResult
+  _hoyData?: HoyResult  // ignorado — DB es la fuente de verdad
 ): ResolvedDraw {
-  const key = `${source}_${period}` as keyof HoyResult;
-  const dateKey = `${source}_${period}_date` as keyof HoyResult;
-
-  // 1. Prioridad Máxima: Push Manual (Hoy o reciente)
-  if (hoyData[key]) {
-    const d = (hoyData[dateKey] as string) || dates.today;
-    return {
-      draw: formatDigits(hoyData[key] as string),
-      date: d,
-      label: d === dates.today ? "🟢 HOY" : `🟠 ${d} - AYER`,
-      isFallback: d !== dates.today,
-    };
-  }
-
-  // 2. Prioridad Media: Extraer TODOS los días disponibles con ese período en la BD
   const map = source === "p3" ? maps.p3 : maps.p4;
+
+  // Filtrar fechas que tengan datos para el período pedido
   const availableDates = Object.keys(map).filter(
     (date) => map[date] !== undefined && map[date][period] !== undefined && map[date][period]!.length > 0
   );
 
-  // Ordenar fechas desde la más reciente hasta la más antigua (formato "MM/DD/YY")
+  // Ordenar cronológicamente descendente (más reciente primero)
   availableDates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
 
   const latestDate = availableDates[0];
 
-  // 3. Obtener el dato más reciente de la Base de Datos
   if (latestDate) {
     const isToday = latestDate === dates.today;
     return {
@@ -78,11 +67,11 @@ export function resolveLatestDraw(
     };
   }
 
-  // 4. Vacío Total (Sin datos en toda la base de datos)
+  // Sin datos en toda la base de datos
   return {
     draw: "---",
     date: dates.today,
-    label: "🟢 HOY", // Mostramos Hoy indicando que no hay datos aún
+    label: "🟢 HOY",
     isFallback: false,
   };
 }

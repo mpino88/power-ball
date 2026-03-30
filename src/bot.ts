@@ -403,32 +403,23 @@ const waitingSugerenciaText = new Map<number, true>();
 const waitingAnnouncementInput = new Map<number, "create" | string>();
 
 /**
- * Versiones de getP3Map/getP4Map con:
- *  1. Merge de hoy-results.json → cierra el punto ciego cross-period:
- *     cuando una estrategia "ambos" (mediodía+noche) se ejecuta por la noche,
- *     el resultado del mediodía de hoy ya está disponible via hoy-results aunque
- *     el PDF aún no haya sido refrescado o el caché esté desactualizado.
- *  2. Filtro de fecha de corte para modo testing (solo owners).
- *
- * NOTE: el merge NO aplica en testing mode (cutoff activo) — la simulación
- * histórica no debe contaminarse con datos en vivo de hoy.
+/**
+ * Versiones de getP3Map/getP4Map para estrategias con:
+ *  - Filtro de fecha de corte para modo testing (solo owners).
+ * PostgreSQL es la única fuente de verdad; el merge de hoy-results fue eliminado.
  */
 async function getStrategyP3Map(userId?: number): Promise<DateDrawsMap> {
   const map = await getP3Map();
   const cutoff = isOwner(userId ?? 0) ? await getTestingCutoff(userId ?? 0) : null;
   if (cutoff) return filterMapByCutoff(map, cutoff);
-  // Merge today's hoy-results so cross-period strategies always have the latest data
-  const { getHoyResult: getHoy, getTodayEST: todayEST, mergeHoyIntoP3Map } = await import("./hoy-results.js");
-  return mergeHoyIntoP3Map(map, getHoy(), todayEST());
+  return map;
 }
 
 async function getStrategyP4Map(userId?: number): Promise<DateDrawsMap> {
   const map = await getP4Map() as DateDrawsMap;
   const cutoff = isOwner(userId ?? 0) ? await getTestingCutoff(userId ?? 0) : null;
   if (cutoff) return filterMapByCutoff(map, cutoff);
-  // Merge today's hoy-results so cross-period strategies always have the latest data
-  const { getHoyResult: getHoy, getTodayEST: todayEST, mergeHoyIntoP4Map } = await import("./hoy-results.js");
-  return mergeHoyIntoP4Map(map, getHoy(), todayEST());
+  return map;
 }
 
 /** Timeout (ms) para ejecutar una estrategia; evita "Calculando…" infinito si getP3Map/run tardan. */
