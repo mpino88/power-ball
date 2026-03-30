@@ -2,7 +2,7 @@ import { IDrawsProvider } from "../../domain/interfaces/IDrawsProvider.js";
 import { DateDrawsMap } from "../../domain/models/Strategy.js";
 import { loadDrawsFromDB } from "./PostgresDrawRepository.js";
 
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutos de caché
+const CACHE_TTL_MS = 60 * 1000; // 60 segundos de caché (balance entre rendimiento y frescura)
 
 export class PostgresDrawProvider implements IDrawsProvider {
   private p3Cache: DateDrawsMap | null = null;
@@ -32,11 +32,19 @@ export class PostgresDrawProvider implements IDrawsProvider {
     return this.p4Cache;
   }
 
-  async forceRefresh(): Promise<void> {
+  /**
+   * Invalida la caché sin disparar una recarga eagera.
+   * La próxima llamada a getP3Map/getP4Map recargará desde DB.
+   */
+  invalidateCache(): void {
     this.p3Cache = null;
     this.p4Cache = null;
     this.p3LastFetch = 0;
     this.p4LastFetch = 0;
+  }
+
+  async forceRefresh(): Promise<void> {
+    this.invalidateCache();
     await Promise.all([this.getP3Map(), this.getP4Map()]);
   }
 }

@@ -3896,9 +3896,9 @@ async function getP4Map(): Promise<DateDrawsMapP4> {
   return drawProvider.getP4Map();
 }
 
-/** Invalidates caches so the next getP3Map/getP4Map call re-fetches from PG */
+/** Invalida la caché de sorteos. El siguiente getP3Map/getP4Map recargará desde PG. */
 function forceInvalidateCache() {
-  drawProvider.forceRefresh();
+  drawProvider.invalidateCache();
 }
 
 async function main(): Promise<void> {
@@ -4011,6 +4011,8 @@ async function main(): Promise<void> {
             const { upsertDrawInDB } = await import("./infrastructure/database/PostgresDrawRepository.js");
             const numsArr = numbers.split(",").map(Number);
             await upsertDrawInDB(date, game, period, numsArr);
+            // Invalidar caché para que el menú y "Últimos Sorteos" reflejen el nuevo dato de inmediato
+            forceInvalidateCache();
 
             const { saveHoyResult, getTodayEST } = await import("./hoy-results.js");
             if (date === getTodayEST()) {
