@@ -3876,179 +3876,28 @@ function parseUserDateToMMDDYY(text: string): string | null {
   return `${String(mm).padStart(2, "0")}/${String(dd).padStart(2, "0")}/${yy2}`;
 }
 
-const P3_PDF_URL = "https://files.floridalottery.com/exptkt/p3.pdf";
-const P4_PDF_URL = "https://files.floridalottery.com/exptkt/p4.pdf";
+import { PostgresDrawProvider } from "./infrastructure/database/PostgresDrawProvider.js";
+
+const drawProvider = new PostgresDrawProvider();
 
 export type Pick3Numbers = [number, number, number];
 export type DateDrawsMap = Record<string, { m?: number[]; e?: number[] }>;
 export type DateDrawsMapP4 = Record<string, { m?: number[]; e?: number[] }>;
 
-const P3_RECORD_REGEX =
-  /(\d{2}\/\d{2}\/\d{2})\s*([EM])\s*(\d)[\s\-]*(\d)[\s\-]*(\d)(?:\s+FB\s*(\d))?/gi;
-const P4_RECORD_REGEX =
-  /(\d{2}\/\d{2}\/\d{2})\s*([EM])\s*(\d)[\s\-]*(\d)[\s\-]*(\d)[\s\-]*(\d)(?:\s+FB\s*(\d))?/gi;
-
-function parseP3FullText(text: string): DateDrawsMap {
-  const map: DateDrawsMap = {};
-  const normalized = text
-    .replace(/\r\n/g, " ")
-    .replace(/\r/g, " ")
-    .replace(/\n/g, " ")
-    .replace(/\t/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  let m: RegExpExecArray | null;
-  P3_RECORD_REGEX.lastIndex = 0;
-  while ((m = P3_RECORD_REGEX.exec(normalized)) !== null) {
-    const date = m[1]!;
-    const type = m[2]!.toUpperCase() === "E" ? "e" : "m";
-    const numbers: Pick3Numbers = [Number(m[3]), Number(m[4]), Number(m[5])];
-    if (!map[date]) map[date] = {};
-    map[date][type] = numbers;
-  }
-  return map;
-}
-
-function parseP4FullText(text: string): DateDrawsMapP4 {
-  const map: DateDrawsMapP4 = {};
-  const normalized = text
-    .replace(/\r\n/g, " ")
-    .replace(/\r/g, " ")
-    .replace(/\n/g, " ")
-    .replace(/\t/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  let m: RegExpExecArray | null;
-  P4_RECORD_REGEX.lastIndex = 0;
-  while ((m = P4_RECORD_REGEX.exec(normalized)) !== null) {
-    const date = m[1]!;
-    const type = m[2]!.toUpperCase() === "E" ? "e" : "m";
-    const numbers = [Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6])] as [number, number, number, number];
-    if (!map[date]) map[date] = {};
-    map[date][type] = numbers;
-  }
-  return map;
-}
-
-async function pdfToText(pdfBuffer: ArrayBuffer): Promise<string> {
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const data = new Uint8Array(pdfBuffer);
-  /* Sin standardFontDataUrl para evitar errores en entornos tipo Render donde file:// falla (LiberationSans). */
-  const doc = await pdfjsLib.getDocument({
-    data,
-    disableFontFace: true,
-  }).promise;
-  const numPages = doc.numPages;
-  const pageTexts: string[] = [];
-  for (let i = 1; i <= numPages; i++) {
-    const page = await doc.getPage(i);
-    const content = await page.getTextContent();
-    type Item = { str: string; transform?: number[] };
-    const rawItems = content.items as Item[];
-    const items = [...rawItems].sort((a, b) => {
-      const yA = a.transform?.[5] ?? 0;
-      const yB = b.transform?.[5] ?? 0;
-      const xA = a.transform?.[4] ?? 0;
-      const xB = b.transform?.[4] ?? 0;
-      if (Math.abs(yA - yB) > 2) return yB - yA;
-      return xA - xB;
-    });
-    let lastY: number | null = null;
-    const lineParts: string[] = [];
-    const lines: string[] = [];
-    for (const item of items) {
-      const y = item.transform?.[5] ?? 0;
-      if (lastY !== null && Math.abs(y - lastY) > 2) {
-        lines.push(lineParts.join(" ").trim());
-        lineParts.length = 0;
-      }
-      lastY = y;
-      lineParts.push(item.str);
-    }
-    if (lineParts.length > 0) lines.push(lineParts.join(" ").trim());
-    pageTexts.push(lines.join("\n"));
-  }
-  return pageTexts.join("\n");
-}
-
-/**
- * Determina el momento esperado de la última actualización de datos en Florida.
- * Horarios de sorteos: Midday (13:30 sorteo, ~14:05 PDF), Evening (21:45 sorteo, ~20:20 PDF? wait!)
- * El usuario indica 14:05 y 20:20.
- */
-function getLastExpectedUpdateTime(): number {
-  const floridaNowStr = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
-  const floridaNow = new Date(floridaNowStr);
-
-  const t1405 = new Date(floridaNow);
-  t1405.setHours(14, 5, 0, 0);
-
-  const t2020 = new Date(floridaNow);
-  t2020.setHours(20, 20, 0, 0);
-
-  if (floridaNow.getTime() >= t2020.getTime()) return t2020.getTime();
-  if (floridaNow.getTime() >= t1405.getTime()) return t1405.getTime();
-
-  // Si es antes de las 14:05, el último fue a las 20:20 del día anterior
-  const yesterday2020 = new Date(t2020);
-  yesterday2020.setDate(yesterday2020.getDate() - 1);
-  return yesterday2020.getTime();
-}
-
-let cachedP3Map: DateDrawsMap | null = null;
-let cachedP4Map: DateDrawsMapP4 | null = null;
-let lastP3Fetch = 0;
-let lastP4Fetch = 0;
 /** Tracks date|period pairs that already fired a combined push to admins (dedup guard). */
 const hitNotifiedPairs = new Set<string>();
 
 async function getP3Map(): Promise<DateDrawsMap> {
-  const leut = getLastExpectedUpdateTime();
-  // Refrescar si no hay caché O si el último fetch es anterior al LEUT
-  if (cachedP3Map && lastP3Fetch >= leut) return cachedP3Map;
-
-  console.log(`[data] Refrescando mapa P3 (Evento: ${lastP3Fetch < leut ? "Nuevo sorteo disponible" : "Inicio"})`);
-  const res = await fetch(P3_PDF_URL, { headers: { "User-Agent": "FloridaLotteryBot/1.0" } });
-  if (!res.ok) throw new Error(`P3 PDF ${res.status}`);
-  const data = await res.arrayBuffer();
-  const txt = await pdfToText(data);
-  cachedP3Map = parseP3FullText(txt);
-  lastP3Fetch = Date.now();
-
-  if (process.env.DATABASE_URL) {
-    import("./infrastructure/database/PostgresDrawRepository.js")
-      .then(m => m.saveDrawsToDB("p3", cachedP3Map!))
-      .catch(e => console.error("Error guardando P3 en Postgres:", e));
-  }
-
-  return cachedP3Map;
+  return drawProvider.getP3Map();
 }
 
 async function getP4Map(): Promise<DateDrawsMapP4> {
-  const leut = getLastExpectedUpdateTime();
-  if (cachedP4Map && lastP4Fetch >= leut) return cachedP4Map;
-
-  console.log(`[data] Refrescando mapa P4 (Evento: ${lastP4Fetch < leut ? "Nuevo sorteo disponible" : "Inicio"})`);
-  const res = await fetch(P4_PDF_URL, { headers: { "User-Agent": "FloridaLotteryBot/1.0" } });
-  if (!res.ok) throw new Error(`P4 PDF ${res.status}`);
-  const data = await res.arrayBuffer();
-  const txt = await pdfToText(data);
-  cachedP4Map = parseP4FullText(txt);
-  lastP4Fetch = Date.now();
-
-  if (process.env.DATABASE_URL) {
-    import("./infrastructure/database/PostgresDrawRepository.js")
-      .then(m => m.saveDrawsToDB("p4", cachedP4Map!))
-      .catch(e => console.error("Error guardando P4 en Postgres:", e));
-  }
-
-  return cachedP4Map;
+  return drawProvider.getP4Map();
 }
 
-/** Invalidates PDF caches so the next getP3Map/getP4Map call re-fetches from floridalottery.com */
+/** Invalidates caches so the next getP3Map/getP4Map call re-fetches from PG */
 function forceInvalidateCache() {
-  lastP3Fetch = 0;
-  lastP4Fetch = 0;
+  drawProvider.forceRefresh();
 }
 
 async function main(): Promise<void> {

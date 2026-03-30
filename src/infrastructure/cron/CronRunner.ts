@@ -1,5 +1,4 @@
 import cron from "node-cron";
-import { runDailyScrape } from "./DailyScraper.js";
 
 /** Callback invoked when CronRunner detects new draw results not yet in hoy-results.json */
 export type OnNewDrawFn = (period: "m" | "e") => Promise<void>;
@@ -13,36 +12,6 @@ export type OnNewDrawFn = (period: "m" | "e") => Promise<void>;
  */
 export function initCronJobs(onNewDraw?: OnNewDrawFn): void {
   const tz = "America/New_York";
-
-  // ── DB sync crons (only when PostgreSQL is connected) ───────────────────
-  if (process.env.DATABASE_URL) {
-    // After Midday draw (1:30 PM ET) — PDF updates around 14:05
-    cron.schedule("15 14 * * *", async () => {
-      console.log("[CRON] Disparo programado: 14:15 ET (Midday DB sync)");
-      await runDailyScrape();
-    }, { timezone: tz });
-
-    // After Evening draw (9:45 PM ET) — PDF updates around 22:00
-    cron.schedule("5 22 * * *", async () => {
-      console.log("[CRON] Disparo programado: 22:05 ET (Evening DB sync)");
-      await runDailyScrape();
-    }, { timezone: tz });
-
-    // Midnight full sync — ensures any missed draws from the day are captured
-    // and DB is fully in sync with the official PDFs before the next day starts.
-    cron.schedule("0 0 * * *", async () => {
-      console.log("[CRON] Midnight full DB sync: 00:00 ET — reconciling all pending draws");
-      await runDailyScrape();
-    }, { timezone: tz });
-
-    // Cold start: auto-scrape after 10 seconds
-    setTimeout(() => {
-      console.log("[CRON] Disparo de arranque en frío...");
-      runDailyScrape().catch(e => console.error(e));
-    }, 10000);
-  } else {
-    console.log("[CRON] Sin DATABASE_URL — DB sync deshabilitado. Backup polls activos.");
-  }
 
   // ── Backup window polls (always active — safety net for lottery-monitor) ──
   // These fire AFTER expected YouTube video publication and check if hoy-results.json

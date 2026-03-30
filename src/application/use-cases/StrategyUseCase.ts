@@ -1,5 +1,5 @@
 import { IStrategyRepository } from "../../domain/interfaces/IStrategyRepository.js";
-import { ILotteryScraper } from "../../domain/interfaces/ILotteryScraper.js";
+import { IDrawsProvider } from "../../domain/interfaces/IDrawsProvider.js";
 import { StrategyContext, StrategyDefinition } from "../../domain/models/Strategy.js";
 
 export class StrategyUseCase {
@@ -7,7 +7,7 @@ export class StrategyUseCase {
 
   constructor(
     private strategyRepo: IStrategyRepository,
-    private lotteryScraper: ILotteryScraper
+    private lotteryScraper: IDrawsProvider
   ) {}
 
   registerStrategy(strategy: StrategyDefinition) {

@@ -1,6 +1,6 @@
 import { DateDrawsMap } from "../models/Strategy.js";
 
-export interface ILotteryScraper {
+export interface IDrawsProvider {
   getP3Map(): Promise<DateDrawsMap>;
   getP4Map(): Promise<DateDrawsMap>;
   forceRefresh(): Promise<void>;
