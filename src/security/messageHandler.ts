@@ -54,6 +54,8 @@ export interface SecurityMessageDeps {
   getP4Map: () => Promise<any>;
   getHotThresholdDays: () => number;
   getExtraMenuLabel: (id: string) => string | undefined;
+  /** Invalida la caché del proveedor de sorteos para forzar recarga desde DB. */
+  forceInvalidateCache?: () => void;
 }
 
 /**
@@ -502,7 +504,33 @@ export async function handleSecurityMessage(
 
       saveHoyResult(currentHoy);
 
-      await ctx.reply(`✅ *${periodLabel} Actualizado*\n\nEnviando notificación masiva...`, { parse_mode: "Markdown" });
+      // ── Persistir en PostgreSQL (upsert: actualiza si ya existe la fecha+periodo) ──
+      const todayDate = (await import("../hoy-results.js")).getTodayEST();
+      const { upsertDrawInDB } = await import("../infrastructure/database/PostgresDrawRepository.js");
+
+      const persistOps: Promise<void>[] = [];
+      if (p3Val) {
+        const p3nums = p3Val.split("").map(Number);
+        persistOps.push(upsertDrawInDB(todayDate, "p3", updatingHoy.period!, p3nums));
+      }
+      if (p4Val) {
+        const p4nums = p4Val.split("").map(Number);
+        persistOps.push(upsertDrawInDB(todayDate, "p4", updatingHoy.period!, p4nums));
+      }
+      if (persistOps.length > 0) {
+        try {
+          await Promise.all(persistOps);
+          console.log(`[admin_hoy_update] Sorteos P3/P4 guardados en DB para ${todayDate} periodo ${updatingHoy.period}`);
+          // Invalidar caché del provider para que el bot use los datos nuevos de inmediato
+          deps.forceInvalidateCache?.();
+        } catch (dbErr) {
+          console.error("[admin_hoy_update] Error al persistir sorteos en DB:", dbErr);
+        }
+      }
+
+      await ctx.reply(`✅ *${periodLabel} Actualizado*
+
+Enviando notificación masiva...`, { parse_mode: "Markdown" });
 
       // Neuromarketing Hit Detection for the new result
       const winningHits = await findWinningStrategies(

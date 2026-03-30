@@ -3238,6 +3238,7 @@ bot.on("message:text", async (ctx) => {
     getP4Map: () => getP4Map(),
     getHotThresholdDays: () => hotThresholdDays,
     getExtraMenuLabel: (id) => getExtraMenuLabel(id),
+    forceInvalidateCache: () => forceInvalidateCache(),
   });
   if (securityHandled) return;
 
@@ -4007,11 +4008,9 @@ async function main(): Promise<void> {
               return;
             }
 
-            const { saveDrawsToDB } = await import("./infrastructure/database/PostgresDrawRepository.js");
+            const { upsertDrawInDB } = await import("./infrastructure/database/PostgresDrawRepository.js");
             const numsArr = numbers.split(",").map(Number);
-            await saveDrawsToDB(game, {
-              [date]: { [period]: numsArr }
-            });
+            await upsertDrawInDB(date, game, period, numsArr);
 
             const { saveHoyResult, getTodayEST } = await import("./hoy-results.js");
             if (date === getTodayEST()) {

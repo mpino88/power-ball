@@ -79,3 +79,23 @@ export async function saveDrawsToDB(game: "p3" | "p4", map: DateDrawsMap): Promi
     await pool.query(sql, chunkV);
   }
 }
+
+/**
+ * Inserta o actualiza un único sorteo en PostgreSQL.
+ * Si ya existe un registro para (date, game, period) actualiza los números.
+ * Esto evita duplicados al usar el menú "Actualizar Sorteo Hoy".
+ */
+export async function upsertDrawInDB(
+  date: string,
+  game: "p3" | "p4",
+  period: "m" | "e",
+  numbers: number[]
+): Promise<void> {
+  const pool = getDbPool();
+  await pool.query(
+    `INSERT INTO draws (date, game, period, numbers)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (date, game, period) DO UPDATE SET numbers = EXCLUDED.numbers`,
+    [date, game, period, numbers.join(",")]
+  );
+}
