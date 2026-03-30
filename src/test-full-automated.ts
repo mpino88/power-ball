@@ -1,9 +1,9 @@
 import { createAutoDrawHandler, type AutoDrawDeps } from "./auto-draw.js";
-import { FloridaLotteryScraper } from "./infrastructure/api/FloridaLotteryScraper.js";
+import { PostgresDrawProvider } from "./infrastructure/database/PostgresDrawProvider.js";
 import { getTodayEST, saveHoyResult, getHoyResult } from "./hoy-results.js";
 
 async function main() {
-    const scraper = new FloridaLotteryScraper();
+    const scraper = new PostgresDrawProvider();
     
     // Mock dependencies for the handler
     const mockDeps: AutoDrawDeps = {
