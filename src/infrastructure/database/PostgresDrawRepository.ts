@@ -5,9 +5,8 @@ import type { DateDrawsMap } from "../../domain/models/Strategy.js";
  * Century-aware sort expression for MM/DD/YY string dates stored as TEXT.
  *
  * Problem: plain `ORDER BY date DESC` uses lexicographic order, where
- *   "12/31/99" (Dec 31, 1999) > "03/24/26" (Mar 24, 2026)
  * causing historical 1988-1999 dates to be fetched BEFORE 2024-2026 dates
- * and LIMIT 4000 to silently return wrong (old) data.
+ * if using plain strings. The query now fetches the complete history for analysis.
  *
  * Fix: build a YYYYMMDD integer in SQL using the same century rule as mmddyyToDate():
  *   year <= 49  → 2000s
@@ -22,11 +21,11 @@ const CENTURY_AWARE_DATE_SORT = `
   + SUBSTRING(date, 4, 2)::INTEGER
 `;
 
-// Extrae el DateDrawsMap de PostgreSQL (limite de últimos ~4000 draws para no explotar memoria local)
+// Extrae el DateDrawsMap de PostgreSQL (conocimiento completo para análisis estratégico)
 export async function loadDrawsFromDB(game: "p3" | "p4"): Promise<DateDrawsMap> {
   const pool = getDbPool();
   const { rows } = await pool.query(
-    `SELECT date, period, numbers FROM draws WHERE game = $1 ORDER BY ${CENTURY_AWARE_DATE_SORT} DESC LIMIT 4000`,
+    `SELECT date, period, numbers FROM draws WHERE game = $1 ORDER BY ${CENTURY_AWARE_DATE_SORT} DESC`,
     [game]
   );
 
