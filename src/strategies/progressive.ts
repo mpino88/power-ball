@@ -92,6 +92,10 @@ export interface SubsetConditions {
   avgPreMiss: number;
   /** Desviación estándar de la racha de fallos pre-acierto. */
   stdPreMiss: number;
+  /** Máximo histórico de fallos consecutivos. */
+  maxPreMiss: number;
+  /** Fallos consecutivos de la racha actual (desde último acierto). */
+  currentMisses: number;
 
   // ── ¿Se agrupan los aciertos o se distribuyen? ───────────────────────────
   /** Hit rate cuando el sorteo anterior también fue acierto. */
@@ -161,18 +165,9 @@ interface SubsetMeta {
 }
 
 function buildSubsetMeta(n: number): SubsetMeta[] {
-  const total = (1 << n) - 1;
-  const meta: SubsetMeta[] = new Array(total);
-  for (let mask = 1; mask <= total; mask++) {
-    const indices: number[] = [];
-    const parts: string[] = [];
-    for (let i = 0; i < n; i++) {
-      if (mask & (1 << i)) {
-        indices.push(i);
-        parts.push(String.fromCharCode(65 + i));
-      }
-    }
-    meta[mask - 1] = { indices, label: parts.join("+"), size: indices.length };
+  const meta: SubsetMeta[] = new Array(n);
+  for (let i = 0; i < n; i++) {
+    meta[i] = { indices: [i], label: String.fromCharCode(65 + i), size: 1 };
   }
   return meta;
 }
@@ -243,7 +238,7 @@ export async function runProgressiveAnalysis(
   const totalDates = cutoffDates.length;
 
   // ── 4. Metadatos de subsets ────────────────────────────────────────────────
-  const totalSubsets = (1 << n) - 1;
+  const totalSubsets = n;
   const subsetMeta = buildSubsetMeta(n);
 
   // ── 5. Typed arrays de contadores ─────────────────────────────────────────
@@ -272,6 +267,7 @@ export async function runProgressiveAnalysis(
 
   // Racha de fallos antes de cada acierto (Welford)
   const currentMissStreak  = new Uint16Array(totalSubsets);
+  const maxMissStreak      = new Uint16Array(totalSubsets);
   const preMissCnt         = new Uint16Array(totalSubsets);
   const preMissMean        = new Float64Array(totalSubsets);
   const preMissM2          = new Float64Array(totalSubsets);
@@ -453,6 +449,9 @@ export async function runProgressiveAnalysis(
         missesArr[maskIdx]++;
         historyMap[maskIdx * totalDates + dateIdx] = 0; // Mark as miss
         currentMissStreak[maskIdx]++;
+        if (currentMissStreak[maskIdx]! > maxMissStreak[maskIdx]!) {
+          maxMissStreak[maskIdx] = currentMissStreak[maskIdx]!;
+        }
 
         // Totales día/mes para no-aciertos también (para hit rate relativo)
         if (nextDow >= 0) totByDow[maskIdx * 7 + nextDow]++;
@@ -523,6 +522,8 @@ export async function runProgressiveAnalysis(
     const pmCnt = preMissCnt[i]!;
     const avgPreMiss = pmCnt > 0 ? Math.round(preMissMean[i]!) : 0;
     const stdPreMiss = pmCnt >= 2 ? Math.round(Math.sqrt(preMissM2[i]! / pmCnt)) : 0;
+    const maxPreMiss = maxMissStreak[i]!;
+    const currentMisses = currentMissStreak[i]!;
 
     // Transición H/C
     const tAH = totAfterHit[i]!;
@@ -543,7 +544,7 @@ export async function runProgressiveAnalysis(
       bestDows, bestMonths,
       avgInterval, stdInterval,
       peakBand, p25, p75,
-      avgPreMiss, stdPreMiss,
+      avgPreMiss, stdPreMiss, maxPreMiss, currentMisses,
       hitAfterHit, hitAfterMiss,
       recentHitRate, recentDelta, trend,
     };
@@ -575,16 +576,10 @@ export async function runProgressiveAnalysis(
     };
   };
 
-  const topSubsets = rankOrder.slice(0, TOP_COMBOS_DISPLAY).map((i) => makeSubset(i, true));
-
-  const bestBySize: ProgressiveSubset[] = [];
-  for (let size = 1; size <= n; size++) {
-    const best = rankOrder.find((i) => subsetMeta[i]!.size === size);
-    if (best !== undefined) bestBySize.push(makeSubset(best, true));
-  }
+  const topSubsets = rankOrder.map((i) => makeSubset(i, true));
 
   return {
-    topSubsets, bestBySize, totalSubsets,
+    topSubsets, bestBySize: [], totalSubsets,
     context, startDate, endDate,
     datesAnalyzed: cutoffDates.length,
     totalInRange, topN,
@@ -630,9 +625,9 @@ function formatConditions(c: SubsetConditions, overallHitRate: number): string[]
       : `pico ${c.peakBand}`;
     l2Parts.push(`⏱ ${bandStr} sorteos`);
   }
-  if (c.avgPreMiss > 0) {
+  if (c.avgPreMiss > 0 || c.maxPreMiss > 0) {
     const std = c.stdPreMiss > 0 ? `±${c.stdPreMiss}` : "";
-    l2Parts.push(`🎯 activar tras ~${c.avgPreMiss}${std} fallos`);
+    l2Parts.push(`🎯 act tras ~${c.avgPreMiss}${std} fallos (max: ${c.maxPreMiss}, actual: ${c.currentMisses})`);
   }
   if (l2Parts.length > 0) lines.push(`    ${l2Parts.join("  ")}`);
 
@@ -684,22 +679,20 @@ export function buildProgressiveStrategyMessage(
   const mapLabel = context.mapSource === "p3" ? "P3 (Fijos)" : "P4 (Corridos)";
   const periodLabel = context.period === "m" ? "☀️ Mediodía" : "🌙 Noche";
   const activeGroup = detectActiveGroup(selectedIds, selectableIds);
-  const nS = Math.min(selectedIds.size, PROGRESSIVE_MAX_STRATEGIES);
-  const numCombos = nS >= 1 ? (1 << nS) - 1 : 0;
+  const nS = selectedIds.size;
 
   let selectionStatus: string;
-  if (selectedIds.size === 0) {
+  if (nS === 0) {
     selectionStatus = "_Sin estrategias seleccionadas_";
-  } else if (selectedIds.size === 1) {
-    selectionStatus = `*1* estrategia · *1* combinación a evaluar`;
+  } else if (nS === 1) {
+    selectionStatus = `*1* estrategia a evaluar`;
   } else if (activeGroup) {
     const group = CONSENSUS_GROUPS.find((g) => g.id === activeGroup);
     selectionStatus =
       `Grupo *${group?.label ?? activeGroup.toUpperCase()}* — ` +
-      `${selectedIds.size} estrat. · *${numCombos}* combos`;
+      `${nS} estrategias`;
   } else {
-    selectionStatus =
-      `*${selectedIds.size}* estrategias · *${numCombos}* combinaciones a evaluar`;
+    selectionStatus = `*${nS}* estrategias a evaluar`;
   }
 
   return (
@@ -743,8 +736,7 @@ export function buildProgressiveStrategyKeyboard(
   }
 
   if (selectedIds.size >= 1) {
-    const nS = Math.min(selectedIds.size, PROGRESSIVE_MAX_STRATEGIES);
-    kb.text(`▶️ Analizar (${(1 << nS) - 1} combos)`, "prog_run").row();
+    kb.text(`▶️ Analizar (${selectedIds.size} estrategias)`, "prog_run").row();
   }
   kb.text("❌ Cancelar", "prog_cancel");
   return kb;
@@ -763,50 +755,45 @@ export function buildProgressiveResultMessage(
       : "";
 
   const lines: string[] = [
-    `📊 *Análisis Progresivo* — ${mapLabel} · ${periodLabel}`,
+    `📊 *Matriz Progresiva* — ${mapLabel} · ${periodLabel}`,
     `📅 \`${result.startDate}\` → \`${result.endDate}\``,
-    `🔢 *${result.datesAnalyzed}* fechas${cappedNote} · Top *${result.topN}* · *${result.totalSubsets}* combos`,
+    `🔢 *${result.datesAnalyzed}* fechas${cappedNote} · Top *${result.topN}* · *${result.strategyCount}* estrategias`,
     ``,
-    `*Leyenda de estrategias:*`,
+    `\`EST  | HR%   | AC | MX | ME | PICO  | TND\``,
+    `\`------------------------------------------\``,
   ];
-  for (let i = 0; i < Math.min(strategyLabels.length, result.strategyCount); i++) {
-    lines.push(`  ${String.fromCharCode(65 + i)} = ${strategyLabels[i]}`);
-  }
-  lines.push(
-    ``,
-    `_Condiciones: 📅día · 📆mes · ⏱ventana · 🎯activar tras N fallos_`,
-    `_             🔥H→H hit-tras-hit · ❄️M→H hit-tras-fallo · 📈/📉tendencia_`,
-  );
 
-  // ── Top N combinaciones ────────────────────────────────────────────────────
-  lines.push(``, `🏆 *Top ${Math.min(TOP_COMBOS_DISPLAY, result.topSubsets.length)} combinaciones:*`);
+  const getShortName = (idx: number) => {
+      const full = strategyLabels[idx] || `S${idx}`;
+      let short = full.replace(/[^A-Za-z0-9]/g, "").substring(0, 4).toUpperCase();
+      return short.padEnd(4, " ");
+  };
 
   for (let i = 0; i < result.topSubsets.length; i++) {
     const s = result.topSubsets[i]!;
-    const tot = s.hits + s.misses;
-    const pct = (s.hitRate * 100).toFixed(1);
-    const rank = i === 0 ? "1er" : `#${i + 1}`;
-    lines.push(`\`${s.label.padEnd(14)}\` ${rank.padStart(3)}  ${s.hits}/${tot}  ${pct.padStart(5)}%`);
-    if (s.conditions) {
-      for (const cl of formatConditions(s.conditions, s.hitRate)) lines.push(cl);
-    }
+    const c = s.conditions;
+    if (!c) continue;
+
+    const idx = s.indices[0] ?? 0;
+    const est = getShortName(idx);
+    
+    const pct = (s.hitRate * 100).toFixed(1).padStart(4, " ");
+    const act = c.currentMisses.toString().padStart(2, " ");
+    const mx = c.maxPreMiss.toString().padStart(2, " ");
+    const me = c.avgPreMiss.toString().padStart(2, " ");
+    const pico = (c.peakBand || "-").padEnd(5, " ").substring(0, 5);
+    const tnd = c.trend === "up" ? "📈" : c.trend === "down" ? "📉" : "➡️";
+
+    lines.push(`\`${est} | ${pct}% | ${act} | ${mx} | ${me} | ${pico} \`${tnd}`);
   }
 
-  // ── Mejor por tamaño ───────────────────────────────────────────────────────
-  if (result.bestBySize.length > 1) {
-    lines.push(``, `🥇 *Mejor por número de estrategias:*`);
-    for (const s of result.bestBySize) {
-      const tot = s.hits + s.misses;
-      const pct = (s.hitRate * 100).toFixed(1);
-      lines.push(`\`×${s.indices.length} ${s.label.padEnd(13)}\`  ${s.hits}/${tot}  ${pct.padStart(5)}%`);
-      if (s.conditions) {
-        for (const cl of formatConditions(s.conditions, s.hitRate)) lines.push(cl);
-      }
-    }
+  lines.push(``, `*Leyenda de estrategias:*`);
+  for (let i = 0; i < Math.min(strategyLabels.length, result.strategyCount); i++) {
+    lines.push(`  \`${getShortName(i)}\` = ${strategyLabels[i]}`);
   }
 
   if (result.totalInRange > result.datesAnalyzed) {
-    lines.push(``, `_⚠️ Análisis limitado a ${result.datesAnalyzed} fechas (cap ${PROGRESSIVE_MAX_DATES})._`);
+    lines.push(``, `_⚠️ Análisis limitado a ${PROGRESSIVE_MAX_DATES} fechas._`);
   }
 
   const full = lines.join("\n");
