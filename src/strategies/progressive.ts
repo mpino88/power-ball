@@ -286,114 +286,97 @@ export async function runProgressiveAnalysis(
   // "fecha de inicio de la ventana reciente" como índice
   const recentStart = Math.max(0, totalDates - RECENT_WINDOW);
 
-  // ── 6. Mapa filtrado INCREMENTAL ─────────────────────────────────────────
-  const filteredMap: DateDrawsMap = {};
-  let mapPtr = 0;
-  while (mapPtr < allMapKeys.length && keyTime.get(allMapKeys[mapPtr]!)! < startTime) {
-    filteredMap[allMapKeys[mapPtr]!] = fullMap[allMapKeys[mapPtr]!]!;
-    mapPtr++;
-  }
-
-  // ── Buffers reutilizables para votos ──────────────────────────────────────
-  const voteCounts = new Int32Array(100);
-  const usedNums: number[] = [];
-
-  // ── Loop principal ────────────────────────────────────────────────────────
+  // ── 6. Loop Principal Paralelizado por Estrategia ──────────────────────────
+  let globalCompletedDates = 0;
+  const totalSteps = totalDates * totalSubsets;
   let lastReportedPct = -1;
 
-  for (let dateIdx = 0; dateIdx < cutoffDates.length; dateIdx++) {
-    const cutoffDate = cutoffDates[dateIdx]!;
-    const cutoffTime = keyTime.get(cutoffDate)!;
-    const isRecent = dateIdx >= recentStart;
+  const tryProgress = async () => {
+    if (!onProgress || totalSteps === 0) return;
+    const pct = Math.floor((globalCompletedDates / totalSteps) * 100);
+    if (pct >= lastReportedPct + 10) {
+      lastReportedPct = pct;
+      await onProgress(pct);
+    }
+  };
 
-    // Avance incremental del mapa filtrado
-    while (mapPtr < allMapKeys.length && keyTime.get(allMapKeys[mapPtr]!)! <= cutoffTime) {
-      filteredMap[allMapKeys[mapPtr]!] = fullMap[allMapKeys[mapPtr]!]!;
-      mapPtr++;
+  await Promise.all(effectiveIds.map(async (id, maskIdx) => {
+    const strat = getStrategy(id);
+    if (!strat?.getCandidates) return;
+
+    const localFilteredMap: DateDrawsMap = {};
+    let localMapPtr = 0;
+    while (localMapPtr < allMapKeys.length && keyTime.get(allMapKeys[localMapPtr]!)! < startTime) {
+      localFilteredMap[allMapKeys[localMapPtr]!] = fullMap[allMapKeys[localMapPtr]!]!;
+      localMapPtr++;
     }
 
-    // Siguiente sorteo real
-    const nextDateStr = allValidDates[validIdx.get(cutoffDate)! + 1];
-    if (!nextDateStr) {
-      for (let i = 0; i < totalSubsets; i++) {
-        skippedArr[i]++;
-        historyMap[i * totalDates + dateIdx] = 2; // Mark as skipped
-      }
-      if (onProgress && totalDates > 0) {
-        const pct = Math.floor(((dateIdx + 1) / totalDates) * 100);
-        if (pct >= lastReportedPct + 10) { lastReportedPct = pct; await onProgress(pct); }
-      }
-      continue;
-    }
+    const voteCounts = new Int32Array(100);
+    const usedNums: number[] = [];
 
-    const nextDraw = fullMap[nextDateStr]?.[context.period];
-    if (!nextDraw || nextDraw.length < minLen) {
-      for (let i = 0; i < totalSubsets; i++) {
-        skippedArr[i]++;
-        historyMap[i * totalDates + dateIdx] = 2; // Mark as skipped
-      }
-      if (onProgress && totalDates > 0) {
-        const pct = Math.floor(((dateIdx + 1) / totalDates) * 100);
-        if (pct >= lastReportedPct + 10) { lastReportedPct = pct; await onProgress(pct); }
-      }
-      continue;
-    }
+    for (let dateIdx = 0; dateIdx < cutoffDates.length; dateIdx++) {
+      const cutoffDate = cutoffDates[dateIdx]!;
+      const cutoffTime = keyTime.get(cutoffDate)!;
+      const isRecent = dateIdx >= recentStart;
 
-    const actuals = twoDigitNumbers(nextDraw, context.mapSource);
-    if (actuals.length === 0) {
-      for (let i = 0; i < totalSubsets; i++) {
-        skippedArr[i]++;
-        historyMap[i * totalDates + dateIdx] = 2; // Mark as skipped
-      }
-      if (onProgress && totalDates > 0) {
-        const pct = Math.floor(((dateIdx + 1) / totalDates) * 100);
-        if (pct >= lastReportedPct + 10) { lastReportedPct = pct; await onProgress(pct); }
-      }
-      continue;
-    }
-
-    // día/mes del SORTEO OBJETIVO (una vez por fecha, O(1))
-    const nextDt    = mmddyyToDate(nextDateStr);
-    const nextDow   = nextDt ? nextDt.getDay()    : -1;
-    const nextMonth = nextDt ? nextDt.getMonth()  : -1;
-
-    // Candidatos de todas las estrategias en paralelo
-    const strategyCandidates = await Promise.all(
-      effectiveIds.map(async (id) => {
-        const strat = getStrategy(id);
-        if (!strat?.getCandidates) return null;
-        try { return await strat.getCandidates(context, filteredMap); } catch { return null; }
-      })
-    );
-
-    const actualsSet = new Set(actuals);
-
-    // ── Loop de subsets ────────────────────────────────────────────────────
-    for (let maskIdx = 0; maskIdx < totalSubsets; maskIdx++) {
-      const meta = subsetMeta[maskIdx]!;
-      usedNums.length = 0;
-
-      for (const idx of meta.indices) {
-        const cands = strategyCandidates[idx];
-        if (!cands) continue;
-        for (const num of cands) {
-          if (voteCounts[num] === 0) usedNums.push(num);
-          voteCounts[num]++;
-        }
+      while (localMapPtr < allMapKeys.length && keyTime.get(allMapKeys[localMapPtr]!)! <= cutoffTime) {
+        localFilteredMap[allMapKeys[localMapPtr]!] = fullMap[allMapKeys[localMapPtr]!]!;
+        localMapPtr++;
       }
 
-      if (usedNums.length === 0) {
+      const nextDateStr = allValidDates[validIdx.get(cutoffDate)! + 1];
+      if (!nextDateStr) {
         skippedArr[maskIdx]++;
         historyMap[maskIdx * totalDates + dateIdx] = 2; // Mark as skipped
-        // Reset votes
-        for (const num of usedNums) voteCounts[num] = 0;
+        globalCompletedDates++;
+        await tryProgress();
         continue;
+      }
+
+      const nextDraw = fullMap[nextDateStr]?.[context.period];
+      if (!nextDraw || nextDraw.length < minLen) {
+        skippedArr[maskIdx]++;
+        historyMap[maskIdx * totalDates + dateIdx] = 2; // Mark as skipped
+        globalCompletedDates++;
+        await tryProgress();
+        continue;
+      }
+
+      const actuals = twoDigitNumbers(nextDraw, context.mapSource);
+      if (actuals.length === 0) {
+        skippedArr[maskIdx]++;
+        historyMap[maskIdx * totalDates + dateIdx] = 2; // Mark as skipped
+        globalCompletedDates++;
+        await tryProgress();
+        continue;
+      }
+
+      const nextDt    = mmddyyToDate(nextDateStr);
+      const nextDow   = nextDt ? nextDt.getDay()    : -1;
+      const nextMonth = nextDt ? nextDt.getMonth()  : -1;
+
+      let cands: number[] | null = null;
+      try { cands = await strat.getCandidates(context, localFilteredMap); } catch { cands = null; }
+
+      if (!cands || cands.length === 0) {
+        skippedArr[maskIdx]++;
+        historyMap[maskIdx * totalDates + dateIdx] = 2;
+        globalCompletedDates++;
+        await tryProgress();
+        continue;
+      }
+
+      usedNums.length = 0;
+      for (const num of cands) {
+        if (voteCounts[num] === 0) usedNums.push(num);
+        voteCounts[num]++;
       }
 
       usedNums.sort((a, b) => voteCounts[b]! - voteCounts[a]!);
 
       let isHit = false;
       const limit = Math.min(topN, usedNums.length);
+      const actualsSet = new Set(actuals);
       for (let j = 0; j < limit && !isHit; j++) {
         if (actualsSet.has(usedNums[j]!)) isHit = true;
       }
@@ -465,13 +448,11 @@ export async function runProgressiveAnalysis(
 
         if (isRecent) recentTotal[maskIdx]++;
       }
+      
+      globalCompletedDates++;
+      await tryProgress();
     }
-
-    if (onProgress && totalDates > 0) {
-      const pct = Math.floor(((dateIdx + 1) / totalDates) * 100);
-      if (pct >= lastReportedPct + 10) { lastReportedPct = pct; await onProgress(pct); }
-    }
-  }
+  }));
 
   // ── Construir SubsetConditions desde los arrays acumulados ────────────────
   const buildConditions = (i: number, overallHitRate: number): SubsetConditions => {
