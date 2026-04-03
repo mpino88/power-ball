@@ -3,6 +3,7 @@
  */
 
 import { InlineKeyboard } from "grammy";
+import type { FullAuditReport } from "../infrastructure/api/FloridaLotteryAuditor.js";
 
 /** Límite de bytes de Telegram para callback_data. */
 const TG_CB_MAX = 64;
@@ -40,6 +41,8 @@ export function buildSecurityKeyboard(): InlineKeyboard {
     .text("📊 Ver Leads", "admin_leads")
     .row()
     .text(cacheLabel, "admin_cache_generate")
+    .row()
+    .text("🔍 Auditoría de Datos", "admin_audit_open")
     .row()
     .text("◀️ Volver al menú principal", "security_main");
 }
@@ -149,4 +152,41 @@ export function formatUserLine(
   const name = getUsername(uid) || "—";
   const phone = getPhone(uid);
   return `• \`${uid}\` — ${name} — ${phone ? "📞 " + phone : "—"}`;
+}
+
+// ── Teclados de Auditoría Forense ───────────────────────────────────────────
+
+/** Teclado de resultados de auditoría con opción de reparación. */
+export function buildAuditReportKeyboard(report: FullAuditReport): InlineKeyboard {
+  const hasIssues =
+    report.p3.missing.length > 0 ||
+    report.p3.corrupted.length > 0 ||
+    report.p4.missing.length > 0 ||
+    report.p4.corrupted.length > 0;
+
+  const kb = new InlineKeyboard();
+
+  if (hasIssues) {
+    kb.text("🛠 Reparar Automáticamente", "admin_audit_repair").row();
+  }
+
+  kb.text("🔄 Ejecutar de nuevo", "admin_audit_open").row();
+  kb.text("◀️ Volver a Administrar", "security_open");
+
+  return kb;
+}
+
+/** Teclado de confirmación antes de ejecutar la reparación. */
+export function buildAuditRepairConfirmKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("✅ Confirmar Reparación", "admin_audit_repair_exec")
+    .text("❌ Cancelar", "admin_audit_open");
+}
+
+/** Teclado post-reparación. */
+export function buildAuditRepairDoneKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("🔍 Re-Auditar (Verificar)", "admin_audit_open")
+    .row()
+    .text("◀️ Volver a Administrar", "security_open");
 }

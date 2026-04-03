@@ -81,7 +81,15 @@ import {
   buildUserMenusKeyboard,
   buildPlanMenusKeyboard,
   formatUserLine,
+  buildAuditReportKeyboard,
+  buildAuditRepairConfirmKeyboard,
+  buildAuditRepairDoneKeyboard,
 } from "./keyboards.js";
+import {
+  fullAudit,
+  repairAll,
+  type FullAuditReport,
+} from "../infrastructure/api/FloridaLotteryAuditor.js";
 import { buildMainMenuMessage } from "../menus/keyboards.js";
 import {
   addingUserFlow,
@@ -98,6 +106,9 @@ import {
 } from "./flows.js";
 
 const BUILTIN_MENU_IDS = new Set(["est_grupos", "est_individuales"]);
+
+/** Almacena el último reporte de auditoría por adminId para usarlo en reparación. */
+const lastAuditReport = new Map<number, FullAuditReport>();
 
 /** Límite de bytes de Telegram para callback_data. */
 const TG_CB_MAX = 64;
@@ -1001,6 +1012,179 @@ export async function handleSecurityCallback(
       `\n\n💳 *Formas de pago* (${pmsAfter.length})\n\n` +
       (linesAfter.length ? linesAfter.join("\n") : "_Sin formas de pago._");
     keyboard = new InlineKeyboard().text("➕ Nueva", "admin_pm_new").row().text("◀️ Volver a Administrar", "security_open");
+  // ── Auditoría Forense de Datos ─────────────────────────────────────────────
+  } else if (data === "admin_audit_open") {
+    clearAllFlows(ctx.from.id);
+    result = "🔍 *Auditoría de Datos*\n\n⏳ Descargando PDFs oficiales de Florida Lottery y comparando con la base de datos...\n\n_Esto puede tardar 15-30 segundos._";
+    keyboard = new InlineKeyboard().text("◀️ Cancelar", "security_open");
+
+    // Enviar mensaje de espera primero
+    try {
+      await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+
+    try {
+      const report = await fullAudit();
+      lastAuditReport.set(ctx.from.id, report);
+
+      const p3r = report.p3;
+      const p4r = report.p4;
+
+      const statusIcon = (s: string) => s === "CLEAN" ? "✅" : s === "ERROR" ? "❌" : "⚠️";
+
+      let msg = "🔍 *Auditoría Forense Completada*\n\n";
+
+      // P3 Report
+      msg += `${statusIcon(p3r.status)} *Pick 3*\n`;
+      if (p3r.status === "ERROR") {
+        msg += `  ❌ Error: ${escapeMd(p3r.errorMessage ?? "desconocido")}\n\n`;
+      } else {
+        msg += `  📄 PDF: ${p3r.totalPdf} registros\n`;
+        msg += `  🗄️ DB: ${p3r.totalDb} registros\n`;
+        if (p3r.missing.length > 0) msg += `  🔴 Faltantes: *${p3r.missing.length}*\n`;
+        if (p3r.corrupted.length > 0) msg += `  🟡 Corruptos: *${p3r.corrupted.length}*\n`;
+        if (p3r.extraInDb.length > 0) msg += `  🔵 Extras en DB: ${p3r.extraInDb.length}\n`;
+        if (p3r.status === "CLEAN") msg += `  ✅ _Sin discrepancias_\n`;
+        msg += "\n";
+      }
+
+      // P4 Report
+      msg += `${statusIcon(p4r.status)} *Pick 4*\n`;
+      if (p4r.status === "ERROR") {
+        msg += `  ❌ Error: ${escapeMd(p4r.errorMessage ?? "desconocido")}\n\n`;
+      } else {
+        msg += `  📄 PDF: ${p4r.totalPdf} registros\n`;
+        msg += `  🗄️ DB: ${p4r.totalDb} registros\n`;
+        if (p4r.missing.length > 0) msg += `  🔴 Faltantes: *${p4r.missing.length}*\n`;
+        if (p4r.corrupted.length > 0) msg += `  🟡 Corruptos: *${p4r.corrupted.length}*\n`;
+        if (p4r.extraInDb.length > 0) msg += `  🔵 Extras en DB: ${p4r.extraInDb.length}\n`;
+        if (p4r.status === "CLEAN") msg += `  ✅ _Sin discrepancias_\n`;
+        msg += "\n";
+      }
+
+      // Detalle de las primeras discrepancias (max 10 por tipo)
+      const allMissing = [...p3r.missing.map(d => ({...d, g: "P3"})), ...p4r.missing.map(d => ({...d, g: "P4"}))];
+      const allCorrupt = [...p3r.corrupted.map(d => ({...d, g: "P3"})), ...p4r.corrupted.map(d => ({...d, g: "P4"}))];
+
+      if (allMissing.length > 0) {
+        msg += `🔴 *Detalle Faltantes* (primeros ${Math.min(allMissing.length, 10)}):\n`;
+        for (const d of allMissing.slice(0, 10)) {
+          const pLabel = d.period === "m" ? "☀️" : "🌙";
+          msg += `  ${d.g} ${pLabel} ${d.date} → \`${d.pdfNumbers?.join(",")}\`\n`;
+        }
+        if (allMissing.length > 10) msg += `  _...y ${allMissing.length - 10} más_\n`;
+        msg += "\n";
+      }
+
+      if (allCorrupt.length > 0) {
+        msg += `🟡 *Detalle Corruptos* (primeros ${Math.min(allCorrupt.length, 10)}):\n`;
+        for (const d of allCorrupt.slice(0, 10)) {
+          const pLabel = d.period === "m" ? "☀️" : "🌙";
+          msg += `  ${d.g} ${pLabel} ${d.date}\n    DB: \`${d.dbNumbers?.join(",")}\` → PDF: \`${d.pdfNumbers?.join(",")}\`\n`;
+        }
+        if (allCorrupt.length > 10) msg += `  _...y ${allCorrupt.length - 10} más_\n`;
+        msg += "\n";
+      }
+
+      msg += `⏱ Duración: ${(report.totalDurationMs / 1000).toFixed(1)}s`;
+
+      result = msg;
+      keyboard = buildAuditReportKeyboard(report);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      result = `🔍 *Auditoría de Datos*\n\n❌ *Error fatal:* ${escapeMd(errMsg)}\n\n_Verifica la conectividad a internet y la base de datos._`;
+      keyboard = new InlineKeyboard()
+        .text("🔄 Reintentar", "admin_audit_open")
+        .row()
+        .text("◀️ Volver a Administrar", "security_open");
+    }
+
+    // Ya editamos el mensaje arriba, retornar directo
+    try {
+      await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
+    } catch (e) {
+      if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+    }
+    return null; // ya manejamos la respuesta
+
+  } else if (data === "admin_audit_repair") {
+    const report = lastAuditReport.get(ctx.from.id);
+    if (!report) {
+      result = "⚠️ No hay reporte de auditoría. Ejecuta primero la auditoría.";
+      keyboard = new InlineKeyboard().text("🔍 Ejecutar Auditoría", "admin_audit_open").row().text("◀️ Volver", "security_open");
+    } else {
+      const totalFixes = report.p3.missing.length + report.p3.corrupted.length + report.p4.missing.length + report.p4.corrupted.length;
+      result =
+        `🛠 *Reparación Automática*\n\n` +
+        `Se aplicarán *${totalFixes}* correcciones:\n\n` +
+        `• 🔴 *${report.p3.missing.length + report.p4.missing.length}* registros faltantes → INSERT\n` +
+        `• 🟡 *${report.p3.corrupted.length + report.p4.corrupted.length}* registros corruptos → UPDATE\n\n` +
+        `⚠️ _Los registros "extra en DB" NO se eliminan (solo se reportan)._\n\n` +
+        `¿Confirmas la reparación?`;
+      keyboard = buildAuditRepairConfirmKeyboard();
+    }
+  } else if (data === "admin_audit_repair_exec") {
+    const report = lastAuditReport.get(ctx.from.id);
+    if (!report) {
+      result = "⚠️ Reporte expirado. Ejecuta la auditoría de nuevo.";
+      keyboard = new InlineKeyboard().text("🔍 Ejecutar Auditoría", "admin_audit_open").row().text("◀️ Volver", "security_open");
+    } else {
+      // Enviar mensaje de espera
+      try {
+        await ctx.editMessageText(
+          "🛠 *Reparando base de datos...*\n\n⏳ Aplicando correcciones. Por favor espera.",
+          { parse_mode: "Markdown" }
+        );
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+
+      try {
+        const repairResult = await repairAll(report);
+        lastAuditReport.delete(ctx.from.id);
+
+        const p3r = repairResult.p3;
+        const p4r = repairResult.p4;
+        const totalInserted = p3r.inserted + p4r.inserted;
+        const totalUpdated = p3r.updated + p4r.updated;
+        const totalErrors = p3r.errors.length + p4r.errors.length;
+
+        result =
+          `✅ *Reparación Completada*\n\n` +
+          `📊 *Resultados:*\n\n` +
+          `*Pick 3:*\n` +
+          `  ➕ Insertados: ${p3r.inserted}\n` +
+          `  🔄 Actualizados: ${p3r.updated}\n` +
+          (p3r.errors.length > 0 ? `  ❌ Errores: ${p3r.errors.length}\n` : "") +
+          `  ⏱ ${(p3r.durationMs / 1000).toFixed(1)}s\n\n` +
+          `*Pick 4:*\n` +
+          `  ➕ Insertados: ${p4r.inserted}\n` +
+          `  🔄 Actualizados: ${p4r.updated}\n` +
+          (p4r.errors.length > 0 ? `  ❌ Errores: ${p4r.errors.length}\n` : "") +
+          `  ⏱ ${(p4r.durationMs / 1000).toFixed(1)}s\n\n` +
+          `📈 *Total: ${totalInserted} insertados, ${totalUpdated} actualizados` +
+          (totalErrors > 0 ? `, ${totalErrors} errores` : "") + `*\n\n` +
+          `_Se recomienda ejecutar una re-auditoría para verificar._`;
+        keyboard = buildAuditRepairDoneKeyboard();
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        result = `❌ *Error en reparación:* ${escapeMd(errMsg)}`;
+        keyboard = new InlineKeyboard()
+          .text("🔄 Reintentar", "admin_audit_repair_exec")
+          .row()
+          .text("◀️ Volver a Administrar", "security_open");
+      }
+
+      try {
+        await ctx.editMessageText(result, { parse_mode: "Markdown", reply_markup: keyboard });
+      } catch (e) {
+        if (!(e as Error).message?.includes("message is not modified")) console.error(e);
+      }
+      return null; // ya manejamos la respuesta
+    }
+  // ── fin Auditoría ──────────────────────────────────────────────────────────
   } else {
     result = "🔒 *Seguridad* — Gestiona quién puede usar el bot y sus menús.";
     keyboard = buildSecurityKeyboard();

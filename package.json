@@ -25,6 +25,7 @@
     "dayjs": "^1.11.20",
     "grammy": "^1.28.0",
     "node-cron": "^4.2.1",
+    "pdfjs-dist": "^4.10.38",
     "pg": "^8.20.0"
   },
   "devDependencies": {

@@ -1130,6 +1130,8 @@ bot.on("callback_query:data", async (ctx) => {
       }
       return;
     }
+    // Audit callbacks manejan su propia respuesta (return null = ya editó el mensaje)
+    if (data.startsWith("admin_audit_")) return;
   }
 
   // ── Testing (solo dueño) ──────────────────────────────────────────────────
