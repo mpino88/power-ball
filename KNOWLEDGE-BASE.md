@@ -565,24 +565,22 @@ Los grupos están diseñados para evitar señales redundantes.
 
 ---
 
-### 8.20 Análisis Progresivo — Back-Testing (`progressive`)
+### 8.20 Análisis Progresivo — Matriz (Back-Testing)
 
-**Función exclusiva del owner**. Motor exhaustivo de back-testing.
+**Función exclusiva del owner**. Motor exhaustivo de back-testing convertido en Matriz de alta densidad.
 
 **Algoritmo**:
-1. El usuario define un rango de fechas y selecciona estrategias.
-2. Para cada fecha del rango como punto de corte: construye el mapa filtrado hasta esa fecha, ejecuta getCandidates de todas las estrategias seleccionadas, evalúa TODAS las 2^N-1 combinaciones de estrategias contra el resultado real del siguiente sorteo.
-3. Métricas por combinación:
-   - Hit rate (aciertos / total evaluados).
-   - Mejor día de la semana y mes para aciertos.
-   - Estadísticas de intervalo entre aciertos (media, desviación, histograma, percentiles).
-   - Racha de fallos pre-acierto (media, desviación).
-   - Transiciones H/C: P(acierto | previo=acierto) vs P(acierto | previo=fallo).
-   - Tendencia reciente: hit rate en últimas 50 evaluaciones vs global.
+1. El usuario define un rango de fechas y selecciona estrategias individuales o por grupos.
+2. Para cada fecha del rango como punto de corte: construye el mapa filtrado hasta esa fecha, ejecuta getCandidates de todas las estrategias, evalúa de forma individual cada estrategia contra el resultado real del siguiente sorteo.
+3. Se calcula el histórico de rendimiento. En lugar de generar combinatoria, genera una **Matriz Progresiva** (EST | HR% | AC | MX | ME | PICO | TND).
+4. El sistema trackea métricas críticas de riesgo de ruina: 
+   - `AC` (Actuales Fallos).
+   - `MX` (Máximo Histórico de Fallos consecutivos).
+   - `ME` (Media de fallos previos).
 
-**Parámetros**: Top N candidatos evaluados = 10, máximo 2500 fechas, máximo 15 estrategias.
+**Parámetros**: Máximo 2500 fechas, evalúa ilimitadas estrategias ya que eliminó la O(2^N) complejidad.
 
-**Salida**: Top 10 combinaciones con hit rate y condiciones óptimas detalladas. También "mejor por tamaño" (mejor estrategia individual, mejor par, mejor trío, etc.).
+**Salida**: Tabla condensada de rendimiento que provee toma de decisión instantánea basada en el Riesgo vs Recompensa para elegir qué estrategia aplicar.
 
 ---
 
@@ -740,7 +738,22 @@ La zona horaria de referencia es siempre **America/New_York** (Florida).
 
 ---
 
-## 20. Principios de Rendimiento del Código
+## 20. Motor de Auditoría Forense APEX
+
+Sistema diseñado para garantizar **101% Integridad de Datos**. Verifica quirúrgicamente la DB contra la verdad absoluta de los PDFs oficiales de Florida Lottery.
+
+**Funcionalidades**:
+- **Descarga Resiliente**: Baja históricos en formato PDF con backoff exponencial.
+- **Análisis Comparativo**: Examina toda la BD buscando:
+  - **Faltantes**: Sorteos en el PDF que no están en la BD.
+  - **Corruptos**: Sorteos donde los números extraídos difieren del PDF.
+  - **Extras**: Sorteos locales capturados más rápido (vía scraping u oral) pero no presentes en PDF aún (generalmente el último sorteo de hoy).
+- **Reparación Autónoma**: Dispara peticiones `UPSERT` seguras corrigiendo y forzando la sincronización de cualquier falla encontrada.
+- **Integración UI**: Botón en panel `/admin` con dashboard indicando las fallas precisas y el botón `🛠️ Reparar Automáticamente`.
+
+---
+
+## 21. Principios de Rendimiento del Código
 
 El proyecto sigue reglas estrictas de rendimiento documentadas en `.cursor/rules/performance.mdc`:
 
