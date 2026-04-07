@@ -1,0 +1,64 @@
+📊 *Más salidores x día de la semana* — P3 (Fijos) · ☀️ Mediodía (M)
+Período: 12/01/24 – 12/02/24
+
+📖 _Qué mide:_ te dice directamente cuáles son los 15 números favoritos de cada día de la semana\.
+Formato _##\(n\)_ = número y veces que salió ese día · L=Lun · Ma=Mar · Mi=Mié · J=Jue · V=Vie · S=Sáb · D=Dom
+→ Enfócate en la columna del día que corresponde al PRÓXIMO sorteo estimado
+
+```
+Top 15 por día (formato #(count))
+L          Ma         Mi        
+────────────────────────────────
+89(1)                           
+                                
+                                
+                                
+                                
+                                
+                                
+                                
+                                
+                                
+                                
+                                
+                                
+                                
+                                
+
+J         
+──────────
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+
+V          S          D         
+────────────────────────────────
+                      23(1)     
+                                
+                                
+                                
+                                
+                                
+                                
+                                
+                                
+                                
+                                
+                                
+                                
+                                
+                                
+
+```

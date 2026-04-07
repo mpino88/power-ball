@@ -93,11 +93,24 @@ export async function runStrategy(
       const candidates = await s.getCandidates(context, map);
       if (candidates && candidates.length > 0) {
         const formatted = candidates.map(c => String(c).padStart(2, "0")).join(", ");
+        // Cerrar cualquier bloque de código si hubiera sido truncado
+        if (result.includes("```") && !result.endsWith("```") && !result.includes("```", result.lastIndexOf("```") + 3)) {
+             result += "\n```\n";
+        }
         result += `\n\n🎯 *Candidatos tipo:* ${formatted}`;
+      } else {
+        result += `\n\n🎯 *Candidatos tipo:* (Vacío - Sin resultados detectados)`;
       }
     } catch (e) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      result += `\n\n⚠️ *Error obteniendo candidatos:* ${errMsg}`;
       console.error(`Error appending candidates for strategy ${menuId}:`, e);
     }
+  } else if (!targetStrategies.includes(menuId)) {
+    // Para ver si el IDs son exactamente como creemos
+    result += `\n\n_Nota interna: Estrategia ${menuId} no listada en targetStrategies_`;
+  } else if (!s.getCandidates) {
+    result += `\n\n_Nota interna: Estrategia ${menuId} no implementa getCandidates()_`;
   }
 
   return result;
