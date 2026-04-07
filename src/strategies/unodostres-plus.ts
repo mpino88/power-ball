@@ -299,10 +299,38 @@ export const unodostresPlus: StrategyDefinition = {
     const limit  = typeof context.params?.limit === "number" ? context.params.limit : getStrategiesTopN();
     const ambos  = !!context.params?.ambos;
     const { stats } = computeFibStats(map, context.period, ambos, context.mapSource);
-    return stats
-      .filter((s) => s.appearances > 0 && s.fibScore > 0.01)
-      .sort((a, b) => b.finalScore - a.finalScore)
-      .slice(0, limit)
-      .map((s) => s.num);
+    
+    const inResonance = stats
+      .filter((s) => s.appearances > 0 && s.phase !== "none" && s.fibScore > 0.01)
+      .sort((a, b) => b.finalScore - a.finalScore);
+
+    const major = inResonance.filter((s) => s.phase === "major");
+    const expansion = inResonance.filter((s) => s.phase === "expansion");
+    const early = inResonance.filter((s) => s.phase === "early");
+
+    const lists = [major, expansion, early];
+    const result = new Set<number>();
+
+    let addedSomething = true;
+    let i = 0;
+    while (result.size < limit && addedSomething) {
+      addedSomething = false;
+      for (const list of lists) {
+        if (result.size >= limit) break;
+        if (i < list.length) {
+          result.add(list[i]!.num);
+          addedSomething = true;
+        }
+      }
+      i++;
+    }
+
+    // Fallback
+    for (const s of inResonance) {
+      if (result.size >= limit) break;
+      result.add(s.num);
+    }
+
+    return Array.from(result);
   },
 };

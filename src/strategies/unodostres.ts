@@ -287,10 +287,40 @@ export const unodostres: StrategyDefinition = {
 
   async getCandidates(context: StrategyContext, map: DateDrawsMap): Promise<number[]> {
     const { stats } = computeFibStats(map, context.period, context.mapSource);
-    return stats
-      .filter((s) => s.appearances > 0 && s.fibScore > 0.01)
-      .sort((a, b) => b.finalScore - a.finalScore)
-      .slice(0, getStrategiesTopN())
-      .map((s) => s.num);
+    
+    const inResonance = stats
+      .filter((s) => s.appearances > 0 && s.phase !== "none" && s.fibScore > 0.01)
+      .sort((a, b) => b.finalScore - a.finalScore);
+
+    const major = inResonance.filter((s) => s.phase === "major");
+    const expansion = inResonance.filter((s) => s.phase === "expansion");
+    const early = inResonance.filter((s) => s.phase === "early");
+
+    const lists = [major, expansion, early];
+    const result = new Set<number>();
+    const limit = getStrategiesTopN();
+
+    let addedSomething = true;
+    let i = 0;
+    while (result.size < limit && addedSomething) {
+      addedSomething = false;
+      for (const list of lists) {
+        if (result.size >= limit) break;
+        if (i < list.length) {
+          result.add(list[i]!.num);
+          addedSomething = true;
+        }
+      }
+      i++;
+    }
+
+    // Fallback: Si alguna de las secciones tenía muy pocos candidatos y no llegamos al TopN,
+    // rellenar con los restantes en resonancia usando el orden de mayor score global.
+    for (const s of inResonance) {
+      if (result.size >= limit) break;
+      result.add(s.num);
+    }
+
+    return Array.from(result);
   },
 };

@@ -254,25 +254,53 @@ export const decadeFamily: StrategyDefinition = {
   async getCandidates(context: StrategyContext, map: DateDrawsMap): Promise<number[]> {
     const { families } = computeDecadeFamilies(map, context.period, context.mapSource);
 
-    // Combine: hot families (momentum≥1) get their top nums first, then due families
+    // Definir orden de prioridad para las familias:
+    // 1. Hot (momentum >= 1.0)
+    // 2. Debidas (dueFactor >= 1.0 y no hot)
+    // 3. El resto, ordenado por cantidad total histórica (countAll)
     const byMomentum = [...families]
       .filter((f) => f.momentum >= 1.0 && f.countAll > 0)
-      .sort((a, b) => b.momentum - a.momentum)
-      .slice(0, 4);
+      .sort((a, b) => b.momentum - a.momentum);
 
     const byDue = [...families]
-      .filter((f) => f.dueFactor >= 1.0 && f.countAll > 0)
-      .sort((a, b) => b.dueFactor - a.dueFactor)
-      .slice(0, 3);
+      .filter((f) => f.dueFactor >= 1.0 && f.countAll > 0 && f.momentum < 1.0)
+      .sort((a, b) => b.dueFactor - a.dueFactor);
+
+    const rest = [...families]
+      .filter((f) => f.momentum < 1.0 && f.dueFactor < 1.0 && f.countAll > 0)
+      .sort((a, b) => b.countAll - a.countAll);
+
+    const priorityOrder = [...byMomentum, ...byDue, ...rest];
 
     const seen = new Set<number>();
     const result: number[] = [];
+    const limit = getStrategiesTopN();
 
-    for (const f of [...byMomentum, ...byDue]) {
-      for (const x of f.topNums) {
-        if (!seen.has(x.num)) { seen.add(x.num); result.push(x.num); }
+    // 1ra pasada: tomar los top 3 números de cada familia en orden de prioridad
+    for (const f of priorityOrder) {
+      for (const x of f.topNums.slice(0, 3)) {
+        if (!seen.has(x.num)) {
+          seen.add(x.num);
+          result.push(x.num);
+          if (result.length >= limit) return result;
+        }
       }
     }
-    return result.slice(0, getStrategiesTopN());
+
+    // 2da pasada (fallback): si no llegamos al TopN, tomamos del 4to y 5to número
+    // de las mismas familias para completar la lista
+    if (result.length < limit) {
+      for (const f of priorityOrder) {
+        for (const x of f.topNums.slice(3, 5)) {
+          if (!seen.has(x.num)) {
+            seen.add(x.num);
+            result.push(x.num);
+            if (result.length >= limit) return result;
+          }
+        }
+      }
+    }
+
+    return result;
   },
 };

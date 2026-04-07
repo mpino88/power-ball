@@ -94,7 +94,8 @@ export async function runStrategy(
       if (candidates && candidates.length > 0) {
         const formatted = candidates.map(c => String(c).padStart(2, "0")).join(", ");
         // Cerrar cualquier bloque de código si hubiera sido truncado
-        if (result.includes("```") && !result.endsWith("```") && !result.includes("```", result.lastIndexOf("```") + 3)) {
+        const ticksCount = (result.match(/```/g) || []).length;
+        if (ticksCount % 2 !== 0) {
              result += "\n```\n";
         }
         result += `\n\n🎯 *Candidatos tipo:* ${formatted}`;

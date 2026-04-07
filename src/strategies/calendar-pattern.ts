@@ -201,26 +201,56 @@ export const calendarPattern: StrategyDefinition = {
     const dmKey = `${dow}_${month}`;
 
     const n = getStrategiesTopN();
-    const pickTop = (cmap: Map<number, number>): number[] =>
+    const perGroup = Math.ceil(n / 4);
+
+    const pickTop = (cmap: Map<number, number>, limit: number): number[] =>
       [...cmap.entries()]
         .filter(([, c]) => c > 0)
         .sort((a, b) => b[1] - a[1])
-        .slice(0, n)
+        .slice(0, limit)
         .map(([num]) => num);
 
     const seen = new Set<number>();
     const result: number[] = [];
-    for (const num of [
-      ...pickTop(byDowMonth.get(dmKey) ?? new Map()),
-      ...pickTop(byDow.get(dow) ?? new Map()),
-      ...pickTop(byMonth.get(month) ?? new Map()),
-      ...pickTop(byDom.get(dom) ?? new Map()),
-    ]) {
-      if (!seen.has(num)) {
-        seen.add(num);
-        result.push(num);
+
+    // Primera pasada: extraer equitativamente (TopN / 4) de cada subgrupo
+    const fairLists = [
+      pickTop(byDowMonth.get(dmKey) ?? new Map(), perGroup),
+      pickTop(byDow.get(dow) ?? new Map(), perGroup),
+      pickTop(byMonth.get(month) ?? new Map(), perGroup),
+      pickTop(byDom.get(dom) ?? new Map(), perGroup),
+    ];
+
+    for (const list of fairLists) {
+      for (const num of list) {
+        if (!seen.has(num)) {
+          seen.add(num);
+          result.push(num);
+          if (result.length >= n) return result;
+        }
       }
     }
-    return result.slice(0, n);
+
+    // Segunda pasada (fallback): si hubo repetidos y no llegamos al TopN,
+    // rellenar con lo que quede basándonos en el tope máximo N
+    if (result.length < n) {
+      const fullLists = [
+        pickTop(byDowMonth.get(dmKey) ?? new Map(), n),
+        pickTop(byDow.get(dow) ?? new Map(), n),
+        pickTop(byMonth.get(month) ?? new Map(), n),
+        pickTop(byDom.get(dom) ?? new Map(), n),
+      ];
+      for (const list of fullLists) {
+        for (const num of list) {
+          if (!seen.has(num)) {
+            seen.add(num);
+            result.push(num);
+            if (result.length >= n) return result;
+          }
+        }
+      }
+    }
+
+    return result;
   },
 };

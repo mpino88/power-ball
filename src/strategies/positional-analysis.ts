@@ -390,9 +390,30 @@ export const positionalAnalysis: StrategyDefinition = {
   async getCandidates(context: StrategyContext, map: DateDrawsMap): Promise<number[]> {
     const today = new Date();
     const period = context.period;
+    const limit = getStrategiesTopN();
+
+    function getDiagonalCombinations(left: DigitRow[], right: DigitRow[], maxTarget: number): number[] {
+      const result: number[] = [];
+      const added = new Set<number>();
+      let sum = 0;
+      while (added.size < maxTarget && sum < left.length + right.length) {
+        for (let i = 0; i <= sum; i++) {
+          const j = sum - i;
+          if (i < left.length && j < right.length) {
+            const num = left[i]!.digit * 10 + right[j]!.digit;
+            if (!added.has(num)) {
+              added.add(num);
+              result.push(num);
+              if (added.size >= maxTarget) return result;
+            }
+          }
+        }
+        sum++;
+      }
+      return result;
+    }
 
     if (context.mapSource === "p3") {
-      // P3: collect digit events per position (0=centena, 1=decena, 2=unidad)
       const posEvents: { date: Date; value: number }[][] = [[], [], []];
       for (const dateStr of validDateKeys(map, period, "p3")) {
         const draw = map[dateStr]?.[period];
@@ -404,35 +425,15 @@ export const positionalAnalysis: StrategyDefinition = {
         for (let p = 0; p < 3; p++) posEvents[p]!.push({ date, value: pos[p]! });
       }
 
-      // Top 5 digits per position by count
-      const topDigits = posEvents.map((events) => {
-        const stats = buildStats(events, 9);
-        return toDigitRows(stats, today)
-          .sort((a, b) => b.count - a.count)
-          .slice(0, 5);
-      });
+      // 0=centena, 1=decena, 2=unidad
+      const decRows = toDigitRows(buildStats(posEvents[1]!, 9), today).sort((a, b) => b.count - a.count);
+      const uniRows = toDigitRows(buildStats(posEvents[2]!, 9), today).sort((a, b) => b.count - a.count);
 
-      // Generate 2-digit pairs: pos0×pos1 (ab) and pos1×pos2 (bc)
-      // Score = count_left × count_right
-      const scores = new Map<number, number>();
-      const addPairs = (leftRows: DigitRow[], rightRows: DigitRow[]) => {
-        for (const l of leftRows) {
-          for (const r of rightRows) {
-            const num = l.digit * 10 + r.digit;
-            scores.set(num, (scores.get(num) ?? 0) + l.count * r.count);
-          }
-        }
-      };
-      addPairs(topDigits[0]!, topDigits[1]!); // centena × decena
-      addPairs(topDigits[1]!, topDigits[2]!); // decena × unidad
-
-      return [...scores.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, getStrategiesTopN())
-        .map(([num]) => num);
+      return getDiagonalCombinations(decRows, uniRows, limit);
     } else {
-      // P4: collect pair events per slot (pairIdx 0=AB, 1=CD)
-      const pairEvents: { date: Date; value: number }[][] = [[], []];
+      const decEvents: { date: Date; value: number }[][] = [[], []];
+      const uniEvents: { date: Date; value: number }[][] = [[], []];
+
       for (const dateStr of validDateKeys(map, period, "p4")) {
         const draw = map[dateStr]?.[period];
         if (!draw) continue;
@@ -440,21 +441,29 @@ export const positionalAnalysis: StrategyDefinition = {
         if (!pairs) continue;
         const date = mmddyyToDate(dateStr);
         if (!date) continue;
-        for (let pi = 0; pi < 2; pi++) pairEvents[pi]!.push({ date, value: pairs[pi]! });
-      }
-
-      // Top 10 pairs per slot (already 00-99), merged and deduped by max count
-      const combined = new Map<number, number>();
-      for (const events of pairEvents) {
-        const rows = toPairRows(buildStats(events, 99), today).slice(0, 10);
-        for (const row of rows) {
-          combined.set(row.num, (combined.get(row.num) ?? 0) + row.count);
+        for (let pi = 0; pi < 2; pi++) {
+          const num = pairs[pi]!;
+          decEvents[pi]!.push({ date, value: Math.floor(num / 10) });
+          uniEvents[pi]!.push({ date, value: num % 10 });
         }
       }
-      return [...combined.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, getStrategiesTopN())
-        .map(([num]) => num);
+
+      const decRows0 = toDigitRows(buildStats(decEvents[0]!, 9), today).sort((a, b) => b.count - a.count);
+      const uniRows0 = toDigitRows(buildStats(uniEvents[0]!, 9), today).sort((a, b) => b.count - a.count);
+      const decRows1 = toDigitRows(buildStats(decEvents[1]!, 9), today).sort((a, b) => b.count - a.count);
+      const uniRows1 = toDigitRows(buildStats(uniEvents[1]!, 9), today).sort((a, b) => b.count - a.count);
+
+      const p1Cands = getDiagonalCombinations(decRows0, uniRows0, limit);
+      const p2Cands = getDiagonalCombinations(decRows1, uniRows1, limit);
+
+      const finalCands = new Set<number>();
+      for (let i = 0; i < limit; i++) {
+        if (i < p1Cands.length) finalCands.add(p1Cands[i]!);
+        if (finalCands.size >= limit) break;
+        if (i < p2Cands.length) finalCands.add(p2Cands[i]!);
+        if (finalCands.size >= limit) break;
+      }
+      return Array.from(finalCands);
     }
   },
 };
