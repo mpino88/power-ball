@@ -76,7 +76,31 @@ export async function runStrategy(
   const s = registry.get(menuId);
   if (!s) return `Estrategia _${menuId}_ no implementada.`;
   const map = context.mapSource === "p3" ? await deps.getP3Map() : await deps.getP4Map();
-  return s.run(context, map);
+  
+  let result = await s.run(context, map);
+
+  const targetStrategies = [
+    "max_per_week_day", "freq_analysis", "gap_due", "calendar_pattern",
+    "transition_follow", "trend_momentum", "positional_analysis",
+    "consensus_multi", "est_individuales", "markov_order2",
+    "decade_family", "mirror_complement", "terminal_analysis",
+    "cycle_detector", "streak_analysis", "bayesian_score",
+    "unodostres", "unodostres_plus"
+  ];
+
+  if (targetStrategies.includes(menuId) && s.getCandidates) {
+    try {
+      const candidates = await s.getCandidates(context, map);
+      if (candidates && candidates.length > 0) {
+        const formatted = candidates.map(c => String(c).padStart(2, "0")).join(", ");
+        result += `\n\n🎯 *Candidatos tipo:* ${formatted}`;
+      }
+    } catch (e) {
+      console.error(`Error appending candidates for strategy ${menuId}:`, e);
+    }
+  }
+
+  return result;
 }
 
 /**
