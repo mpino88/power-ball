@@ -740,6 +740,10 @@ export function buildProgressiveResultMessage(
     `📅 \`${result.startDate}\` → \`${result.endDate}\``,
     `🔢 *${result.datesAnalyzed}* fechas${cappedNote} · Top *${result.topN}* · *${result.strategyCount}* estrategias`,
     ``,
+    `📝 *Leyenda de columnas:*`,
+    `_HR%: Aciertos_ · _AC: Fallos actuales_ · _MX: Max fallos_`,
+    `_ME: Media de fallos_ · _PICO: Intervalo de mayor salida_`,
+    ``,
     `\`EST  | HR%   | AC | MX | ME | PICO  | TND\``,
     `\`------------------------------------------\``,
   ];
