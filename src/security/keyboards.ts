@@ -42,9 +42,26 @@ export function buildSecurityKeyboard(): InlineKeyboard {
     .row()
     .text(cacheLabel, "admin_cache_generate")
     .row()
+    .text("⚙️ Configurar Top N Global", "admin_global_topn_open")
+    .row()
     .text("🔍 Auditoría de Datos", "admin_audit_open")
     .row()
     .text("◀️ Volver al menú principal", "security_main");
+}
+
+export function buildGlobalTopNKeyboard(currentVal: number): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  const options = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
+  
+  for (let i = 0; i < options.length; i++) {
+    const val = options[i];
+    const text = val === currentVal ? `✅ ${val}` : `${val}`;
+    kb.text(text, `admin_global_topn_set_${val}`);
+    if ((i + 1) % 5 === 0) kb.row();
+  }
+  
+  kb.text("◀️ Volver a Administrar", "security_open");
+  return kb;
 }
 
 export function buildManagePlansKeyboard(): InlineKeyboard {

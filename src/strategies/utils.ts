@@ -16,7 +16,13 @@ import type { DateDrawsMap, StrategyContext, StrategyMapSource, StrategyPeriod }
  * Antes de ejecutar cualquier estrategia, envolver con runWithUserTopN(userId, fn).
  * ──────────────────────────────────────────────────────────────────────────────
  */
-export const DEFAULT_STRATEGIES_TOP_N = 15;
+export let DEFAULT_STRATEGIES_TOP_N = 15;
+
+export function setGlobalStrategiesTopN(n: number): void {
+  if (n >= 5 && n <= 50) {
+    DEFAULT_STRATEGIES_TOP_N = n;
+  }
+}
 
 /** Mapa userId → topN configurado por ese usuario. */
 const _userTopNMap = new Map<number, number>();
@@ -53,7 +59,7 @@ export function runWithUserTopN<T>(userId: number, fn: () => Promise<T>): Promis
 
 // ── Alias de compatibilidad (mantiene firma vieja, opera sobre el default) ─────
 /** @deprecated Usar setUserTopN(userId, n). Solo usado como fallback interno. */
-export function setStrategiesTopN(n: number): void {
+export function setStrategiesTopN(_n: number): void {
   // no-op: la configuración ahora es por usuario
 }
 

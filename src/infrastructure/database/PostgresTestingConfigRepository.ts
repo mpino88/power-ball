@@ -39,3 +39,32 @@ export async function loadTestingCutoffDatePG(userId: number): Promise<string | 
     return null;
   }
 }
+
+export async function saveGlobalTopNPG(n: number): Promise<void> {
+  const pool = getDbPool();
+  const key = "global_top_n";
+  try {
+    await pool.query(
+      "INSERT INTO testing_config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value",
+      [key, String(n)]
+    );
+    console.log("[PostgresTestingConfigRepository] Saved global_top_n:", n);
+  } catch (e) {
+    console.error("[PostgresTestingConfigRepository] Error saving global_top_n:", e);
+    throw e;
+  }
+}
+
+export async function loadGlobalTopNPG(): Promise<number | null> {
+  const pool = getDbPool();
+  const key = "global_top_n";
+  try {
+    const { rows } = await pool.query("SELECT value FROM testing_config WHERE key=$1", [key]);
+    if (!rows.length) return null;
+    const val = parseInt(rows[0].value, 10);
+    return Number.isNaN(val) ? null : val;
+  } catch (e) {
+    console.error("[PostgresTestingConfigRepository] Error loading global_top_n:", e);
+    return null;
+  }
+}

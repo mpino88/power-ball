@@ -232,6 +232,28 @@ export async function handleSecurityCallback(
     generatingCacheFlow.set(ctx.from.id, { step: 1 });
     result = "💎 *Generar Candidatos Cache*\n\n🚀 Indique la cantidad de candidatos *máximos* que cada estrategia debe pre-calcular (ej: 20).\n\n💡 _Un número mayor aumenta la cobertura (hits) pero requiere más recursos de procesamiento._\n\n/cancel para abortar.";
     keyboard = new InlineKeyboard().text("◀️ Cancelar", "security_open");
+  } else if (data === "admin_global_topn_open") {
+    clearAllFlows(ctx.from.id);
+    const { loadGlobalTopN } = await import("../user-config.js");
+    const { DEFAULT_STRATEGIES_TOP_N } = await import("../strategies/utils.js");
+    const currentVal = (await loadGlobalTopN()) ?? DEFAULT_STRATEGIES_TOP_N;
+    const { buildGlobalTopNKeyboard } = await import("./keyboards.js");
+    result = `⚙️ *Configurar Top N Global*\n\nEste es el número por defecto de prospectos extraídos por cada estrategia cuando no hay sesión de usuario activa (ej. para calcular el social proof después de un sorteo y para la pre-generación *Caché Apex*).\n\n🔹 *Actual:* ${currentVal}`;
+    keyboard = buildGlobalTopNKeyboard(currentVal);
+  } else if (data.startsWith("admin_global_topn_set_")) {
+    const val = parseInt(data.replace("admin_global_topn_set_", ""), 10);
+    if (!Number.isNaN(val)) {
+      const { saveGlobalTopN } = await import("../user-config.js");
+      const { setGlobalStrategiesTopN } = await import("../strategies/utils.js");
+      await saveGlobalTopN(val);
+      setGlobalStrategiesTopN(val);
+      const { buildGlobalTopNKeyboard } = await import("./keyboards.js");
+      result = `✅ *Top N Global actualizado a ${val}*.\n\nEste será el número de prospectos que se usarán por defecto.`;
+      keyboard = buildGlobalTopNKeyboard(val);
+    } else {
+      result = "Error al actualizar. Vuelve a intentar.";
+      keyboard = buildSecurityKeyboard();
+    }
   } else if (data === "admin_list" || data.startsWith("admin_list_p:")) {
     await reloadConfigFromStorage();
     const PAGE_SIZE = 20;

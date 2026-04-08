@@ -97,6 +97,18 @@ export async function initUserConfig(): Promise<void> {
   console.log("[user-config] PostgreSQL Backend Activado.");
   const pg = await import("./infrastructure/database/PostgresUserSync.js");
   config = await pg.loadUsersFromPG();
+
+  try {
+    const testingRepo = await import("./infrastructure/database/PostgresTestingConfigRepository.js");
+    const globalTopN = await testingRepo.loadGlobalTopNPG();
+    if (globalTopN !== null) {
+      const utils = await import("./strategies/utils.js");
+      utils.setGlobalStrategiesTopN(globalTopN);
+      console.log(`[user-config] Top N Global cargado: ${globalTopN}`);
+    }
+  } catch (e) {
+    console.error("[user-config] Error al cargar global_top_n:", e);
+  }
 }
 
 // ─── Strategies ──────────────────────────────────────────────────────────────
@@ -703,6 +715,16 @@ export async function saveTestingCutoffDate(date: string | null, userId: number)
 export async function loadTestingCutoffDate(userId: number): Promise<string | null> {
   const pg = await import("./infrastructure/database/PostgresTestingConfigRepository.js");
   return pg.loadTestingCutoffDatePG(userId);
+}
+
+export async function saveGlobalTopN(n: number): Promise<void> {
+  const pg = await import("./infrastructure/database/PostgresTestingConfigRepository.js");
+  return pg.saveGlobalTopNPG(n);
+}
+
+export async function loadGlobalTopN(): Promise<number | null> {
+  const pg = await import("./infrastructure/database/PostgresTestingConfigRepository.js");
+  return pg.loadGlobalTopNPG();
 }
 
 // ─── Sugerencias ─────────────────────────────────────────────────────────────
