@@ -257,7 +257,7 @@ async function reloadStrategiesIfStale(): Promise<void> {
 function buildHelpText(userId: number | undefined, planName: string): string {
   const safePlan = escapeMd(planName);
   const currentExpiryStr = userId ? getPlanExpiry(userId) : undefined;
-  
+
   let expiryInfo = "";
   if (currentExpiryStr) {
     const d = parseMMDDYY(currentExpiryStr);
@@ -265,12 +265,12 @@ function buildHelpText(userId: number | undefined, planName: string): string {
       const today = dayjs().startOf("day");
       const target = dayjs(d).startOf("day");
       const diffDays = target.diff(today, "day");
-      
+
       if (diffDays > 30) {
         const diffMonths = target.diff(today, "month");
         const targetMinusMonths = target.subtract(diffMonths, "month");
         const remainDays = targetMinusMonths.diff(today, "day");
-        
+
         let timeStr = `${diffMonths} mes${diffMonths > 1 ? "es" : ""}`;
         if (remainDays > 0) {
           timeStr += ` y ${remainDays} día${remainDays > 1 ? "s" : ""}`;
@@ -1790,7 +1790,7 @@ bot.on("callback_query:data", async (ctx) => {
         let lockedMsg = `🔒 *${safeLabel}*\n\n`;
         if (desc) lockedMsg += `_${escapeMd(desc.replace(/[*_]/g, ""))}_\n\n`;
         lockedMsg += "⚠️ Para ver los resultados de esta estrategia debes adquirir un plan.\n\n" +
-                     "📋 _Elige un plan para desbloquear todas las estrategias y funciones avanzadas._";
+          "📋 _Elige un plan para desbloquear todas las estrategias y funciones avanzadas._";
         const lockedKb = new InlineKeyboard()
           .text("📋 Ver Planes", "ver_planes_open").row()
           .text("◀️ Volver a Estrategias", ESTRATEGIAS_OPEN_CALLBACK).row()
@@ -3017,7 +3017,7 @@ bot.on("callback_query:data", async (ctx) => {
       msg += `_${escapeMd(desc.replace(/[*_]/g, ""))}_\n\n`;
     }
     msg += "⚠️ Para ver los resultados de esta estrategia debes adquirir un plan.\n\n" +
-           "📋 _Elige un plan para desbloquear todas las estrategias y funciones avanzadas._";
+      "📋 _Elige un plan para desbloquear todas las estrategias y funciones avanzadas._";
     const kb = new InlineKeyboard()
       .text("📋 Ver Planes", "ver_planes_open").row()
       .text("◀️ Volver a Estrategias", ESTRATEGIAS_OPEN_CALLBACK).row()
@@ -3045,7 +3045,7 @@ bot.on("callback_query:data", async (ctx) => {
         msg += `_${escapeMd(desc.replace(/[*_]/g, ""))}_\n\n`;
       }
       msg += "⚠️ Para ver los resultados de esta estrategia debes adquirir un plan.\n\n" +
-             "📋 _Elige un plan para desbloquear todas las estrategias y funciones avanzadas._";
+        "📋 _Elige un plan para desbloquear todas las estrategias y funciones avanzadas._";
       const kb = new InlineKeyboard()
         .text("📋 Ver Planes", "ver_planes_open").row()
         .text("◀️ Volver a Estrategias", ESTRATEGIAS_OPEN_CALLBACK).row()
@@ -4190,7 +4190,7 @@ async function main(): Promise<void> {
       }
 
       const defaults = new Map([
-        ["pro", "Acceso total a estadísticas avanzadas, análisis predictivo profundo, resultados diarios en tiempo real y herramientas especializadas para maximizar tus aciertos."],
+        ["pro", "Acceso total a estadísticas avanzadas, análisis predictivo profundo, resultados diarios en tiempo real y herramientas especializadas para maximizar tus aciertos. También puedes comercializar tus estrategias en la tienda."],
         ["trial", "Explora gratis todo el potencial de Ball Bot por 7 días y transforma tu forma de jugar."]
       ]);
 
