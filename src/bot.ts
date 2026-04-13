@@ -4181,6 +4181,7 @@ async function main(): Promise<void> {
     if (planRows.length > 0) {
       setPlanDbPersist((items) => savePlansToDB(items));
       // Auto-update descripciones de planes por defecto
+      let modified = false;
       // Eliminar el plan "basico" si aún existe
       const basicoIndex = planRows.findIndex((r) => r.id === "basico");
       if (basicoIndex !== -1) {

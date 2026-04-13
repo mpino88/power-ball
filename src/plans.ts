@@ -198,7 +198,7 @@ const DEFAULT_PLANS: Plan[] = [
     id: "pro",
     title: "Pro",
     description:
-      "Acceso total a estadísticas avanzadas, análisis predictivo profundo, resultados diarios en tiempo real y herramientas especializadas para maximizar tus aciertos.",
+      "Acceso total a estadísticas avanzadas, análisis predictivo profundo, resultados diarios en tiempo real y herramientas especializadas para maximizar tus aciertos. También puedes comercializar tus estrategias en la tienda.",
     price: "",
     menuIds: ["est_grupos", "est_individuales"],
   },
