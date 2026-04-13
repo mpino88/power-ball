@@ -191,7 +191,7 @@ export function buildEstrategiasKeyboard(userId: number | undefined, deps: MainK
   } else {
     // ── Usuario sin plan: catálogo PRO como vitrina ──
     // Buscar el plan PRO y mostrar sus estrategias con 🔒
-    const proPlan = deps.getPlanByTitle?.("Pro");
+    const proPlan = deps.getPlanByTitle?.("Premium");
     const proMenuIds = proPlan?.menuIds ?? [];
     const allStratIds = proMenuIds.length > 0
       ? extraIds.filter((id) => id !== CONSENSUS_MENU_ID && proMenuIds.includes(id))

@@ -863,11 +863,11 @@ export async function handleSecurityCallback(
         import("../referrals.js").then(async m => {
           const referrerId = await m.rewardReferrer(userId);
           if (referrerId) {
-             const { extendPlanByOneMonth } = await import("../user-config.js");
-             await extendPlanByOneMonth(referrerId);
-             try {
-                await ctx.api.sendMessage(referrerId, "🎉 *¡Recompensa de Referido!*\n\n¡Un amigo se ha unido usando tu enlace y adquirió un plan!\n\nComo premio, te hemos agragado **1 MES GRATIS** 🎁 a tu suscripción activa. ¡Disfrútalo!", { parse_mode: "Markdown" });
-             } catch(e) {}
+            const { extendPlanByOneMonth } = await import("../user-config.js");
+            await extendPlanByOneMonth(referrerId);
+            try {
+              await ctx.api.sendMessage(referrerId, "🎉 *¡Recompensa de Referido!*\n\n¡Un amigo se ha unido usando tu enlace y adquirió un plan!\n\nComo premio, te hemos agragado **1 MES GRATIS** 🎁 a tu suscripción activa. ¡Disfrútalo!", { parse_mode: "Markdown" });
+            } catch (e) { }
           }
         }).catch(console.error);
         const menuInfo = planMenuIds.length > 0 ? ` Menús del plan: ${planMenuIds.join(", ")}.` : "";
@@ -1034,7 +1034,7 @@ export async function handleSecurityCallback(
       `\n\n💳 *Formas de pago* (${pmsAfter.length})\n\n` +
       (linesAfter.length ? linesAfter.join("\n") : "_Sin formas de pago._");
     keyboard = new InlineKeyboard().text("➕ Nueva", "admin_pm_new").row().text("◀️ Volver a Administrar", "security_open");
-  // ── Auditoría Forense de Datos ─────────────────────────────────────────────
+    // ── Auditoría Forense de Datos ─────────────────────────────────────────────
   } else if (data === "admin_audit_open") {
     clearAllFlows(ctx.from.id);
     result = "🔍 *Auditoría de Datos*\n\n⏳ Descargando PDFs oficiales de Florida Lottery y comparando con la base de datos...\n\n_Esto puede tardar 15-30 segundos._";
@@ -1087,8 +1087,8 @@ export async function handleSecurityCallback(
       }
 
       // Detalle de las primeras discrepancias (max 10 por tipo)
-      const allMissing = [...p3r.missing.map(d => ({...d, g: "P3"})), ...p4r.missing.map(d => ({...d, g: "P4"}))];
-      const allCorrupt = [...p3r.corrupted.map(d => ({...d, g: "P3"})), ...p4r.corrupted.map(d => ({...d, g: "P4"}))];
+      const allMissing = [...p3r.missing.map(d => ({ ...d, g: "P3" })), ...p4r.missing.map(d => ({ ...d, g: "P4" }))];
+      const allCorrupt = [...p3r.corrupted.map(d => ({ ...d, g: "P3" })), ...p4r.corrupted.map(d => ({ ...d, g: "P4" }))];
 
       if (allMissing.length > 0) {
         msg += `🔴 *Detalle Faltantes* (primeros ${Math.min(allMissing.length, 10)}):\n`;
@@ -1206,7 +1206,7 @@ export async function handleSecurityCallback(
       }
       return null; // ya manejamos la respuesta
     }
-  // ── fin Auditoría ──────────────────────────────────────────────────────────
+    // ── fin Auditoría ──────────────────────────────────────────────────────────
   } else {
     result = "🔒 *Seguridad* — Gestiona quién puede usar el bot y sus menús.";
     keyboard = buildSecurityKeyboard();
@@ -1262,7 +1262,7 @@ export async function handleEstrategiasUserCallback(
     const userPlanForVis = getPlan(userId) ?? "";
     const isProUser = isOwnerUser || userPlanForVis.toLowerCase().includes("pro");
     if (!isProUser) {
-      result += "\n\n💡 _Para publicar tus estrategias en la tienda debes moverte al plan Pro._";
+      result += "\n\n💡 _Para publicar tus estrategias en la tienda debes moverte al plan Premium._";
       keyboard.text("🌐 Visibilidad (pública/privada)", "estrategias_visibility").row();
       keyboard.text("◀️ Volver", "volver").row().text("⬆️ Cambiar Plan", "cambiar_plan_open");
     } else {
@@ -1335,7 +1335,7 @@ export async function handleEstrategiasUserCallback(
     keyboard = new InlineKeyboard();
     if (!isProPlan) {
       // Plan Básico: mostrar aviso de upgrade y solo botón de volver
-      result += "⚠️ _Debes adquirir un plan Pro para poder comercializar estrategias._";
+      result += "⚠️ _Debes adquirir un plan Premium para poder comercializar estrategias._";
     } else if (hasAccess) {
       result += "✅ *Ya tienes acceso a esta estrategia.*";
     } else {
@@ -1393,7 +1393,7 @@ export async function handleEstrategiasUserCallback(
     const isProUser = isOwnerUser || userPlanForVis.toLowerCase().includes("pro");
 
     if (!isProUser) {
-      result = "🌐 *Visibilidad (pública/privada)*\n\n⚠️ Solo los usuarios con *Plan Pro* pueden publicar sus estrategias en la tienda y hacerlas visibles a otros usuarios.\n\nActualiza tu plan para desbloquear esta funcionalidad.";
+      result = "🌐 *Visibilidad (pública/privada)*\n\n⚠️ Solo los usuarios con *Plan Premium* pueden publicar sus estrategias en la tienda y hacerlas visibles a otros usuarios.\n\nActualiza tu plan para desbloquear esta funcionalidad.";
       keyboard = new InlineKeyboard()
         .text("◀️ Volver a Gestionar", "estrategias_manage").row()
         .text("⬆️ Cambiar Plan", "cambiar_plan_open");

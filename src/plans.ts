@@ -196,7 +196,7 @@ export function titleToPlanId(title: string): string {
 const DEFAULT_PLANS: Plan[] = [
   {
     id: "pro",
-    title: "Pro",
+    title: "Premium",
     description:
       "Acceso total a estadísticas avanzadas, análisis predictivo profundo, resultados diarios en tiempo real y herramientas especializadas para maximizar tus aciertos. También puedes comercializar tus estrategias en la tienda.",
     price: "",

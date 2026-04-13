@@ -8,7 +8,7 @@ import { getDbPool } from "./infrastructure/database/PostgresConnection.js";
 export async function registerReferral(referrer_id: number, referred_id: number): Promise<boolean> {
   if (!process.env.DATABASE_URL) return false;
   if (referrer_id === referred_id) return false; // Noping
-  
+
   const pool = getDbPool();
   try {
     await pool.query(
@@ -39,7 +39,7 @@ export async function rewardReferrer(referred_id: number): Promise<number | null
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    
+
     // 1. Bloquear registro y evitar que otros workers lo reclamen a la misma vez
     const refRes = await client.query(
       `SELECT id, referrer_id FROM referrals 
