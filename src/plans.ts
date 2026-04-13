@@ -195,18 +195,10 @@ export function titleToPlanId(title: string): string {
 /** Planes por defecto si no existe data/plans.json o está vacío. */
 const DEFAULT_PLANS: Plan[] = [
   {
-    id: "basico",
-    title: "Básico",
-    description:
-      "Resultados diarios + Estadísticas esenciales (frecuencias, alzas y atrasos) para jugar inteligentemente.",
-    price: "",
-    menuIds: ["est_grupos"],
-  },
-  {
     id: "pro",
     title: "Pro",
     description:
-      "Plan Básico + Top 10 Hot, rachas, ciclos y análisis avanzado para maximizar tus aciertos.",
+      "Acceso total a estadísticas avanzadas, análisis predictivo profundo, resultados diarios en tiempo real y herramientas especializadas para maximizar tus aciertos.",
     price: "",
     menuIds: ["est_grupos", "est_individuales"],
   },
@@ -226,7 +218,7 @@ export function initPlans(): Plan[] {
   if (plans.length === 0) {
     plans = DEFAULT_PLANS.map((p) => ({ ...p, menuIds: p.menuIds ? [...p.menuIds] : [] }));
     save();
-    console.log("[plans] Creados planes por defecto: Básico, Pro.");
+    console.log("[plans] Creados planes por defecto: Pro, Trial.");
   }
   return [...plans];
 }

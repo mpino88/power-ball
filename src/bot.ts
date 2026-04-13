@@ -4181,10 +4181,15 @@ async function main(): Promise<void> {
     if (planRows.length > 0) {
       setPlanDbPersist((items) => savePlansToDB(items));
       // Auto-update descripciones de planes por defecto
-      let modified = false;
+      // Eliminar el plan "basico" si aún existe
+      const basicoIndex = planRows.findIndex((r) => r.id === "basico");
+      if (basicoIndex !== -1) {
+        planRows.splice(basicoIndex, 1);
+        modified = true;
+      }
+
       const defaults = new Map([
-        ["basico", "Resultados diarios + Estadísticas esenciales (frecuencias, alzas y atrasos) para jugar inteligentemente."],
-        ["pro", "Plan Básico + Top 10 Hot, rachas, ciclos y análisis avanzado para maximizar tus aciertos. Ya puedes comercializar tus estrategias en la tienda"],
+        ["pro", "Acceso total a estadísticas avanzadas, análisis predictivo profundo, resultados diarios en tiempo real y herramientas especializadas para maximizar tus aciertos."],
         ["trial", "Explora gratis todo el potencial de Ball Bot por 7 días y transforma tu forma de jugar."]
       ]);
 
@@ -4200,6 +4205,7 @@ async function main(): Promise<void> {
       // Si los planes estaban duplicados (porque planRows tiene menos elementos que la hoja original
       // gracias al Set deduplicador de loadPlansFromDB) o si se modificó alguna descripción:
       if (modified) {
+        // savePlansToDB sobreescribe todos los planes, eliminando así "basico" de la base de datos si fue removido del array
         await savePlansToDB(planRows);
         console.log("[plans] Sincronizadas descripciones actualizadas (y desduplicadas) a PostgreSQL.");
       }

@@ -266,7 +266,7 @@ export async function handleSecurityCallback(
     // Lista única de todos para mostrar: Dueños + Permitidos
     const list = Array.from(new Set([...ownersList, ...allowed]));
 
-    let basicoCount = 0;
+    let trialCount = 0;
     let proCount = 0;
     list.forEach((uid) => {
       if (ownerIdsSet.has(uid)) return; // Los admins se cuentan aparte
@@ -275,7 +275,7 @@ export async function handleSecurityCallback(
       const p = rawPlan.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
       if (p.includes("pro")) proCount++;
-      else if (p.includes("basico") || p.includes("trial")) basicoCount++;
+      else if (p.includes("trial")) trialCount++;
     });
     const adminCount = ownerIdsSet.size;
 
@@ -294,7 +294,7 @@ export async function handleSecurityCallback(
     });
     const pageInfo = totalPages > 1 ? ` — pág. ${safePage + 1}/${totalPages}` : "";
     result =
-      `👥 *Listar usuarios* (${list.length}) — 🥉Básico(${basicoCount}) 🥈Pro(${proCount}) 👑Admin(${adminCount})${pageInfo}\n\n` +
+      `👥 *Listar usuarios* (${list.length}) — 🥉Trial(${trialCount}) 🥈Pro(${proCount}) 👑Admin(${adminCount})${pageInfo}\n\n` +
       "Toda la info del usuario. Usa *Agregar acceso* o *Quitar acceso* para gestionar.\n\n" +
       (lines.length ? lines.join("\n\n") : "_Ningún usuario con acceso_.");
     keyboard = new InlineKeyboard();
