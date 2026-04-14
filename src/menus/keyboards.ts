@@ -113,8 +113,12 @@ export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboard
     if (isOwnerUser) return true;
     return userMenus.includes(id);
   });
+  const planTitle = deps.getPlan?.(uid);
+  const plan = planTitle ? deps.getPlanByTitle?.(planTitle) : undefined;
+  const planMenuIds = plan?.menuIds ?? [];
+
   const hasConsensus = extraIds.includes(CONSENSUS_MENU_ID) && (
-    ownerId === null || isOwnerUser || userMenus.includes(CONSENSUS_MENU_ID)
+    ownerId === null || isOwnerUser || userMenus.includes(CONSENSUS_MENU_ID) || planMenuIds.includes(CONSENSUS_MENU_ID)
   );
 
   // Estrategias siempre visible: usuarios con plan ven las suyas,
@@ -170,10 +174,15 @@ export function buildEstrategiasKeyboard(userId: number | undefined, deps: MainK
 
   if (userHasPlan) {
     // ── Usuario con plan: ve sus estrategias asignadas (plan + adquiridas) ──
+    const planTitle = deps.getPlan?.(uid);
+    const plan = planTitle ? deps.getPlanByTitle?.(planTitle) : undefined;
+    const planMenuIds = plan?.menuIds ?? [];
+    const userMenus = deps.getExtraMenus(uid);
+
     const showExtra = extraIds.filter((id) => {
       if (id === CONSENSUS_MENU_ID) return false;
-      if (ownerId === null) return true;
-      return deps.getExtraMenus(uid).includes(id);
+      if (ownerId === null || isOwnerUser) return true;
+      return userMenus.includes(id) || planMenuIds.includes(id);
     });
 
     for (const id of showExtra) {
