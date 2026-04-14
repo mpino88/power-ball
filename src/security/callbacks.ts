@@ -1328,7 +1328,7 @@ export async function handleEstrategiasUserCallback(
     const createdBy = (userId !== undefined) ? deps.getMenuCreatedBy?.(menuId) : undefined;
     const hasAccess = (userId !== undefined) && (deps.getExtraMenus(userId).includes(menuId) || createdBy === userId || deps.isOwner(userId));
 
-    // Verificar si tiene plan Pro (dueños siempre pasan)
+    // Verificar si tiene plan Premium (dueños siempre pasan)
     const userPlan = userId !== undefined ? getPlan(userId) ?? "" : "";
     const isProPlan = deps.isOwner(userId ?? 0) || userPlan.toLowerCase().includes("pro");
 

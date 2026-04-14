@@ -233,8 +233,8 @@ export function getPlanById(id: string): Plan | undefined {
 
 /** Busca un plan por título. */
 export function getPlanByTitle(title: string): Plan | undefined {
-  const t = title.trim();
-  return plans.find((p) => p.title.trim() === t);
+  const t = title.trim().toLowerCase();
+  return plans.find((p) => p.title.trim().toLowerCase() === t);
 }
 
 export function addPlan(

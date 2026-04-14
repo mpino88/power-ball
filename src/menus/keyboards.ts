@@ -199,7 +199,7 @@ export function buildEstrategiasKeyboard(userId: number | undefined, deps: MainK
     kb.row().text("⚙️ Gestionar estrategias", "estrategias_manage");
   } else {
     // ── Usuario sin plan: catálogo PRO como vitrina ──
-    // Buscar el plan PRO y mostrar sus estrategias con 🔒
+    // Buscar el plan PREMIUM y mostrar sus estrategias con 🔒
     const proPlan = deps.getPlanByTitle?.("Premium");
     const proMenuIds = proPlan?.menuIds ?? [];
     const allStratIds = proMenuIds.length > 0

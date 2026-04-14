@@ -1,7 +1,7 @@
 import { getDbPool } from "./infrastructure/database/PostgresConnection.js";
 
 /**
- * Registra un referido inicial. El plan pro se otorgará cuando se apruebe su suscripción.
+ * Registra un referido inicial. El plan premium se otorgará cuando se apruebe su suscripción.
  * @param referrer_id ID de quien invitó.
  * @param referred_id ID del nuevo usuario.
  */
@@ -30,7 +30,7 @@ export async function registerReferral(referrer_id: number, referred_id: number)
 }
 
 /**
- * Otorgar recompensa (1 mes de Plan Pro) al referido (llamado al aprobar una solicitud de pago).
+ * Otorgar recompensa (1 mes de Premium) al referido (llamado al aprobar una solicitud de pago).
  * Se usa SELECT FOR UPDATE SKIP LOCKED para proteger contra Conditions de Carrera (F-009).
  */
 export async function rewardReferrer(referred_id: number): Promise<number | null> {

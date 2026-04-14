@@ -1582,7 +1582,7 @@ bot.on("callback_query:data", async (ctx) => {
 
     const msg = `🔗 *Tu Enlace de Referido VIP*\n\n` +
       `Comparte este enlace con tus amigos:\n\`${link}\`\n\n` +
-      `🎁 *Recompensa:* Si un amigo se registra usando tu enlace y luego adquiere un plan, **tú recibirás 1 MES GRATIS de Plan Pro** de forma automática.\n\n` +
+      `🎁 *Recompensa:* Si un amigo se registra usando tu enlace y luego adquiere un plan, **tú recibirás 1 MES GRATIS de Plan Premium** de forma automática.\n\n` +
       `_¡Mientras más recomiendas, más juegas gratis!_`;
 
     try {
