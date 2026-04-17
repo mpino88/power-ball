@@ -99,12 +99,18 @@ function formatMessage(
 
   const rising = [...stats]
     .filter((s) => s.countAll >= 3)
-    .sort((a, b) => b.momentum - a.momentum)
+    .sort((a, b) => {
+      if (a.momentum !== b.momentum) return b.momentum - a.momentum;
+      return b.freqRecent - a.freqRecent;
+    })
     .slice(0, topN);
 
   const falling = [...stats]
     .filter((s) => s.countAll >= 5)
-    .sort((a, b) => a.momentum - b.momentum)
+    .sort((a, b) => {
+      if (a.momentum !== b.momentum) return a.momentum - b.momentum;
+      return b.freqAll - a.freqAll;
+    })
     .slice(0, topN);
 
   const momentumLabel = (m: number) => {
