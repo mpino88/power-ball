@@ -72,7 +72,7 @@ const STRATEGY_META: Record<string, StrategyMeta> = {
   trend_momentum: {
     emoji: "📈",
     shortName: "Trend",
-    fullName: "Fuerza de Tendencia Pro*",
+    fullName: "Fuerza de Tendencia Pro",
     candidateDesc: () => "top 20 números con momentum reciente en alza",
   },
   max_per_week_day: {
@@ -105,7 +105,7 @@ const STRATEGY_META: Record<string, StrategyMeta> = {
   markov_order2: {
     emoji: "🔗",
     shortName: "Mkv2",
-    fullName: "IA Predictiva Pro* (Markov)",
+    fullName: "IA Predictiva Pro (Markov)",
     candidateDesc: () => "sucesores del par (penúltimo→último) según transiciones de 2 pasos",
   },
 
@@ -130,13 +130,13 @@ const STRATEGY_META: Record<string, StrategyMeta> = {
   cycle_detector: {
     emoji: "🔄",
     shortName: "Ciclo",
-    fullName: "Radar de Ciclos Pro*",
+    fullName: "Radar de Ciclos Pro",
     candidateDesc: () => "números con ciclo detectado cuya fase ≥ 0.8 del ciclo dominante",
   },
   streak_analysis: {
     emoji: "📉",
     shortName: "Racha",
-    fullName: "Detector de Rachas Pro*",
+    fullName: "Detector de Rachas Pro",
     candidateDesc: () => "rachas calientes activas + rachas frías con mayor factor de deuda",
   },
   bayesian_score: {

@@ -807,7 +807,7 @@ const BUILT_IN_STRATEGIES: Array<{ id: string; label: string; description: strin
   },
   {
     id: "trend_momentum",
-    label: "Fuerza de Tendencia Pro*",
+    label: "Fuerza de Tendencia Pro",
     description:
       "Detecta números en alza/baja comparando frecuencia reciente (últimos 30 sorteos) vs histórica total. P3/P4 · Día/Noche",
   },
@@ -827,7 +827,7 @@ const BUILT_IN_STRATEGIES: Array<{ id: string; label: string; description: strin
   // —— Nuevas estrategias (v2) ——
   {
     id: "markov_order2",
-    label: "IA Predictiva Pro* (Markov)",
+    label: "IA Predictiva Pro (Markov)",
     description:
       "Cadena de Markov de segundo orden: dado el par (penúltimo → último sorteo), predice el siguiente. Captura dependencias de dos pasos que Markov-1 no puede detectar. P3/P4 · Día/Noche",
     createdBy: 728711697,
@@ -855,14 +855,14 @@ const BUILT_IN_STRATEGIES: Array<{ id: string; label: string; description: strin
   },
   {
     id: "cycle_detector",
-    label: "Radar de Ciclos Pro*",
+    label: "Radar de Ciclos Pro",
     description:
       "Detecta si un número tiene un ciclo de aparición predominante (cada N sorteos). Calcula la fase actual: fase ≈ 1.0 = el ciclo dice que toca ahora. Trabaja en conteo de sorteos (no días) para mayor precisión. P3/P4 · Día/Noche",
     createdBy: 728711697,
   },
   {
     id: "streak_analysis",
-    label: "Detector de Rachas Pro*",
+    label: "Detector de Rachas Pro",
     description:
       "Analiza rachas calientes (sorteos consecutivos apareciendo) y frías (ausencias consecutivas). Detecta inercia activa y presión acumulada. Diferencia clave vs Momentum: trabaja en sorteos consecutivos y analiza continuidad, no solo ratio de frecuencia. P3/P4 · Día/Noche",
     createdBy: 728711697,

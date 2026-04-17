@@ -1,5 +1,5 @@
 /**
- * Estrategia — Cadena de IA Predictiva Pro* (Markov)
+ * Estrategia — Cadena de IA Predictiva Pro (Markov)
  *
  * Extiende la cadena de Markov de orden 1 (transition_follow) a orden 2:
  * en lugar de predecir el siguiente sorteo basándose solo en el último,
@@ -107,7 +107,7 @@ function formatMessage(
   const prevNums = twoDigitNumbers(prevDraw, mapSource);
 
   const lines: string[] = [
-    `📊 *Cadena de IA Predictiva Pro* (Markov)* — ${mapLabel} · ${periodLabel}`,
+    `📊 *Cadena de IA Predictiva Pro (Markov)* — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr}`,
     "",
     "📖 _Qué mide:_ usa los DOS últimos sorteos seguidos para ver quién sale siempre después de ellos\\.",

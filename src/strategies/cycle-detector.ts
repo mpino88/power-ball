@@ -1,5 +1,5 @@
 /**
- * Estrategia — Radar de Ciclos Pro* y Periodicidad
+ * Estrategia — Radar de Ciclos Pro y Periodicidad
  *
  * Detecta si un número tiene un ciclo de aparición predominante: ¿sale
  * aproximadamente cada 7 sorteos? ¿cada 14? ¿cada 21?
@@ -158,7 +158,7 @@ function formatMessage(
   const upcomingCycle = withCycle.filter((s) => s.phase >= 0.6 && s.phase < 0.9).slice(0, 10);
 
   const lines: string[] = [
-    `📊 *Radar de Ciclos Pro** — ${mapLabel} · ${periodLabel}`,
+    `📊 *Radar de Ciclos Pro* — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr} · Total sorteos analizados: ${totalDraws}`,
     "",
     "📖 _Qué mide:_ busca números que tienen la costumbre de salir cada cierto tiempo exacto\\.",
