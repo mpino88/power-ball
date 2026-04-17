@@ -1,5 +1,5 @@
 /**
- * Estrategia 1 — Análisis de Frecuencia Absoluta
+ * Estrategia 1 — Radar de Frecuencias Absoluta
  *
  * Cuenta cuántas veces ha salido cada número (00-99) en toda la historia disponible.
  * Identifica los 20 más frecuentes ("calientes") y los 10 más fríos, junto con la
@@ -99,7 +99,7 @@ function formatMessage(
     totalOccurrences > 0 ? ((c / totalOccurrences) * 100).toFixed(2) : "0.00";
 
   const lines: string[] = [
-    `📊 *Análisis de Frecuencia* — ${mapLabel} · ${periodLabel}`,
+    `📊 *Radar de Frecuencias* — ${mapLabel} · ${periodLabel}`,
     `Sorteos: ${totalDraws} · Período: ${rangeStr} · Apariciones totales: ${totalOccurrences}`,
     "",
     `📖 _Qué mide:_ cuáles son los números que más repiten y los que menos salen en la historia\\.`,

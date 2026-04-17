@@ -36,7 +36,7 @@ export interface StrategyDefinition {
   run(context: StrategyContext, map: DateDrawsMap): Promise<string>;
   /**
    * (Opcional) Retorna los N mejores candidatos de esta estrategia como lista
-   * de números 00-99. Usado por Consenso Multi-Estrategia para el cruce de datos.
+   * de números 00-99. Usado por Visión 360° (Consenso) para el cruce de datos.
    */
   getCandidates?(context: StrategyContext, map: DateDrawsMap): Promise<number[]>;
 }

@@ -22,7 +22,7 @@ export const MAX_PARLE_NUMS = 20;
 /** Prefijo de callback para el botón "Hacer parlé" de una estrategia individual. */
 export const PARLE_CALLBACK_PREFIX = "parle_";
 
-/** Callback especial para el parlé del resultado del Consenso Multi-Estrategia. */
+/** Callback especial para el parlé del resultado del Visión 360° (Consenso). */
 export const PARLE_CNS_CALLBACK = "parle_cns";
 
 /** Genera todas las combinaciones C(n,2) de un array sin repetición. */

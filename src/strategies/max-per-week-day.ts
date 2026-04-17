@@ -1,5 +1,5 @@
 /**
- * Más salidores x día de la semana: top 10 números (00-99) por cada día.
+ * Días de Suerte (Top por Día): top 10 números (00-99) por cada día.
  * Id: max_per_week_day. Título/descripción se persisten en la 2ª pestaña del Sheet.
  * Un solo mensaje en formato tabla (estilo dashboard estadísticas).
  */
@@ -94,7 +94,7 @@ function formatMessage(result: CountMap, mapSource: "p3" | "p4", period: "m" | "
   const cell = (num: number, count: number) => `${String(num).padStart(2, "0")}(${count})`.padEnd(W_CELL);
 
   const lines: string[] = [
-    `📊 *Más salidores x día de la semana* — ${mapLabel} · ${periodLabel}`,
+    `📊 *Días de Suerte (Top por Día)* — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr}`,
     "",
     `📖 _Qué mide:_ te dice directamente cuáles son los ${getStrategiesTopN()} números favoritos de cada día de la semana\\.`,

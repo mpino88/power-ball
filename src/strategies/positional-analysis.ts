@@ -1,5 +1,5 @@
 /**
- * Estrategia 6 — Análisis Posicional
+ * Estrategia 6 — Radiografía Posicional
  *
  * Descompone cada sorteo según la estructura real del juego:
  *
@@ -185,7 +185,7 @@ function analyzeP3(map: DateDrawsMap, period: "m" | "e"): string {
   const rangeStr = dates.length > 0 ? `${dates[0]!} – ${dates[dates.length - 1]!}` : "Sin datos";
 
   const lines: string[] = [
-    `📊 *Análisis Posicional* — P3 (Fijos) · ${periodLabel}`,
+    `📊 *Radiografía Posicional* — P3 (Fijos) · ${periodLabel}`,
     `Sorteos: ${totalDraws} · Período: ${rangeStr} · Último: ${latestDateStr} · Próx. estimado: ${nextDateLabel}`,
     "",
     "📖 _Qué mide:_ analiza qué número exacto debería salir en cada posición \\(Centena, Decena y Unidad\\)\\.",
@@ -302,7 +302,7 @@ function analyzeP4(map: DateDrawsMap, period: "m" | "e"): string {
   const rangeStr = dates.length > 0 ? `${dates[0]!} – ${dates[dates.length - 1]!}` : "Sin datos";
 
   const lines: string[] = [
-    `📊 *Análisis Posicional* — P4 (Corridos) · ${periodLabel}`,
+    `📊 *Radiografía Posicional* — P4 (Corridos) · ${periodLabel}`,
     `Sorteos: ${totalDraws} · Período: ${rangeStr} · Último: ${latestDateStr} · Próx: ${nextDateLabel}`,
     "",
     "📖 _Qué mide:_ divide el sorteo de 4 cifras en dos parejas claras iniciales y finales para analizarlas mejor\\.",

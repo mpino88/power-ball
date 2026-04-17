@@ -1,5 +1,5 @@
 /**
- * Estrategia — Análisis de Rachas (Streak Analysis)
+ * Estrategia — Detector de Rachas Pro* (Streak Analysis)
  *
  * Analiza dos tipos de rachas en conteo de sorteos (no en días calendario):
  *
@@ -180,7 +180,7 @@ function formatMessage(
   const coldIcon = (f: number) => f >= 3.0 ? "🔴" : f >= 2.0 ? "🟠" : f >= 1.5 ? "🟡" : "";
 
   const lines: string[] = [
-    `📊 *Análisis de Rachas* — ${mapLabel} · ${periodLabel}`,
+    `📊 *Detector de Rachas Pro** — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr} · Total sorteos: ${totalDraws}`,
     "",
     "📖 _Qué mide:_ qué números llevan apareciendo sorteos seguidos o llevan demasiados sorteos escondidos\\.",

@@ -126,7 +126,7 @@ export function buildMainKeyboard(userId: number | undefined, deps: MainKeyboard
   kb.row().text("➕ Estrategias", ESTRATEGIAS_OPEN_CALLBACK);
 
   if (hasConsensus && userHasPlan) {
-    kb.row().text("🤝 Consenso Multi-Estrategia", EXTRA_MENU_CALLBACK_PREFIX + CONSENSUS_MENU_ID);
+    kb.row().text("🤝 Visión 360° (Consenso)", EXTRA_MENU_CALLBACK_PREFIX + CONSENSUS_MENU_ID);
   }
   kb.row().text("🃏 Charada Cubana", "charada_open");
 
@@ -300,7 +300,7 @@ export function buildTopNMenuMessage(current: number): string {
   return (
     `🔢 *Resultados por estrategia*\n\n` +
     `Controla cuántos números muestra cada estrategia en su tabla de resultados ` +
-    `y cuántos candidatos aporta al Consenso Multi-Estrategia.\n\n` +
+    `y cuántos candidatos aporta al Visión 360° (Consenso).\n\n` +
     `ℹ️ Valor actual: *${current}* números.\n` +
     `_Rango válido: 5\u201330. El cambio es inmediato para todos los usuarios._\n\n` +
     `Elige el nuevo valor:`

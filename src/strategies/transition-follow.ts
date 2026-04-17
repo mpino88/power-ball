@@ -1,5 +1,5 @@
 /**
- * Estrategia 4 — Seguidor de Secuencias (Cadena de Markov de orden 1)
+ * Estrategia 4 — Rastreador de Secuencias (Cadena de Markov de orden 1)
  *
  * Construye una matriz de transición: dado que el número X salió en el sorteo N,
  * ¿qué número Y apareció más frecuentemente en el sorteo N+1?
@@ -82,7 +82,7 @@ function formatMessage(
   const drawStr = lastDraw.join("-");
 
   const lines: string[] = [
-    `📊 *Seguidor de Secuencias* — ${mapLabel} · ${periodLabel}`,
+    `📊 *Rastreador de Secuencias* — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr} · Último sorteo (${lastDateStr}): ${drawStr}`,
     "",
     "📖 _Qué mide:_ si hoy salió el número X, quién suele salir justo en el sorteo de mañana\\.",

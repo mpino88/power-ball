@@ -1,5 +1,5 @@
 /**
- * Estrategia 9 — Consenso Multi-Estrategia
+ * Estrategia 9 — Visión 360° (Consenso)
  *
  * Meta-estrategia interactiva: el usuario selecciona varias estrategias,
  * el sistema extrae los mejores candidatos de cada una bajo el mismo contexto
@@ -45,19 +45,19 @@ const STRATEGY_META: Record<string, StrategyMeta> = {
   freq_analysis: {
     emoji: "📊",
     shortName: "Frec",
-    fullName: "Análisis de Frecuencia",
+    fullName: "Radar de Frecuencias",
     candidateDesc: () => "top 20 con mayor aparición histórica",
   },
   gap_due: {
     emoji: "⏳",
     shortName: "Gap",
-    fullName: "Números Debidos (Gap)",
+    fullName: "Cazador de Rezagados (Gap)",
     candidateDesc: () => "top 20 más atrasados según su ritmo normal",
   },
   calendar_pattern: {
     emoji: "📅",
     shortName: "Cal",
-    fullName: "Patrón Calendario",
+    fullName: "Reloj de Probabilidades",
     candidateDesc: (_, nextDate) =>
       nextDate
         ? `candidatos para ${DAY_NAMES[nextDate.getDay()]} ${nextDate.getDate()} de ${MONTH_NAMES[nextDate.getMonth()]}`
@@ -66,19 +66,19 @@ const STRATEGY_META: Record<string, StrategyMeta> = {
   transition_follow: {
     emoji: "🔗",
     shortName: "Seq",
-    fullName: "Seguidor de Secuencias",
+    fullName: "Rastreador de Secuencias",
     candidateDesc: () => "sucesores más probables del último sorteo (Markov)",
   },
   trend_momentum: {
     emoji: "📈",
     shortName: "Trend",
-    fullName: "Momentum de Tendencia",
+    fullName: "Fuerza de Tendencia Pro*",
     candidateDesc: () => "top 20 números con momentum reciente en alza",
   },
   max_per_week_day: {
     emoji: "📆",
     shortName: "DíaSem",
-    fullName: "Más salidores x día",
+    fullName: "Días de Suerte (Top por Día)",
     candidateDesc: (_, nextDate) =>
       nextDate
         ? `top 10 histórico para los ${DAY_NAMES[nextDate.getDay()]}s`
@@ -87,7 +87,7 @@ const STRATEGY_META: Record<string, StrategyMeta> = {
   positional_analysis: {
     emoji: "🔢",
     shortName: "Pos",
-    fullName: "Análisis Posicional",
+    fullName: "Radiografía Posicional",
     candidateDesc: (ctx) =>
       ctx.mapSource === "p3"
         ? "pares más probables por combinación posicional (centena×decena, decena×unidad)"
@@ -96,7 +96,7 @@ const STRATEGY_META: Record<string, StrategyMeta> = {
   est_individuales: {
     emoji: "🔥",
     shortName: "Hot",
-    fullName: "Est. Individuales (Hot)",
+    fullName: "Fiebre de Números (Hot)",
     candidateDesc: (ctx) =>
       ctx.mapSource === "p3"
         ? "top 10 números 00-99 más calientes (más cerca de su máximo histórico sin salir)"
@@ -105,44 +105,44 @@ const STRATEGY_META: Record<string, StrategyMeta> = {
   markov_order2: {
     emoji: "🔗",
     shortName: "Mkv2",
-    fullName: "Markov Orden 2",
+    fullName: "IA Predictiva Pro* (Markov)",
     candidateDesc: () => "sucesores del par (penúltimo→último) según transiciones de 2 pasos",
   },
 
   decade_family: {
     emoji: "👨‍👩‍👧‍👦",
     shortName: "Decena",
-    fullName: "Familias de Decenas",
+    fullName: "Bloques Ganadores (Familias)",
     candidateDesc: () => "top números de las familias con mayor momentum y deuda",
   },
   mirror_complement: {
     emoji: "🪞",
     shortName: "Espejo",
-    fullName: "Espejo y Complemento",
+    fullName: "Sincronía Oculta (Espejo)",
     candidateDesc: () => "simétricos (espejo/complemento) del último sorteo con mayor correlación histórica",
   },
   terminal_analysis: {
     emoji: "🔚",
     shortName: "Terminal",
-    fullName: "Análisis de Terminales",
+    fullName: "Cierres Perfectos (Terminales)",
     candidateDesc: () => "candidatos con el terminal (dígito final) de mayor momentum y deuda",
   },
   cycle_detector: {
     emoji: "🔄",
     shortName: "Ciclo",
-    fullName: "Detector de Ciclos",
+    fullName: "Radar de Ciclos Pro*",
     candidateDesc: () => "números con ciclo detectado cuya fase ≥ 0.8 del ciclo dominante",
   },
   streak_analysis: {
     emoji: "📉",
     shortName: "Racha",
-    fullName: "Análisis de Rachas",
+    fullName: "Detector de Rachas Pro*",
     candidateDesc: () => "rachas calientes activas + rachas frías con mayor factor de deuda",
   },
   bayesian_score: {
     emoji: "🎯",
     shortName: "Bayes",
-    fullName: "Score Bayesiano",
+    fullName: "Fórmula de Éxito (Bayesiano)",
     candidateDesc: () => "top 20 números por score combinado 0-100 (6 señales ponderadas)",
   },
 };
@@ -255,7 +255,7 @@ export function buildConsensusSelectionMessage(
     : `Selecciona estrategias individuales _(${selectedCount}/${total})_:`;
 
   const lines: string[] = [
-    `🤝 *Consenso Multi-Estrategia* — ${mapLabel} · ${periodLabel}`,
+    `🤝 *Visión 360° (Consenso)* — ${mapLabel} · ${periodLabel}`,
     "",
     intro,
     "",
@@ -419,7 +419,7 @@ export async function runConsensusAggregation(
   const lines: string[] = [];
 
   // Header
-  lines.push(`🎯 *Consenso Multi-Estrategia* — ${mapLabel} · ${periodLabel}`);
+  lines.push(`🎯 *Visión 360° (Consenso)* — ${mapLabel} · ${periodLabel}`);
   lines.push(`Cruce de *${total}* estrategia${total > 1 ? "s" : ""} · Top *${count}* resultado${count > 1 ? "s" : ""}`);
   lines.push(`Período: ${rangeStr} · Último: ${latestStr} · Próx. estimado: ${nextStr}`);
   lines.push("");

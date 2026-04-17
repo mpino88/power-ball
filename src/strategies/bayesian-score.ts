@@ -291,7 +291,7 @@ function formatMessage(
   };
 
   const lines: string[] = [
-    `📊 *Score Bayesiano* — ${mapLabel} · ${periodLabel}`,
+    `📊 *Fórmula de Éxito (Bayesiano)* — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr} · Último: ${lastDateStr} · Ref: ${lastNums.map((n) => String(n).padStart(2, "0")).join(", ")}`,
     "",
     "📖 _Qué mide:_ mezcla y evalúa 6 estrategias al mismo tiempo para dar una nota del 0 al 100 a cada número\\.",

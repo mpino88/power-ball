@@ -32,7 +32,7 @@ export const ADIVINANZA_REGEN_CB = "adivinanza_regen";
  */
 export const ADIVINANZA_STRAT_PREFIX = "adivinanza_strat_";
 
-/** Callback especial para la adivinanza generada desde el Consenso Multi-Estrategia. */
+/** Callback especial para la adivinanza generada desde el Visión 360° (Consenso). */
 export const ADIVINANZA_CNS_CALLBACK = "adivinanza_cns";
 
 export const ADIVINANZA_OPEN_MSG =

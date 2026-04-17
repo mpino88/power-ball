@@ -122,7 +122,7 @@ export async function runStrategy(
  * (excluyendo `consensus_multi`).
  *
  * ── CONVENCIÓN ──────────────────────────────────────────────────────────────
- * Para que una nueva estrategia sea SELECCIONABLE en Consenso Multi-Estrategia,
+ * Para que una nueva estrategia sea SELECCIONABLE en Visión 360° (Consenso),
  * basta con que implemente el método opcional `getCandidates` en su objeto
  * `StrategyDefinition`. No hay que tocar ningún archivo adicional; el sistema
  * la detecta automáticamente en tiempo de ejecución.

@@ -1,5 +1,5 @@
 /**
- * Estrategia — Análisis de Terminales (Dígito Final)
+ * Estrategia — Cierres Perfectos (Terminales) (Dígito Final)
  *
  * Se enfoca en el dígito de unidad (0-9) de los números que salen en cada sorteo.
  * El "terminal" es el último dígito: en el número 47, el terminal es 7.
@@ -172,7 +172,7 @@ function formatMessage(
     .sort((a, b) => b.dueFactor - a.dueFactor);
 
   const lines: string[] = [
-    `📊 *Análisis de Terminales* — ${mapLabel} · ${periodLabel}`,
+    `📊 *Cierres Perfectos (Terminales)* — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr}`,
     "",
     "📖 _Qué mide:_ busca el último dígito \\(terminal\\) que está por salir y te sugiere combinaciones con él\\.",

@@ -1,5 +1,5 @@
 /**
- * Estrategia — Análisis de Espejo y Complemento
+ * Estrategia — Análisis de Sincronía Oculta (Espejo)
  *
  * Estudia correlaciones estadísticas entre un número y sus variantes simétricas:
  *
@@ -171,7 +171,7 @@ function formatMessage(
   const lastNums = twoDigitNumbers(lastDraw, mapSource);
 
   const lines: string[] = [
-    `📊 *Espejo y Complemento* — ${mapLabel} · ${periodLabel}`,
+    `📊 *Sincronía Oculta (Espejo)* — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr} · Último sorteo: ${lastDateStr}`,
     "",
     "📖 _Qué mide:_ qué tantas veces un número atrae a su número espejo \\(ej. 47 atrae al 74\\)\\.",

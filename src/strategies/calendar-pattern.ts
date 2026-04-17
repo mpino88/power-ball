@@ -1,5 +1,5 @@
 /**
- * Estrategia 3 — Patrón Calendario
+ * Estrategia 3 — Reloj de Probabilidades
  *
  * Analiza la relación entre el calendario y los números que salen:
  *   A) Día de la semana + Mes (combinación exacta): patrón más específico
@@ -132,7 +132,7 @@ function formatMessage(
   }
 
   const lines: string[] = [
-    `📊 *Patrón Calendario* — ${mapLabel} · ${periodLabel}`,
+    `📊 *Reloj de Probabilidades* — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr} · Último: ${latestDateStr} · Próx. estimado: ${nextDateLabel}`,
     "",
     "📖 _Qué mide:_ cuáles números salen más dependiendo de la fecha exacta de mañana \\(día y mes\\)\\.",

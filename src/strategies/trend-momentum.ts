@@ -1,5 +1,5 @@
 /**
- * Estrategia 5 — Momentum de Tendencia
+ * Estrategia 5 — Fuerza de Tendencia Pro*
  *
  * Compara la frecuencia de aparición en los últimos N sorteos (ventana reciente)
  * contra la frecuencia histórica total. Esto detecta cambios de comportamiento:
@@ -116,12 +116,12 @@ function formatMessage(
   };
 
   const lines: string[] = [
-    `📊 *Momentum de Tendencia* — ${mapLabel} · ${periodLabel}`,
+    `📊 *Fuerza de Tendencia Pro** — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr} · Histórico: ${totalAll} sorteos · Reciente: últimos ${totalRecent} · Último: ${latestDateStr}`,
     "",
     "📖 _Qué mide:_ busca números que han empezado a salir mucho más de lo normal últimamente \\(buena racha\\)\\.",
     "_Rec\\._ = freq\\. últimos 30 · _Hist\\._ = freq\\. total · _Momento_ = Rec÷Hist \\(>1x = en alza\\)",
-    "→ ↑↑↑ ≥3x alza fuerte · ↑↑ ≥1\\.5x alza · ↓ en baja · Complementa al Análisis de Frecuencia",
+    "→ ↑↑↑ ≥3x alza fuerte · ↑↑ ≥1\\.5x alza · ↓ en baja · Complementa al Radar de Frecuencias",
     "",
     "```",
     `📈 TOP ${topN} EN ALZA`,

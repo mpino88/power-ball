@@ -312,13 +312,13 @@ const consensusSessionMap = new Map<number, ConsensusSession>();
 const waitingCharadaSearch = new Map<number, true>();
 
 /**
- * Caché de números para el parlé del Consenso Multi-Estrategia.
+ * Caché de números para el parlé del Visión 360° (Consenso).
  * Se sobrescribe en cada resultado de consenso; expira al calcular uno nuevo.
  */
 const parleConsensusCache = new Map<number, { nums: number[]; context: StrategyContext }>();
 
 /**
- * Caché de números para la adivinanza del Consenso Multi-Estrategia (solo dueño).
+ * Caché de números para la adivinanza del Visión 360° (Consenso) (solo dueño).
  * Se sobrescribe con cada nuevo resultado de consenso.
  */
 const adivinanzaConsensusCache = new Map<number, number[]>();
@@ -343,7 +343,7 @@ const bbtCmpSessionMap = new Map<number, BBTCompareSession>();
 const waitingBBTCmpLimit = new Set<number>();
 
 /**
- * Retorna los IDs de estrategias seleccionables en Consenso Multi-Estrategia
+ * Retorna los IDs de estrategias seleccionables en Visión 360° (Consenso)
  * filtrados por los menús que el usuario tiene activos (plan + asignados).
  * Los owners ven todas las estrategias registradas.
  */
@@ -778,48 +778,48 @@ function registerExtraMenus(): void {
 const BUILT_IN_STRATEGIES: Array<{ id: string; label: string; description: string; createdBy?: number }> = [
   {
     id: "max_per_week_day",
-    label: "Más salidores x día de la Semana",
+    label: "Días de Suerte (Top por Día)",
     description: "Números que más han salido por cada día de la semana (P3/P4, Día/Noche)",
   },
   {
     id: "freq_analysis",
-    label: "Análisis de Frecuencia",
+    label: "Radar de Frecuencias",
     description:
       "Top 20 más frecuentes y top 10 más fríos con probabilidad % e historial. P3/P4 · Día/Noche",
   },
   {
     id: "gap_due",
-    label: "Números Debidos (Gap)",
+    label: "Cazador de Rezagados (Gap)",
     description:
       "Factor de deuda: días sin salir ÷ brecha promedio histórica. Detecta números atrasados. P3/P4 · Día/Noche",
   },
   {
     id: "calendar_pattern",
-    label: "Patrón Calendario",
+    label: "Reloj de Probabilidades",
     description:
       "Números más probables según día de la semana, mes y día del mes. Predice basado en la próxima fecha estimada. P3/P4 · Día/Noche",
   },
   {
     id: "transition_follow",
-    label: "Seguidor de Secuencias",
+    label: "Rastreador de Secuencias",
     description:
       "Cadena de Markov: dado el último sorteo, predice los números más probables para el siguiente. P3/P4 · Día/Noche",
   },
   {
     id: "trend_momentum",
-    label: "Momentum de Tendencia",
+    label: "Fuerza de Tendencia Pro*",
     description:
       "Detecta números en alza/baja comparando frecuencia reciente (últimos 30 sorteos) vs histórica total. P3/P4 · Día/Noche",
   },
   {
     id: "positional_analysis",
-    label: "Análisis Posicional",
+    label: "Radiografía Posicional",
     description:
       "P3: centena/decena/unidad por posición. P4: pares [AB][CD] con decena y unidad de cada par. Frecuencia + gap por posición.",
   },
   {
     id: "est_individuales",
-    label: "Est. Individuales (Hot)",
+    label: "Fiebre de Números (Hot)",
     description:
       "Top 10 números 00-99 más calientes: los más cerca de su máximo histórico sin salir. Solo P3 (Fijo).",
     createdBy: 728711697,
@@ -827,49 +827,49 @@ const BUILT_IN_STRATEGIES: Array<{ id: string; label: string; description: strin
   // —— Nuevas estrategias (v2) ——
   {
     id: "markov_order2",
-    label: "Markov Orden 2",
+    label: "IA Predictiva Pro* (Markov)",
     description:
       "Cadena de Markov de segundo orden: dado el par (penúltimo → último sorteo), predice el siguiente. Captura dependencias de dos pasos que Markov-1 no puede detectar. P3/P4 · Día/Noche",
     createdBy: 728711697,
   },
   {
     id: "decade_family",
-    label: "Familias de Decenas",
+    label: "Bloques Ganadores (Familias)",
     description:
       "Agrupa los 100 números en 10 familias (D0=00-09, D1=10-19, …, D9=90-99). Identifica la familia con mayor momentum reciente y la más debida, luego proyecta los candidatos internos de cada familia candidata. P3/P4 · Día/Noche",
     createdBy: 728711697,
   },
   {
     id: "mirror_complement",
-    label: "Espejo y Complemento",
+    label: "Sincronía Oculta (Espejo)",
     description:
       "Estudia correlaciones entre un número y sus variantes simétricas: espejo (47↔74), complemento a 99 (23↔76) y complemento a 100 (23↔77). Dado el último sorteo, proyecta los simétricos con mayor probabilidad condicional histórica. P3/P4 · Día/Noche",
     createdBy: 728711697,
   },
   {
     id: "terminal_analysis",
-    label: "Análisis de Terminales",
+    label: "Cierres Perfectos (Terminales)",
     description:
       "Analiza el dígito de unidad (terminal 0-9) de los números sorteados. Identifica qué terminales están en alza (momentum) o atrasados (due) y proyecta los candidatos completos (00-99) que contienen ese terminal. P3/P4 · Día/Noche",
     createdBy: 728711697,
   },
   {
     id: "cycle_detector",
-    label: "Detector de Ciclos",
+    label: "Radar de Ciclos Pro*",
     description:
       "Detecta si un número tiene un ciclo de aparición predominante (cada N sorteos). Calcula la fase actual: fase ≈ 1.0 = el ciclo dice que toca ahora. Trabaja en conteo de sorteos (no días) para mayor precisión. P3/P4 · Día/Noche",
     createdBy: 728711697,
   },
   {
     id: "streak_analysis",
-    label: "Análisis de Rachas",
+    label: "Detector de Rachas Pro*",
     description:
       "Analiza rachas calientes (sorteos consecutivos apareciendo) y frías (ausencias consecutivas). Detecta inercia activa y presión acumulada. Diferencia clave vs Momentum: trabaja en sorteos consecutivos y analiza continuidad, no solo ratio de frecuencia. P3/P4 · Día/Noche",
     createdBy: 728711697,
   },
   {
     id: "bayesian_score",
-    label: "Score Bayesiano",
+    label: "Fórmula de Éxito (Bayesiano)",
     description:
       "Combina 6 señales estadísticas (Frecuencia 15%, Gap 20%, Momentum 20%, Ciclo 15%, Markov 20%, Racha 10%) en un score continuo 0-100. Ventaja vs Consenso: score cuantitativo (no votación binaria) con mayor capacidad discriminatoria entre candidatos. P3/P4 · Día/Noche",
     createdBy: 728711697,
@@ -891,7 +891,7 @@ const BUILT_IN_STRATEGIES: Array<{ id: string; label: string; description: strin
 
   {
     id: "consensus_multi",
-    label: "Consenso Multi-Estrategia",
+    label: "Visión 360° (Consenso)",
     description:
       "Cruza los candidatos de varias estrategias y devuelve los N números con mayor respaldo estadístico cruzado.",
   },
@@ -2740,7 +2740,7 @@ bot.on("callback_query:data", async (ctx) => {
       return;
     }
     await ctx.answerCallbackQuery({ text: "Generando parlés…" });
-    const parleMsg = buildParleMessage(cached.nums, "Consenso Multi-Estrategia", cached.context);
+    const parleMsg = buildParleMessage(cached.nums, "Visión 360° (Consenso)", cached.context);
     await ctx.reply(parleMsg, {
       parse_mode: "Markdown",
       reply_markup: new InlineKeyboard().text("🏠 Inicio", "volver"),

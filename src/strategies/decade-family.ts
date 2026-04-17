@@ -1,5 +1,5 @@
 /**
- * Estrategia — Análisis de Familias de Decenas
+ * Estrategia — Análisis de Bloques Ganadores (Familias)
  *
  * Agrupa los 100 números en 10 "familias" de decena:
  *   D0 = 00-09 · D1 = 10-19 · D2 = 20-29 · ... · D9 = 90-99
@@ -184,7 +184,7 @@ function formatMessage(
     .sort((a, b) => b.dueFactor - a.dueFactor);
 
   const lines: string[] = [
-    `📊 *Familias de Decenas* — ${mapLabel} · ${periodLabel}`,
+    `📊 *Bloques Ganadores (Familias)* — ${mapLabel} · ${periodLabel}`,
     `Período: ${rangeStr} · Último registro: ${latestDateStr}`,
     "",
     "📖 _Qué mide:_ analiza los números por grupos de decenas \\(los 10s, 20s, 30s\\) para ver cuál grupo está por salir\\.",
