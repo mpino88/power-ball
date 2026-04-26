@@ -9,6 +9,8 @@ import {
   addAllowed,
   setUserInfo,
   getAllowedUsers,
+  getAllRegisteredUsers,
+  getOwnerIds,
   type PersistResult,
 } from "../user-config.js";
 import { getExtraMenuIds } from "../menu-registry.js";
@@ -621,9 +623,11 @@ Enviando notificación masiva...`, { parse_mode: "Markdown" });
     await ctx.reply("⏳ Enviando mensaje a todos los usuarios...");
 
     let sentCount = 0;
-    const allowed = getAllowedUsers();
+    const registered = getAllRegisteredUsers();
+    const owners = getOwnerIds();
+    const targetUsers = new Set([...registered, ...owners]);
     
-    for (const uid of allowed) {
+    for (const uid of targetUsers) {
       if (uid === userId) continue; // No enviarse a sí mismo
       try {
         await ctx.api.sendMessage(uid, `📢 *Mensaje del Administrador:*\n\n${text}`, { parse_mode: "Markdown" });

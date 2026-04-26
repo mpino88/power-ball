@@ -907,6 +907,13 @@ export function isRegistered(userId: number): boolean {
   return !!info?.phone;
 }
 
+/** Devuelve los IDs de todos los usuarios registrados (que han compartido su teléfono). */
+export function getAllRegisteredUsers(): number[] {
+  return Object.keys(config.userInfo)
+    .filter((idStr) => !!config.userInfo[idStr]?.phone)
+    .map((idStr) => parseInt(idStr, 10));
+}
+
 /**
  * true si el usuario tiene un plan activo (no caducado).
  * Owners siempre devuelven true.
