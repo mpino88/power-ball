@@ -73,6 +73,7 @@ export const creatingPaymentMethodFlow = new Map<number, CreatingPaymentMethodSt
 export const editingPaymentMethodFlow = new Map<number, EditingPaymentMethodStep>();
 export const updatingHoyFlow = new Map<number, UpdatingHoyStep>();
 export const generatingCacheFlow = new Map<number, { step: 1 }>();
+export const broadcastingFlow = new Map<number, { step: 1 }>();
 
 export function clearAllFlows(userId: number): void {
   addingUserFlow.delete(userId);
@@ -86,4 +87,6 @@ export function clearAllFlows(userId: number): void {
   creatingPaymentMethodFlow.delete(userId);
   editingPaymentMethodFlow.delete(userId);
   updatingHoyFlow.delete(userId);
+  generatingCacheFlow.delete(userId);
+  broadcastingFlow.delete(userId);
 }

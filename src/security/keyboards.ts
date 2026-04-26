@@ -40,6 +40,8 @@ export function buildSecurityKeyboard(): InlineKeyboard {
     .row()
     .text("📊 Ver Leads", "admin_leads")
     .row()
+    .text("📢 Difusión Masiva", "admin_broadcast_open")
+    .row()
     .text(cacheLabel, "admin_cache_generate")
     .row()
     .text("⚙️ Configurar Top N Global", "admin_global_topn_open")

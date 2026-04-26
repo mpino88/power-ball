@@ -33,6 +33,7 @@ import {
   editingPaymentMethodFlow,
   updatingHoyFlow,
   generatingCacheFlow,
+  broadcastingFlow,
   clearAllFlows,
 } from "./flows.js";
 import { warmUpCandidateCache } from "../candidate-cache.js";
@@ -600,6 +601,42 @@ Enviando notificación masiva...`, { parse_mode: "Markdown" });
         reply_markup: buildSecurityKeyboard()
       });
     }
+    return true;
+  }
+  // ─── Difusión Masiva ────────────────────────────────────────────────────
+  const broadcasting = broadcastingFlow.get(userId);
+  if (broadcasting) {
+    if (text.toLowerCase() === "/cancel" || text.toLowerCase() === "cancelar") {
+      broadcastingFlow.delete(userId);
+      await ctx.reply("❌ Difusión cancelada.", { reply_markup: buildSecurityKeyboard() });
+      return true;
+    }
+
+    if (!text) {
+      await ctx.reply("❌ No puedes enviar un mensaje vacío. Escribe el texto o /cancel.");
+      return true;
+    }
+
+    broadcastingFlow.delete(userId);
+    await ctx.reply("⏳ Enviando mensaje a todos los usuarios...");
+
+    let sentCount = 0;
+    const allowed = getAllowedUsers();
+    
+    for (const uid of allowed) {
+      if (uid === userId) continue; // No enviarse a sí mismo
+      try {
+        await ctx.api.sendMessage(uid, `📢 *Mensaje del Administrador:*\n\n${text}`, { parse_mode: "Markdown" });
+        sentCount++;
+      } catch (err) {
+        // Ignorar si el bot fue bloqueado
+      }
+    }
+
+    await ctx.reply(`✅ *Difusión completada*\n\nMensaje enviado con éxito a *${sentCount}* usuarios.`, {
+      parse_mode: "Markdown",
+      reply_markup: buildSecurityKeyboard()
+    });
     return true;
   }
 

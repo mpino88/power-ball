@@ -973,6 +973,11 @@ export async function handleSecurityCallback(
         .row()
         .text("◀️ Volver a Administrar", "security_open");
     }
+  } else if (data === "admin_broadcast_open") {
+    result = "📢 *Difusión Masiva*\n\nEscribe el mensaje que deseas enviar a TODOS los usuarios autorizados (con plan activo o prueba). \n\n/cancel para cancelar.";
+    keyboard = new InlineKeyboard().text("◀️ Cancelar", "security_open");
+    const { broadcastingFlow } = await import("./flows.js");
+    broadcastingFlow.set(ctx.from.id, { step: 1 });
   } else if (data === "admin_pm_open" || data === "admin_pm_refresh") {
     await loadPaymentMethodsFromDB();
     const pms = getPaymentMethods();
