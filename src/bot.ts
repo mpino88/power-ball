@@ -8,7 +8,7 @@ import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { createAutoDrawHandler, type AutoDrawRequest } from "./auto-draw.js";
 import dayjs from "dayjs";
-import { Bot, InputFile, InlineKeyboard } from "grammy";
+import { Bot, InputFile, InlineKeyboard, Keyboard } from "grammy";
 import type { Update } from "grammy/types";
 import {
   getOwnerId,
@@ -993,12 +993,22 @@ bot.command("start", async (ctx) => {
     announcementBanner = buildAnnouncementsBanner(annItems);
   }
 
-  // Banner de registro para usuarios no registrados
-  let registrationBanner = "";
+  // Si el usuario no está registrado, pedir contacto inmediatamente
   if (startUserId && !isOwner(startUserId) && !isRegistered(startUserId)) {
-    registrationBanner = "📢 *¡Bienvenido a Ball Bot!*\n" +
-      "Regístrate compartiendo tu contacto para acceder a todas las funciones.\n" +
-      "Pulsa el botón 📞 *Registrarme* abajo.\n\n";
+    const contactKb = new Keyboard()
+      .requestContact("📱 Compartir mi número — Registrarme")
+      .row()
+      .text("❌ Cancelar")
+      .resized()
+      .oneTime();
+
+    await ctx.reply(
+      "📢 *¡Bienvenido a Ball Bot!*\n\n" +
+      "Para acceder a todas las funciones y completar tu registro necesitamos tu número de contacto.\n\n" +
+      "Toca el botón de abajo — Telegram te pedirá tu consentimiento antes de compartirlo.",
+      { parse_mode: "Markdown", reply_markup: contactKb }
+    );
+    return;
   }
 
   const [p3, p4] = await Promise.all([getP3Map(), getP4Map()]);
@@ -1006,7 +1016,7 @@ bot.command("start", async (ctx) => {
   const recentDrawsText = buildRecentDrawsDisplay(p3, p4, getTodayFloridaMMDDYY(), getYesterdayFloridaMMDDYY(), getHoyResult());
 
   await ctx.reply(
-    registrationBanner + announcementBanner + buildMainMenuMessage(ctx.from?.first_name || "Usuario", recentDrawsText, getUserStatus(startUserId)),
+    announcementBanner + buildMainMenuMessage(ctx.from?.first_name || "Usuario", recentDrawsText, getUserStatus(startUserId)),
     { parse_mode: "Markdown", reply_markup: buildMainKb(startUserId) }
   );
 });

@@ -261,7 +261,8 @@ export function createRestrictMiddleware(options: RestrictMiddlewareOptions) {
 
     // Cancelar registro (teclado personalizado)
     if (ctx.message?.text?.trim() === "❌ Cancelar" && !pending) {
-      await ctx.reply("Registro cancelado. Puedes registrarte cuando quieras.", { reply_markup: { remove_keyboard: true } });
+      await ctx.reply("Registro cancelado. Estás navegando en modo visitante.", { reply_markup: { remove_keyboard: true } });
+      await ctx.reply("Selecciona una opción:", { reply_markup: options.buildMainKeyboard(uid) });
       return;
     }
 
