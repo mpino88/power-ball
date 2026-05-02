@@ -4083,14 +4083,24 @@ async function main(): Promise<void> {
             if (p4Str) notification += `🎲 Pick 4 (Corrido): *${formatVal(p4Str)}*${formatHits(hitsP4)}\n`;
             notification += "\nConsulta todos los detalles en ☀️🌙 Últimos Sorteos 🏆";
 
-            const adminKb = new InlineKeyboard().text("📢 Publicar", `hit_pub_all_${period}_${safeDate}`);
+            // Auto-publish: broadcast directo sin aprobación del admin
+            const allowed = getAllowedUsers();
+            let sentCount = 0;
+            for (const uid of allowed) {
+              try {
+                await bot.api.sendMessage(uid, notification, { parse_mode: "Markdown", reply_markup: buildMainKb(uid) });
+                sentCount++;
+              } catch { /* usuario bloqueó el bot, cuenta eliminada, etc. */ }
+            }
+            console.log(`[HIT WEBHOOK] 📣 Auto-publicado a ${sentCount}/${allowed.length} usuarios.`);
 
+            // Notificar al admin como FYI (sin botón)
             for (const oid of getOwnerIds()) {
-              bot.api.sendMessage(oid, notification, { parse_mode: "Markdown", reply_markup: adminKb }).catch(() => { });
+              bot.api.sendMessage(oid, `✅ Sorteo auto-publicado a ${sentCount} usuarios.\n\n${notification}`, { parse_mode: "Markdown" }).catch(() => { });
             }
 
             res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ status: "ok", message: "Both draws received — combined push sent to admins." }));
+            res.end(JSON.stringify({ status: "ok", message: `Auto-published to ${sentCount} users.` }));
 
           } catch (e) {
             console.error("[HIT WEBHOOK] Error processing payload:", e);
